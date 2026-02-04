@@ -4,3 +4,9 @@ coverage/
 *.log
 .DS_Store
 .vscode/
+.agents/mcp/local.json
+.agents/generated/
+.codex/
+.gemini/
+.vscode/mcp.json
+.claude/skills

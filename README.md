@@ -1,68 +1,121 @@
-# agents CLI
+# agents
 
-`agents` is a standalone CLI for managing a project-local AGENTS.md setup and syncing MCP configs across AI coding tools.
+`agents` is a practical standard layer for multi-LLM development.
 
-## v1 scope
-- Supported: `Codex`, `Claude Code`, `Gemini CLI`, `Copilot VS Code`
-- Not in v1: `Kimi`, `Copilot GitHub cloud`
+Different vendors push different config formats for instructions, MCP, and skills.
+That fragmentation creates noise, duplicated setup, and broken onboarding.
 
-## Why Kimi is excluded in v1
-At the moment we do not have a stable, documented, project-local MCP contract for Kimi CLI that matches the same automation guarantees as Codex/Claude/Gemini/Copilot VS Code. v1 focuses on integrations with mature local config + MCP workflows.
+`agents` solves this by giving one project standard that can drive multiple LLM tools.
+It **extends AGENTS.md**, not replaces it:
+- AGENTS.md for instructions
+- MCP selection for tools
+- SKILLS for reusable workflows
 
-## Install (local dev)
+## What it standardizes
+- One project source-of-truth under `.agents/`
+- One guided setup command: `agents start`
+- One global shared catalog for presets: `~/.config/agents/catalog.json`
+- One sync command to materialize client configs: `agents sync`
+
+## Supported tools (current)
+- Codex
+- Claude Code
+- Gemini CLI
+- Copilot VS Code (workspace MCP file)
+
+Kimi is intentionally out of scope for now until a stable project-local contract is available.
+
+## Install (local development)
 ```bash
 npm install
 npm run build
 npm link
 ```
 
-## Commands
+## Main workflow
 ```bash
-agents init [--path <dir>] [--force]
-agents connect [--path <dir>] [--ai codex,claude,...] [--interactive]
-agents sync [--path <dir>] [--check] [--verbose]
-agents status [--path <dir>] [--json]
-agents doctor [--path <dir>] [--fix]
-agents disconnect [--path <dir>] [--ai ...] [--interactive]
+agents start
+agents status
+agents doctor
+agents sync --check
 ```
 
-## Project layout after `agents init`
+`agents start` now includes a trust step for Codex (when Codex is selected), and can set project trust automatically so `.codex/config.toml` works immediately.
+
+## Commands
+```bash
+agents start [--path <dir>] [--non-interactive] [--profile <name>] [--yes]
+agents init [--path <dir>] [--force]
+agents connect [--path <dir>] [--llm codex,claude,...] [--interactive]
+agents disconnect [--path <dir>] [--llm ...] [--interactive]
+agents sync [--path <dir>] [--check] [--verbose]
+agents watch [--path <dir>] [--interval <ms>] [--once] [--quiet]
+agents status [--path <dir>] [--json]
+agents doctor [--path <dir>] [--fix]
+agents reset [--path <dir>] [--local-only] [--hard]
+```
+
+## Project layout
 ```text
 <project>/
   AGENTS.md -> .agents/AGENTS.md
   .agents/
     AGENTS.md
     README.md
-    config.json
+    project.json
     mcp/
-      registry.json
+      selection.json
       local.json
       local.example.json
+    skills/
+      README.md
+      skill-guide/SKILL.md
+      <other-skills>/SKILL.md
     generated/
 ```
 
-## How sync works
-1. Reads `.agents/config.json` and `.agents/mcp/registry.json`.
-2. Applies local overrides from `.agents/mcp/local.json`.
-3. Renders generated files into `.agents/generated/`.
-4. Materializes tool-specific configs:
-- `.codex/config.toml`
-- `.gemini/settings.json`
-- `.vscode/mcp.json`
-- Claude local MCP via `claude mcp add/remove -s local`
+## Reset semantics
+- `agents reset` (safe): removes generated/materialized integration files, keeps `.agents` source files.
+- `agents reset --local-only`: removes only materialized tool configs.
+- `agents reset --hard`: removes full agents-managed setup (`.agents`, root `AGENTS.md`, managed gitignore entries).
 
-## AGENTS.md standard and docs
-- AGENTS.md standard: https://agents.md/
-- Codex docs: https://developers.openai.com/codex/
-- Claude Code docs: https://code.claude.com/docs/en/overview
-- Gemini CLI docs: https://geminicli.com/docs/
-- VS Code MCP docs: https://code.visualstudio.com/docs/copilot/chat/mcp-servers
+## Git strategy (default)
+Default is `source-only`:
+- keep `.agents/*` in git,
+- ignore generated/local files (`.agents/generated`, `.agents/mcp/local.json`, `.codex`, `.gemini`, `.vscode/mcp.json`, `.claude/skills`).
 
-## Development
+## Global catalog
+Default location:
+- macOS/Linux: `~/.config/agents/catalog.json`
+- Windows: `%APPDATA%/agents/catalog.json`
+
+Override path with:
 ```bash
-npm run lint
-npm run test
-npm run build
+export AGENTS_CATALOG_PATH=/custom/path/catalog.json
 ```
 
-See `docs/agents-system.md` for the reusable cross-project blueprint.
+Optional Codex config path override (useful for tests):
+```bash
+export AGENTS_CODEX_CONFIG_PATH=/custom/path/codex.toml
+```
+
+## Codex visibility note
+`codex mcp list` can differ from project-selected MCP in `.agents`.
+`agents status` shows both:
+- project trust state (`codex_trust`)
+- codex CLI list output
+
+Use this command for the CLI-side view:
+```bash
+codex mcp list --json
+```
+
+## Why this exists
+LLM tooling ecosystem is moving fast, but standards are fragmented.
+`agents` gives teams a stable, repo-centric baseline that works across tools while staying compatible with AGENTS.md.
+
+See `docs/agents-system.md` for the blueprint.
+
+## Skills interoperability
+`agents` keeps skills in `.agents/skills` and validates basic `SKILL.md` frontmatter (`name`, `description`) in `agents doctor`.
+This follows the direction of shared skill ecosystems (for example, Agent Skills registry conventions) while staying project-local.

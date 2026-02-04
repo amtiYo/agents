@@ -1,30 +1,32 @@
 import prompts from 'prompts'
-import { loadConfig, saveConfig } from '../core/config.js'
+import { loadProjectConfig, saveProjectConfig } from '../core/config.js'
 import { performSync } from '../core/sync.js'
 import type { IntegrationName } from '../types.js'
 import { INTEGRATIONS, parseIntegrationList } from '../integrations/registry.js'
 
 export interface ConnectOptions {
   projectRoot: string
-  ai?: string
+  llm?: string
   interactive: boolean
   verbose: boolean
 }
 
 export async function runConnect(options: ConnectOptions): Promise<void> {
-  const config = await loadConfig(options.projectRoot)
+  const config = await loadProjectConfig(options.projectRoot)
+
+  const rawSelection = options.llm
 
   let selected: IntegrationName[] = []
-  if (options.ai) {
-    selected = parseIntegrationList(options.ai)
+  if (rawSelection) {
+    selected = parseIntegrationList(rawSelection)
   } else if (options.interactive) {
-    selected = await promptAiSelection(config.enabledIntegrations)
+    selected = await promptSelection(config.enabledIntegrations)
   } else {
-    throw new Error('No AI selected. Use --ai or --interactive.')
+    throw new Error('No LLM selected. Use --llm or --interactive.')
   }
 
   config.enabledIntegrations = selected
-  await saveConfig(options.projectRoot, config)
+  await saveProjectConfig(options.projectRoot, config)
 
   const syncResult = await performSync({
     projectRoot: options.projectRoot,
@@ -36,18 +38,14 @@ export async function runConnect(options: ConnectOptions): Promise<void> {
   if (syncResult.warnings.length > 0) {
     process.stdout.write(`Warnings:\n- ${syncResult.warnings.join('\n- ')}\n`)
   }
-  if (syncResult.changed.length === 0) {
-    process.stdout.write('No sync changes.\n')
-  } else {
-    process.stdout.write(`Updated ${syncResult.changed.length} items.\n`)
-  }
+  process.stdout.write(`Updated ${syncResult.changed.length} item(s).\n`)
 }
 
-async function promptAiSelection(current: IntegrationName[]): Promise<IntegrationName[]> {
+async function promptSelection(current: IntegrationName[]): Promise<IntegrationName[]> {
   const response = await prompts({
     type: 'multiselect',
     name: 'value',
-    message: 'Select AI integrations',
+    message: 'Select LLM integrations',
     choices: INTEGRATIONS.map((integration) => ({
       title: integration.label,
       value: integration.id,
@@ -57,6 +55,5 @@ async function promptAiSelection(current: IntegrationName[]): Promise<Integratio
     hint: '- Space to select. Enter to confirm.'
   })
 
-  const values = response.value as IntegrationName[] | undefined
-  return values ?? []
+  return (response.value as IntegrationName[] | undefined) ?? []
 }

@@ -1,15 +1,18 @@
 import path from 'node:path'
 import { ensureDir, pathExists, readJson, readTextOrEmpty, writeJsonAtomic, writeTextAtomic } from './fs.js'
-import { getProjectPaths } from './paths.js'
-import { loadConfig, saveConfig } from './config.js'
+import { loadProjectConfig, saveProjectConfig } from './config.js'
+import { ensureGlobalCatalog } from './catalog.js'
 import { loadResolvedRegistry } from './mcp.js'
+import { getProjectPaths } from './paths.js'
 import { commandExists, runCommand } from './shell.js'
-import type { IntegrationName, ResolvedMcpServer, SyncOptions, SyncResult } from '../types.js'
-import { toManagedClaudeName } from '../integrations/claude.js'
 import { buildCodexConfig } from '../integrations/codex.js'
+import { toManagedClaudeName } from '../integrations/claude.js'
 import { buildGeminiPayload } from '../integrations/gemini.js'
 import { buildVscodeMcpPayload } from '../integrations/copilotVscode.js'
 import { renderVscodeMcp } from './renderers.js'
+import { ensureProjectGitignore } from './gitignore.js'
+import { syncSkills } from './skills.js'
+import type { IntegrationName, ResolvedMcpServer, SyncOptions, SyncResult } from '../types.js'
 
 interface ClaudeState {
   managedNames: string[]
@@ -18,16 +21,23 @@ interface ClaudeState {
 export async function performSync(options: SyncOptions): Promise<SyncResult> {
   const { projectRoot, check, verbose } = options
   const paths = getProjectPaths(projectRoot)
-  const config = await loadConfig(projectRoot)
+  const config = await loadProjectConfig(projectRoot)
+  const { catalog } = await ensureGlobalCatalog()
+
   const resolved = await loadResolvedRegistry(projectRoot)
   const warnings = [...resolved.warnings]
   if (resolved.missingRequiredEnv.length > 0) {
-    warnings.push(
-      `Skipped servers because required env vars are missing: ${resolved.missingRequiredEnv.join('; ')}`,
-    )
+    warnings.push(`Skipped servers because required env vars are missing: ${resolved.missingRequiredEnv.join('; ')}`)
   }
 
   const changed: string[] = []
+
+  if (!check) {
+    const gitignoreChanged = await ensureProjectGitignore(projectRoot, config.syncMode)
+    if (gitignoreChanged) {
+      changed.push('.gitignore')
+    }
+  }
 
   await ensureDir(paths.generatedDir)
 
@@ -44,11 +54,9 @@ export async function performSync(options: SyncOptions): Promise<SyncResult> {
   if (enabled.has('codex')) {
     await materializeCodex(paths.generatedCodex, paths.codexConfig, check, changed)
   }
-
   if (enabled.has('gemini')) {
     await materializeGemini(paths.generatedGemini, paths.geminiSettings, check, changed)
   }
-
   if (enabled.has('copilot_vscode')) {
     await materializeCopilot(paths.generatedCopilot, paths.vscodeMcp, check, changed)
   }
@@ -63,9 +71,18 @@ export async function performSync(options: SyncOptions): Promise<SyncResult> {
     warnings
   })
 
+  await syncSkills({
+    projectRoot,
+    config,
+    catalog,
+    check,
+    changed,
+    warnings
+  })
+
   if (!check) {
     config.lastSync = new Date().toISOString()
-    await saveConfig(projectRoot, config)
+    await saveProjectConfig(projectRoot, config)
   }
 
   if (verbose && changed.length > 0) {
@@ -74,7 +91,10 @@ export async function performSync(options: SyncOptions): Promise<SyncResult> {
     }
   }
 
-  return { changed, warnings }
+  return {
+    changed: uniqueSorted(changed),
+    warnings: uniqueSorted(warnings)
+  }
 }
 
 async function syncGeneratedFiles(args: {
@@ -122,22 +142,12 @@ async function syncGeneratedFiles(args: {
   )
 }
 
-async function materializeCodex(
-  generatedPath: string,
-  targetPath: string,
-  check: boolean,
-  changed: string[],
-): Promise<void> {
+async function materializeCodex(generatedPath: string, targetPath: string, check: boolean, changed: string[]): Promise<void> {
   const content = await readTextOrEmpty(generatedPath)
   await writeManagedFile(targetPath, content, path.dirname(path.dirname(targetPath)), check, changed)
 }
 
-async function materializeGemini(
-  generatedPath: string,
-  targetPath: string,
-  check: boolean,
-  changed: string[],
-): Promise<void> {
+async function materializeGemini(generatedPath: string, targetPath: string, check: boolean, changed: string[]): Promise<void> {
   const generated = JSON.parse(await readTextOrEmpty(generatedPath)) as Record<string, unknown>
 
   let existing: Record<string, unknown> = {}
@@ -170,12 +180,7 @@ async function materializeGemini(
   )
 }
 
-async function materializeCopilot(
-  generatedPath: string,
-  targetPath: string,
-  check: boolean,
-  changed: string[],
-): Promise<void> {
+async function materializeCopilot(generatedPath: string, targetPath: string, check: boolean, changed: string[]): Promise<void> {
   const content = await readTextOrEmpty(generatedPath)
   await writeManagedFile(targetPath, content, path.dirname(path.dirname(targetPath)), check, changed)
 }
@@ -201,9 +206,8 @@ async function syncClaude(args: {
 
   if (equalSets(new Set(currentNames), new Set(desiredNames))) {
     return
-  } else {
-    changed.push('claude-local-scope')
   }
+  changed.push('claude-local-scope')
 
   if (check) return
 
@@ -230,7 +234,6 @@ async function syncClaude(args: {
   }
 
   const appliedNames: string[] = []
-
   for (const server of servers) {
     const name = toManagedClaudeName(server.name)
     const result = addClaudeServer(command, projectRoot, name, server)
@@ -255,6 +258,7 @@ function addClaudeServer(
     if (!server.command) {
       return { ok: false, stderr: 'missing command' }
     }
+
     const args: string[] = ['mcp', 'add', '-s', 'local', name]
     for (const [key, value] of Object.entries(server.env ?? {})) {
       args.push('-e', `${key}=${value}`)
@@ -267,6 +271,7 @@ function addClaudeServer(
   if (!server.url) {
     return { ok: false, stderr: 'missing url' }
   }
+
   const args: string[] = ['mcp', 'add', '-s', 'local', '-t', server.transport, name, server.url]
   for (const [key, value] of Object.entries(server.headers ?? {})) {
     args.push('-H', `${key}: ${value}`)
@@ -283,9 +288,11 @@ async function writeManagedFile(
   changed: string[],
 ): Promise<void> {
   const previous = await readTextOrEmpty(absolutePath)
-  const relative = path.relative(projectRoot, absolutePath) || absolutePath
   if (previous === content) return
+
+  const relative = path.relative(projectRoot, absolutePath) || absolutePath
   changed.push(relative)
+
   if (check) return
   await writeTextAtomic(absolutePath, content)
 }
@@ -300,4 +307,8 @@ function equalSets(a: Set<string>, b: Set<string>): boolean {
 
 function compactError(stderr: string): string {
   return stderr.trim().split('\n').at(-1) ?? 'unknown error'
+}
+
+function uniqueSorted(values: string[]): string[] {
+  return [...new Set(values)].sort((a, b) => a.localeCompare(b))
 }

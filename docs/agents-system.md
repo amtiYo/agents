@@ -1,36 +1,61 @@
-# Reusable AGENTS System Blueprint
+# Agents System Blueprint
 
-This is the reusable setup for any repository.
+## Problem
+LLM toolchains have diverged into incompatible setup models:
+- different instruction file expectations,
+- different MCP config shapes,
+- different skill packaging patterns.
 
-## Goal
-Keep one canonical instruction file and one canonical MCP registry, then generate per-tool configs automatically.
+This increases setup cost and causes drift across teams.
+
+## Standard proposed by `agents`
+`agents` defines a thin, repo-centric standard that aligns tools around:
+1. AGENTS.md (instructions)
+2. MCP selection (tooling)
+3. Skills (reusable workflows)
+
+## Core principles
+- One source-of-truth in `.agents`
+- One onboarding entrypoint (`agents start`)
+- One global catalog for shared presets
+- Deterministic sync into client-specific configs
+- Source-only git strategy by default
 
 ## Canonical files
-- `AGENTS.md` at project root: symlink (or copy fallback) to `.agents/AGENTS.md`
-- `.agents/AGENTS.md`: full instruction source-of-truth
-- `.agents/mcp/registry.json`: shared MCP source-of-truth
-- `.agents/mcp/local.json`: non-committed local overrides/secrets
+- `.agents/project.json`
+- `.agents/AGENTS.md`
+- `.agents/mcp/selection.json`
+- `.agents/mcp/local.json` (local/private)
+- `.agents/skills/*/SKILL.md`
 
-## Runtime commands
-1. `agents init`
-2. `agents connect`
-3. `agents sync`
-4. `agents status`
-5. `agents doctor`
+## Global/shared layer
+- `~/.config/agents/catalog.json`
+- Defines MCP presets, MCP server definitions, skill packs, and baseline skills.
 
-## Integration contracts (v1)
-- Codex: writes `.codex/config.toml`
-- Claude Code: manages local MCP via `claude mcp add/remove -s local`
-- Gemini CLI: writes `.gemini/settings.json` and sets `context.fileName = AGENTS.md`
-- Copilot VS Code: writes `.vscode/mcp.json`
+## Runtime flow
+1. `agents start`
+   - includes trust confirmation for integrations that require it (Codex in v0.3.x)
+2. `agents status`
+3. `agents doctor`
+4. `agents sync --check`
+5. Optional auto-sync loop: `agents watch`
 
-## Secret policy
-- Never commit secrets into `registry.json`.
-- Put machine-specific values into `.agents/mcp/local.json` and environment variables.
-- `local.json` must stay in `.gitignore`.
+## Integration materialization
+- Codex -> `.codex/config.toml`
+- Claude -> `claude mcp add/remove -s local`
+- Gemini -> `.gemini/settings.json`
+- Copilot VS Code -> `.vscode/mcp.json`
 
-## Operational rules
-- Edit MCP definitions only in `.agents/mcp/registry.json`.
-- Run `agents sync` after every MCP change.
-- Run `agents doctor` when MCP startup fails.
-- Commit only deterministic source files and generated integration files you intentionally track.
+## Reset model
+- Safe reset keeps source-of-truth and removes local/generated outputs.
+- Hard reset removes full agents-managed setup and gitignore managed entries.
+
+## Skills model
+- Canonical project skills in `.agents/skills`
+- Codex consumes these directly.
+- Claude bridge at `.claude/skills` (symlink, copy fallback on restricted systems).
+- `agents doctor` validates `SKILL.md` frontmatter (`name`, `description`) and naming conventions.
+
+## Security model
+- No secrets in committed source files.
+- Secrets and machine specifics go into `.agents/mcp/local.json` and environment variables.

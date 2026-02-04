@@ -1,16 +1,19 @@
-# .agents directory
+# .agents
 
-This folder contains all project-local AI agent configuration.
+Project-local standard for AGENTS.md + MCP + SKILLS.
 
-## Layout
-- `AGENTS.md`: canonical project instructions.
-- `config.json`: enabled integrations and sync metadata.
-- `mcp/registry.json`: shared MCP source-of-truth.
-- `mcp/local.json`: local overrides and secrets (gitignored).
-- `generated/`: generated intermediate files (gitignored).
+## Source files (commit these)
+- `project.json`: selected LLM integrations + sync mode
+- `AGENTS.md`: canonical instruction document
+- `mcp/selection.json`: selected MCP ids
+- `skills/*/SKILL.md`: project skills
 
-## Lifecycle
-1. `agents connect` selects integrations.
-2. `agents sync` renders integration-specific config files.
-3. `agents status` shows what is configured.
-4. `agents doctor` validates setup and can auto-fix safe issues.
+## Local/private files (do not commit)
+- `mcp/local.json`: machine-specific overrides and secrets
+
+## Generated files
+- `generated/*`: renderer outputs used by `agents sync`
+
+## Where global defaults live
+- Global catalog: `~/.config/agents/catalog.json`
+- Override path with `AGENTS_CATALOG_PATH`

@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { access, lstat, mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
+import { access, cp, lstat, mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
 export async function pathExists(filePath: string): Promise<boolean> {
@@ -7,7 +7,12 @@ export async function pathExists(filePath: string): Promise<boolean> {
     await access(filePath)
     return true
   } catch {
-    return false
+    try {
+      await lstat(filePath)
+      return true
+    } catch {
+      return false
+    }
   }
 }
 
@@ -37,15 +42,6 @@ export async function removeIfExists(filePath: string): Promise<void> {
   }
 }
 
-export async function isSymlink(filePath: string): Promise<boolean> {
-  try {
-    const info = await lstat(filePath)
-    return info.isSymbolicLink()
-  } catch {
-    return false
-  }
-}
-
 export async function isDirectory(dirPath: string): Promise<boolean> {
   try {
     return (await stat(dirPath)).isDirectory()
@@ -54,7 +50,26 @@ export async function isDirectory(dirPath: string): Promise<boolean> {
   }
 }
 
+export async function isSymlink(filePath: string): Promise<boolean> {
+  try {
+    return (await lstat(filePath)).isSymbolicLink()
+  } catch {
+    return false
+  }
+}
+
 export async function readTextOrEmpty(filePath: string): Promise<string> {
   if (!(await pathExists(filePath))) return ''
   return readFile(filePath, 'utf8')
+}
+
+export async function listDirNames(dirPath: string): Promise<string[]> {
+  if (!(await isDirectory(dirPath))) return []
+  const entries = await readdir(dirPath, { withFileTypes: true })
+  return entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name)
+}
+
+export async function copyDir(fromDir: string, toDir: string): Promise<void> {
+  await ensureDir(path.dirname(toDir))
+  await cp(fromDir, toDir, { recursive: true, force: true })
 }

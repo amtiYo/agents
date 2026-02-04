@@ -9,6 +9,21 @@
         "@modelcontextprotocol/server-filesystem",
         "${PROJECT_ROOT}"
       ]
+    },
+    "custom_server": {
+      "label": "Custom",
+      "description": "Project-specific MCP server defined locally",
+      "transport": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@example/custom-mcp"
+      ],
+      "targets": [
+        "codex",
+        "claude"
+      ],
+      "enabled": false
     }
   }
 }

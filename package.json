@@ -1,7 +1,7 @@
 {
   "name": "agents-cli-dev",
-  "version": "0.1.0",
-  "description": "CLI to scaffold and sync AGENTS.md + AI integrations",
+  "version": "0.3.1",
+  "description": "Onboarding-first CLI for AGENTS.md, MCP, and skills across LLM tools",
   "main": "dist/cli.js",
   "scripts": {
     "build": "tsc -p tsconfig.json",
@@ -26,8 +26,10 @@
     "node": ">=20.0.0"
   },
   "dependencies": {
+    "@clack/prompts": "^1.0.0",
     "@iarna/toml": "^2.2.5",
     "commander": "^14.0.3",
+    "picocolors": "^1.1.1",
     "prompts": "^2.4.2"
   },
   "devDependencies": {

@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "preset": "safe-core",
+  "selectedMcpServers": [
+    "filesystem",
+    "fetch",
+    "git"
+  ]
+}
