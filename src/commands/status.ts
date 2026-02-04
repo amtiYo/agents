@@ -92,7 +92,9 @@ function probeClaude(projectRoot: string): string {
 function probeGemini(projectRoot: string): string {
   if (!commandExists('gemini')) return 'gemini CLI not found'
   const result = runCommand('gemini', ['mcp', 'list'], projectRoot)
+  const output = `${result.stdout}\n${result.stderr}`
   if (!result.ok) return `failed (${compact(result.stderr)})`
+  if (output.includes('Invalid configuration')) return 'invalid Gemini config detected'
   return 'gemini mcp list succeeded'
 }
 

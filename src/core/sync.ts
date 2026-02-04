@@ -215,7 +215,11 @@ async function syncClaude(args: {
   const namesToRemove = [...new Set([...currentNames, ...desiredNames])]
   for (const name of namesToRemove) {
     const removed = runCommand(command, ['mcp', 'remove', '-s', 'local', name], projectRoot)
-    if (!removed.ok && !removed.stderr.includes('not found')) {
+    if (
+      !removed.ok &&
+      !removed.stderr.includes('not found') &&
+      !removed.stderr.includes('No project-local MCP server found')
+    ) {
       warnings.push(`Failed removing Claude MCP server ${name}: ${compactError(removed.stderr)}`)
     }
   }

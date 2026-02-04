@@ -65,7 +65,7 @@ export function renderGeminiServers(servers: ResolvedMcpServer[]): {
         continue
       }
       out[server.name] = {
-        transport: 'stdio',
+        type: 'stdio',
         command: server.command,
         args: server.args ?? [],
         ...(server.env ? { env: server.env } : {})
@@ -78,7 +78,7 @@ export function renderGeminiServers(servers: ResolvedMcpServer[]): {
       continue
     }
     out[server.name] = {
-      transport: server.transport,
+      type: server.transport,
       url: server.url,
       ...(server.headers ? { headers: server.headers } : {})
     }

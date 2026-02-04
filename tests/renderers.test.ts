@@ -28,11 +28,11 @@ describe('renderers', () => {
     const rendered = renderGeminiServers(servers)
     expect(rendered.mcpServers).toMatchObject({
       filesystem: {
-        transport: 'stdio',
+        type: 'stdio',
         command: 'npx'
       },
       'http-tools': {
-        transport: 'http',
+        type: 'http',
         url: 'https://example.com/mcp'
       }
     })
