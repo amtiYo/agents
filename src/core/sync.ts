@@ -74,9 +74,6 @@ export async function performSync(options: SyncOptions): Promise<SyncResult> {
   if (enabled.has('cursor')) {
     await materializeCursor(paths.generatedCursor, paths.cursorMcp, check, changed)
   }
-  if (enabled.has('antigravity')) {
-    await materializeAntigravityProject(paths.generatedAntigravity, paths.antigravityProjectMcp, check, changed)
-  }
 
   await syncClaude({
     enabled: enabled.has('claude'),
@@ -249,16 +246,6 @@ async function materializeCursor(generatedPath: string, targetPath: string, chec
   await writeManagedFile(targetPath, content, path.dirname(path.dirname(targetPath)), check, changed)
 }
 
-async function materializeAntigravityProject(
-  generatedPath: string,
-  targetPath: string,
-  check: boolean,
-  changed: string[],
-): Promise<void> {
-  const content = await readTextOrEmpty(generatedPath)
-  await writeManagedFile(targetPath, content, path.dirname(path.dirname(targetPath)), check, changed)
-}
-
 async function syncClaude(args: {
   enabled: boolean
   check: boolean
@@ -426,13 +413,12 @@ async function syncAntigravity(args: {
       }
     }
 
-    if (existingState.managedNames.length > 0 || (await pathExists(statePath))) {
+    if (existingState.managedNames.length > 0) {
       changed.push(path.relative(projectRoot, statePath) || statePath)
       if (!check) {
         await writeJsonAtomic(statePath, { managedNames: [] } satisfies AntigravityState)
       }
     }
-    warnings.push('Antigravity global MCP sync disabled in project settings.')
     return
   }
 

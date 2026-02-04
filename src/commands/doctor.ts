@@ -113,10 +113,8 @@ export async function runDoctor(options: DoctorOptions): Promise<void> {
         '.gemini/settings.json',
         '.vscode/mcp.json',
         '.cursor/mcp.json',
-        '.antigravity/mcp.json',
         '.claude/skills',
-        '.cursor/skills',
-        '.agent/skills'
+        '.cursor/skills'
       ]
     : []
   trackedChecks.push('.agents/generated', '.agents/mcp/local.json')

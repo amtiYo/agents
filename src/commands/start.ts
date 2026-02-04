@@ -284,16 +284,17 @@ function renderPreflight(items: Array<{ label: string; ok: boolean; detail: stri
 
 async function shouldOfferCleanup(projectRoot: string): Promise<boolean> {
   const paths = getProjectPaths(projectRoot)
+  const legacyAgentDir = path.join(projectRoot, '.agent')
   const candidates = [
     paths.generatedDir,
     paths.codexDir,
     paths.geminiDir,
     paths.cursorDir,
     paths.antigravityDir,
+    legacyAgentDir,
     paths.vscodeMcp,
     paths.claudeSkillsBridge,
-    paths.cursorSkillsBridge,
-    paths.antigravitySkillsBridge
+    paths.cursorSkillsBridge
   ]
   for (const candidate of candidates) {
     if (await pathExists(candidate)) return true
@@ -312,7 +313,12 @@ function getDefaults(catalog: CatalogFile, profile?: string): {
     return commandExists(integration.requiredBinary)
   }).map((integration) => integration.id)
 
-  const integrationDefaults: IntegrationName[] = available.length > 0 ? available : ['codex']
+  // Keep onboarding compact by default: preselect only one integration.
+  const integrationDefaults: IntegrationName[] = available.includes('codex')
+    ? ['codex']
+    : available.length > 0
+      ? [available[0]]
+      : ['codex']
 
   const presetExists = profile ? catalog.mcpPresets.some((presetDef) => presetDef.id === profile) : false
   const presetId = presetExists ? (profile as string) : 'safe-core'

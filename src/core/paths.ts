@@ -28,17 +28,14 @@ export interface ProjectPaths {
   geminiSettings: string
   vscodeMcp: string
   cursorMcp: string
-  antigravityProjectMcp: string
   codexDir: string
   geminiDir: string
   vscodeDir: string
   cursorDir: string
   antigravityDir: string
-  agentDir: string
   claudeDir: string
   claudeSkillsBridge: string
   cursorSkillsBridge: string
-  antigravitySkillsBridge: string
 }
 
 export function getProjectPaths(projectRoot: string): ProjectPaths {
@@ -74,17 +71,14 @@ export function getProjectPaths(projectRoot: string): ProjectPaths {
     geminiSettings: path.join(root, '.gemini', 'settings.json'),
     vscodeMcp: path.join(root, '.vscode', 'mcp.json'),
     cursorMcp: path.join(root, '.cursor', 'mcp.json'),
-    antigravityProjectMcp: path.join(root, '.antigravity', 'mcp.json'),
     codexDir: path.join(root, '.codex'),
     geminiDir: path.join(root, '.gemini'),
     vscodeDir: path.join(root, '.vscode'),
     cursorDir: path.join(root, '.cursor'),
     antigravityDir: path.join(root, '.antigravity'),
-    agentDir: path.join(root, '.agent'),
     claudeDir: path.join(root, '.claude'),
     claudeSkillsBridge: path.join(root, '.claude', 'skills'),
-    cursorSkillsBridge: path.join(root, '.cursor', 'skills'),
-    antigravitySkillsBridge: path.join(root, '.agent', 'skills')
+    cursorSkillsBridge: path.join(root, '.cursor', 'skills')
   }
 }
 

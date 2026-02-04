@@ -47,6 +47,13 @@ agents sync --check
 - Cursor MCP auto-approval
 - Antigravity global MCP sync
 
+By default, the wizard preselects only one integration (Codex when available) to keep setup compact.
+
+## `agent` vs `agents`
+- `agents` is this project CLI.
+- `agent` is a separate third-party CLI from the Cursor/Antigravity ecosystem.
+- If `agent status` prints account info, that is expected and unrelated to `agents status`.
+
 ## Commands
 ```bash
 agents start [--path <dir>] [--non-interactive] [--profile <name>] [--yes]
@@ -87,7 +94,7 @@ agents reset [--path <dir>] [--local-only] [--hard]
 ## Git strategy (default)
 Default is `source-only`:
 - keep `.agents/*` in git,
-- ignore generated/local files (`.agents/generated`, `.agents/mcp/local.json`, `.codex`, `.gemini`, `.vscode/mcp.json`, `.claude/skills`, `.cursor`, `.antigravity`, `.agent/skills`).
+- ignore generated/local files (`.agents/generated`, `.agents/mcp/local.json`, `.codex`, `.gemini`, `.vscode/mcp.json`, `.claude/skills`, `.cursor`).
 
 ## Global catalog
 Default location:

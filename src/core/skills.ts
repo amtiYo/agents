@@ -1,7 +1,8 @@
 import path from 'node:path'
-import { copyDir, ensureDir, listDirNames, pathExists, readJson, readTextOrEmpty, removeIfExists, writeJsonAtomic, writeTextAtomic } from './fs.js'
+import { copyDir, ensureDir, pathExists, readJson, readTextOrEmpty, removeIfExists, writeJsonAtomic, writeTextAtomic } from './fs.js'
 import { getProjectPaths } from './paths.js'
 import type { CatalogFile, ProjectConfig } from '../types.js'
+import { lstat, readdir, readlink, symlink } from 'node:fs/promises'
 
 interface SkillsState {
   managedSkillIds: string[]
@@ -28,6 +29,7 @@ export async function syncSkills(args: {
     : DEFAULT_STATE
 
   const desiredSkillIds = getDesiredSkillIds(config, catalog)
+  const hasManagedSkills = desiredSkillIds.length > 0
 
   await ensureDir(paths.agentsSkillsDir)
 
@@ -68,20 +70,24 @@ export async function syncSkills(args: {
 
   await syncClaudeSkillsBridge({
     projectRoot,
-    claudeEnabled: config.enabledIntegrations.includes('claude'),
-    cursorEnabled: config.enabledIntegrations.includes('cursor'),
-    antigravityEnabled: config.enabledIntegrations.includes('antigravity'),
+    claudeEnabled: config.enabledIntegrations.includes('claude') && hasManagedSkills,
+    cursorEnabled: config.enabledIntegrations.includes('cursor') && hasManagedSkills,
     check,
     changed,
     warnings
+  })
+  await cleanupLegacyAntigravityBridge({
+    projectRoot,
+    check,
+    changed
   })
 
   const nextState: SkillsState = {
     managedSkillIds: desiredSkillIds,
     bridgeMode:
-      config.enabledIntegrations.includes('claude') ||
-      config.enabledIntegrations.includes('cursor') ||
-      config.enabledIntegrations.includes('antigravity')
+      hasManagedSkills &&
+      (config.enabledIntegrations.includes('claude') ||
+      config.enabledIntegrations.includes('cursor'))
         ? 'symlink'
         : 'none'
   }
@@ -93,14 +99,6 @@ export async function syncSkills(args: {
     }
   }
 
-  if (!check) {
-    // keep deterministic order for future checks
-    const names = await listDirNames(paths.agentsSkillsDir)
-    for (const name of names) {
-      if (currentManaged.has(name)) continue
-      if (desired.has(name)) continue
-    }
-  }
 }
 
 function getDesiredSkillIds(config: ProjectConfig, catalog: CatalogFile): string[] {
@@ -129,12 +127,11 @@ async function syncClaudeSkillsBridge(args: {
   projectRoot: string
   claudeEnabled: boolean
   cursorEnabled: boolean
-  antigravityEnabled: boolean
   check: boolean
   changed: string[]
   warnings: string[]
 }): Promise<void> {
-  const { projectRoot, claudeEnabled, cursorEnabled, antigravityEnabled, check, changed, warnings } = args
+  const { projectRoot, claudeEnabled, cursorEnabled, check, changed, warnings } = args
   const paths = getProjectPaths(projectRoot)
 
   await syncToolSkillsBridge({
@@ -158,17 +155,6 @@ async function syncClaudeSkillsBridge(args: {
     changed,
     warnings
   })
-
-  await syncToolSkillsBridge({
-    enabled: antigravityEnabled,
-    projectRoot,
-    parentDir: paths.agentDir,
-    bridgePath: paths.antigravitySkillsBridge,
-    label: '.agent/skills',
-    check,
-    changed,
-    warnings
-  })
 }
 
 async function syncToolSkillsBridge(args: {
@@ -186,6 +172,14 @@ async function syncToolSkillsBridge(args: {
   const expectedRelative = path.relative(path.dirname(bridgePath), paths.agentsSkillsDir) || '.'
 
   if (!enabled) {
+    const removed = await cleanupManagedBridge(bridgePath, expectedRelative, paths.agentsSkillsDir)
+    if (removed) {
+      changed.push(path.relative(projectRoot, bridgePath) || bridgePath)
+      if (check) {
+        return
+      }
+      await removeIfExists(bridgePath)
+    }
     return
   }
 
@@ -193,9 +187,9 @@ async function syncToolSkillsBridge(args: {
 
   const exists = await pathExists(bridgePath)
   if (exists) {
-    const linkInfo = await import('node:fs/promises').then(({ lstat }) => lstat(bridgePath))
+    const linkInfo = await lstat(bridgePath)
     if (linkInfo.isSymbolicLink()) {
-      const current = await import('node:fs/promises').then(({ readlink }) => readlink(bridgePath))
+      const current = await readlink(bridgePath)
       if (current === expectedRelative || path.resolve(path.dirname(bridgePath), current) === paths.agentsSkillsDir) {
         return
       }
@@ -221,7 +215,6 @@ async function syncToolSkillsBridge(args: {
   if (check) return
 
   try {
-    const { symlink } = await import('node:fs/promises')
     await symlink(expectedRelative, bridgePath)
   } catch (error) {
     await copyDir(paths.agentsSkillsDir, bridgePath)
@@ -238,4 +231,46 @@ function equalState(a: SkillsState, b: SkillsState): boolean {
     if (a.managedSkillIds[i] !== b.managedSkillIds[i]) return false
   }
   return true
+}
+
+async function cleanupManagedBridge(bridgePath: string, expectedRelative: string, expectedAbsolute: string): Promise<boolean> {
+  if (!(await pathExists(bridgePath))) {
+    return false
+  }
+
+  const info = await lstat(bridgePath)
+  if (info.isSymbolicLink()) {
+    const current = await readlink(bridgePath)
+    return current === expectedRelative || path.resolve(path.dirname(bridgePath), current) === expectedAbsolute
+  }
+
+  const marker = path.join(bridgePath, '.agents_bridge')
+  return pathExists(marker)
+}
+
+async function cleanupLegacyAntigravityBridge(args: {
+  projectRoot: string
+  check: boolean
+  changed: string[]
+}): Promise<void> {
+  const { projectRoot, check, changed } = args
+  const paths = getProjectPaths(projectRoot)
+  const legacyDir = path.join(projectRoot, '.agent')
+  const legacyBridgePath = path.join(legacyDir, 'skills')
+  const expectedRelative = path.relative(path.dirname(legacyBridgePath), paths.agentsSkillsDir) || '.'
+
+  const removable = await cleanupManagedBridge(legacyBridgePath, expectedRelative, paths.agentsSkillsDir)
+  if (!removable) return
+
+  changed.push(path.relative(projectRoot, legacyBridgePath) || legacyBridgePath)
+  if (check) return
+
+  await removeIfExists(legacyBridgePath)
+  if (await pathExists(legacyDir)) {
+    const entries = await readdir(legacyDir)
+    if (entries.length === 0) {
+      await removeIfExists(legacyDir)
+      changed.push(path.relative(projectRoot, legacyDir) || legacyDir)
+    }
+  }
 }

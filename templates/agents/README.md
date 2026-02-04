@@ -19,7 +19,6 @@ Project-local standard for AGENTS.md + MCP + SKILLS.
 - `.gemini/settings.json`
 - `.vscode/mcp.json`
 - `.cursor/mcp.json`
-- `.antigravity/mcp.json`
 
 ## Where global defaults live
 - Global catalog: `~/.config/agents/catalog.json`

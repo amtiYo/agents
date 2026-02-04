@@ -1,6 +1,6 @@
 import os from 'node:os'
 import path from 'node:path'
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { lstat, mkdtemp, readFile, rm } from 'node:fs/promises'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { runInit } from '../src/commands/init.js'
 import { loadProjectConfig, saveProjectConfig } from '../src/core/config.js'
@@ -34,7 +34,7 @@ afterEach(async () => {
 })
 
 describe('cursor + antigravity sync', () => {
-  it('materializes project files and managed antigravity global config', async () => {
+  it('materializes cursor project files and managed antigravity global config', async () => {
     const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-ca-'))
     const catalogDir = await mkdtemp(path.join(os.tmpdir(), 'agents-catalog-'))
     const antigravityDir = await mkdtemp(path.join(os.tmpdir(), 'agents-ag-'))
@@ -60,10 +60,7 @@ describe('cursor + antigravity sync', () => {
     const cursorMcp = JSON.parse(await readFile(path.join(projectRoot, '.cursor', 'mcp.json'), 'utf8')) as Record<string, unknown>
     expect(Object.keys((cursorMcp.mcpServers as Record<string, unknown>) ?? {})).toContain('filesystem')
 
-    const antigravityProject = JSON.parse(
-      await readFile(path.join(projectRoot, '.antigravity', 'mcp.json'), 'utf8'),
-    ) as Record<string, unknown>
-    expect(Object.keys((antigravityProject.servers as Record<string, unknown>) ?? {})).toContain('filesystem')
+    await expect(lstat(path.join(projectRoot, '.antigravity', 'mcp.json'))).rejects.toThrow()
 
     const antigravityGlobal = JSON.parse(
       await readFile(path.join(antigravityDir, 'mcp.json'), 'utf8'),

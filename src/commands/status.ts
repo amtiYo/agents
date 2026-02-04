@@ -42,7 +42,7 @@ export async function runStatus(options: StatusOptions): Promise<void> {
   const expectedCodexServers = resolved.serversByTarget.codex.map((server) => server.name)
   const expectedCursorServers = resolved.serversByTarget.cursor.map((server) => server.name)
 
-  const files = {
+  const files: Record<string, boolean> = {
     '.agents/project.json': await pathExists(paths.agentsProject),
     '.agents/mcp/selection.json': await pathExists(paths.mcpSelection),
     '.agents/mcp/local.json': await pathExists(paths.mcpLocal),
@@ -51,11 +51,13 @@ export async function runStatus(options: StatusOptions): Promise<void> {
     '.codex/config.toml': await pathExists(paths.codexConfig),
     '.gemini/settings.json': await pathExists(paths.geminiSettings),
     '.vscode/mcp.json': await pathExists(paths.vscodeMcp),
-    '.cursor/mcp.json': await pathExists(paths.cursorMcp),
-    '.antigravity/mcp.json': await pathExists(paths.antigravityProjectMcp),
-    '.claude/skills': await pathExists(paths.claudeSkillsBridge),
-    '.cursor/skills': await pathExists(paths.cursorSkillsBridge),
-    '.agent/skills': await pathExists(paths.antigravitySkillsBridge)
+    '.cursor/mcp.json': await pathExists(paths.cursorMcp)
+  }
+  if (config.enabledIntegrations.includes('claude')) {
+    files['.claude/skills'] = await pathExists(paths.claudeSkillsBridge)
+  }
+  if (config.enabledIntegrations.includes('cursor')) {
+    files['.cursor/skills'] = await pathExists(paths.cursorSkillsBridge)
   }
 
   const probes: Record<string, string> = {}
@@ -65,7 +67,9 @@ export async function runStatus(options: StatusOptions): Promise<void> {
   if (config.enabledIntegrations.includes('gemini')) probes.gemini = probeGemini(options.projectRoot)
   if (config.enabledIntegrations.includes('copilot_vscode')) probes.copilot_vscode = await probeCopilot(paths.vscodeMcp)
   if (config.enabledIntegrations.includes('cursor')) probes.cursor = probeCursor(options.projectRoot, expectedCursorServers)
-  if (config.enabledIntegrations.includes('antigravity')) probes.antigravity = await probeAntigravity(options.projectRoot)
+  if (config.enabledIntegrations.includes('antigravity')) {
+    probes.antigravity = await probeAntigravity(options.projectRoot, config.integrationOptions.antigravityGlobalSync)
+  }
   probes.skills = skillsProbe
 
   if (resolved.missingRequiredEnv.length > 0) {
@@ -194,7 +198,8 @@ function probeCursor(projectRoot: string, expectedServerNames: string[]): string
   return parts.join(', ')
 }
 
-async function probeAntigravity(projectRoot: string): Promise<string> {
+async function probeAntigravity(projectRoot: string, globalSyncEnabled: boolean): Promise<string> {
+  if (!globalSyncEnabled) return 'global MCP sync disabled for this project'
   const globalPath = getAntigravityUserMcpPath()
   if (!(await pathExists(globalPath))) return `global MCP file missing (${globalPath})`
 

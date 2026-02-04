@@ -12,6 +12,7 @@ export interface ResetOptions {
 export async function runReset(options: ResetOptions): Promise<void> {
   const projectRoot = path.resolve(options.projectRoot)
   const paths = getProjectPaths(projectRoot)
+  const legacyAgentDir = path.join(projectRoot, '.agent')
 
   const targets = options.hard
     ? [
@@ -21,7 +22,7 @@ export async function runReset(options: ResetOptions): Promise<void> {
         paths.geminiDir,
         paths.cursorDir,
         paths.antigravityDir,
-        paths.agentDir,
+        legacyAgentDir,
         paths.vscodeMcp,
         paths.claudeDir
       ]
@@ -31,10 +32,10 @@ export async function runReset(options: ResetOptions): Promise<void> {
           paths.geminiDir,
           paths.cursorDir,
           paths.antigravityDir,
+          legacyAgentDir,
           paths.vscodeMcp,
           paths.claudeSkillsBridge,
-          paths.cursorSkillsBridge,
-          paths.antigravitySkillsBridge
+          paths.cursorSkillsBridge
         ]
       : [
           paths.generatedDir,
@@ -42,10 +43,10 @@ export async function runReset(options: ResetOptions): Promise<void> {
           paths.geminiDir,
           paths.cursorDir,
           paths.antigravityDir,
+          legacyAgentDir,
           paths.vscodeMcp,
           paths.claudeSkillsBridge,
-          paths.cursorSkillsBridge,
-          paths.antigravitySkillsBridge
+          paths.cursorSkillsBridge
         ]
 
   const removed: string[] = []
@@ -70,4 +71,7 @@ export async function runReset(options: ResetOptions): Promise<void> {
 
   const mode = options.hard ? 'hard' : options.localOnly ? 'local-only' : 'safe'
   process.stdout.write(`Reset (${mode}) cleaned ${removed.length} path(s):\n- ${removed.join('\n- ')}\n`)
+  if (!options.hard && !options.localOnly) {
+    process.stdout.write('Safe reset keeps .agents source files, root AGENTS.md, and managed .gitignore entries. Use --hard to remove all agents-managed setup.\n')
+  }
 }

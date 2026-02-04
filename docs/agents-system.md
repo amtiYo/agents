@@ -46,7 +46,7 @@ This increases setup cost and causes drift across teams.
 - Gemini -> `.gemini/settings.json`
 - Copilot VS Code -> `.vscode/mcp.json`
 - Cursor -> `.cursor/mcp.json` + `cursor-agent mcp enable/disable`
-- Antigravity -> `.antigravity/mcp.json` + managed entries in global Antigravity MCP profile
+- Antigravity -> managed entries in global Antigravity MCP profile
 
 ## Reset model
 - Safe reset keeps source-of-truth and removes local/generated outputs.
@@ -57,7 +57,6 @@ This increases setup cost and causes drift across teams.
 - Codex consumes these directly.
 - Claude bridge at `.claude/skills` (symlink, copy fallback on restricted systems).
 - Cursor bridge at `.cursor/skills` (symlink, copy fallback on restricted systems).
-- Antigravity bridge at `.agent/skills` (symlink, copy fallback on restricted systems).
 - `agents doctor` validates `SKILL.md` frontmatter (`name`, `description`) and naming conventions.
 
 ## Security model

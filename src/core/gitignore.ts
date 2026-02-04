@@ -9,9 +9,7 @@ const SOURCE_ONLY_ENTRIES = [
   '.gemini/',
   '.vscode/mcp.json',
   '.claude/skills',
-  '.cursor/',
-  '.antigravity/',
-  '.agent/skills'
+  '.cursor/'
 ]
 
 export async function ensureProjectGitignore(projectRoot: string, syncMode: SyncMode): Promise<boolean> {
