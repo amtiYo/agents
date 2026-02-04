@@ -1,0 +1,91 @@
+{
+  "mcpServers": {
+    "filesystem": {
+      "transport": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-filesystem",
+        "${PROJECT_ROOT}"
+      ],
+      "targets": [
+        "codex",
+        "claude",
+        "gemini",
+        "copilot_vscode"
+      ],
+      "enabled": true
+    },
+    "git": {
+      "transport": "stdio",
+      "command": "uvx",
+      "args": [
+        "mcp-server-git",
+        "--repository",
+        "${PROJECT_ROOT}"
+      ],
+      "env": {
+        "FASTMCP_LOG_LEVEL": "ERROR"
+      },
+      "targets": [
+        "codex",
+        "claude",
+        "gemini",
+        "copilot_vscode"
+      ],
+      "enabled": true
+    },
+    "fetch": {
+      "transport": "stdio",
+      "command": "uvx",
+      "args": [
+        "mcp-server-fetch"
+      ],
+      "env": {
+        "FASTMCP_LOG_LEVEL": "ERROR"
+      },
+      "targets": [
+        "codex",
+        "claude",
+        "gemini",
+        "copilot_vscode"
+      ],
+      "enabled": true
+    },
+    "playwright": {
+      "transport": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@playwright/mcp@latest"
+      ],
+      "targets": [
+        "codex",
+        "claude",
+        "gemini",
+        "copilot_vscode"
+      ],
+      "enabled": true
+    },
+    "context7": {
+      "transport": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@upstash/context7-mcp",
+        "--api-key",
+        "${CONTEXT7_API_KEY}"
+      ],
+      "requiredEnv": [
+        "CONTEXT7_API_KEY"
+      ],
+      "targets": [
+        "codex",
+        "claude",
+        "gemini",
+        "copilot_vscode"
+      ],
+      "enabled": true
+    }
+  }
+}

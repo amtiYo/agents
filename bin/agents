@@ -1,0 +1,24 @@
+#!/usr/bin/env node
+import { spawnSync } from 'node:child_process'
+import { existsSync } from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
+const root = path.resolve(__dirname, '..')
+const distCli = path.join(root, 'dist', 'cli.js')
+
+if (!existsSync(distCli)) {
+  const build = spawnSync(process.execPath, ['node_modules/typescript/bin/tsc', '-p', 'tsconfig.json'], {
+    cwd: root,
+    stdio: 'inherit'
+  })
+  if (build.status !== 0) process.exit(build.status ?? 1)
+}
+
+const run = spawnSync(process.execPath, [distCli, ...process.argv.slice(2)], {
+  cwd: process.cwd(),
+  stdio: 'inherit'
+})
+process.exit(run.status ?? 1)

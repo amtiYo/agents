@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "context7": {
+      "enabled": false
+    },
+    "filesystem": {
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-filesystem",
+        "${PROJECT_ROOT}"
+      ]
+    }
+  }
+}

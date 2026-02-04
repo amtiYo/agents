@@ -1,0 +1,43 @@
+{
+  "name": "agents-cli-dev",
+  "version": "0.1.0",
+  "description": "CLI to scaffold and sync AGENTS.md + AI integrations",
+  "main": "dist/cli.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx src/cli.ts",
+    "lint": "eslint .",
+    "test": "vitest run"
+  },
+  "bin": {
+    "agents": "bin/agents"
+  },
+  "keywords": [
+    "agents",
+    "mcp",
+    "codex",
+    "claude",
+    "gemini"
+  ],
+  "author": "",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "dependencies": {
+    "@iarna/toml": "^2.2.5",
+    "commander": "^14.0.3",
+    "prompts": "^2.4.2"
+  },
+  "devDependencies": {
+    "@types/node": "^25.2.0",
+    "@types/prompts": "^2.4.9",
+    "@typescript-eslint/eslint-plugin": "^8.54.0",
+    "@typescript-eslint/parser": "^8.54.0",
+    "eslint": "^9.39.2",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.18"
+  }
+}
