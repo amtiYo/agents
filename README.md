@@ -119,3 +119,4 @@ See `docs/agents-system.md` for the blueprint.
 ## Skills interoperability
 `agents` keeps skills in `.agents/skills` and validates basic `SKILL.md` frontmatter (`name`, `description`) in `agents doctor`.
 This follows the direction of shared skill ecosystems (for example, Agent Skills registry conventions) while staying project-local.
+Reference: https://agentskills.io/home
