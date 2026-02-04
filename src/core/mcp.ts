@@ -12,7 +12,8 @@ import { ensureGlobalCatalog } from './catalog.js'
 import { pathExists, readJson } from './fs.js'
 import { getProjectPaths } from './paths.js'
 
-const ALL_INTEGRATIONS: IntegrationName[] = ['codex', 'claude', 'gemini', 'copilot_vscode']
+const ALL_INTEGRATIONS: IntegrationName[] = ['codex', 'claude', 'gemini', 'copilot_vscode', 'cursor', 'antigravity']
+const LEGACY_INTEGRATIONS: IntegrationName[] = ['codex', 'claude', 'gemini', 'copilot_vscode']
 
 export async function loadSelection(projectRoot: string): Promise<McpSelection> {
   const paths = getProjectPaths(projectRoot)
@@ -61,7 +62,9 @@ export function resolveFromCatalogAndSelection(input: {
     codex: [],
     claude: [],
     gemini: [],
-    copilot_vscode: []
+    copilot_vscode: [],
+    cursor: [],
+    antigravity: []
   }
 
   const selectedServerNames: string[] = []
@@ -95,7 +98,7 @@ export function resolveFromCatalogAndSelection(input: {
     const resolved = resolveServer(name, merged, projectRoot, warnings)
     selectedServerNames.push(name)
 
-    const targets = merged.targets && merged.targets.length > 0 ? merged.targets : ALL_INTEGRATIONS
+    const targets = normalizeTargets(merged.targets)
     for (const target of targets) {
       if (!ALL_INTEGRATIONS.includes(target)) {
         warnings.push(`MCP server "${name}" has unsupported target "${target}"; ignored for that target.`)
@@ -115,6 +118,26 @@ export function resolveFromCatalogAndSelection(input: {
     missingRequiredEnv,
     selectedServerNames
   }
+}
+
+function normalizeTargets(targets: IntegrationName[] | undefined): IntegrationName[] {
+  if (!targets || targets.length === 0) {
+    return ALL_INTEGRATIONS
+  }
+
+  const unique = [...new Set(targets)]
+  const hasLegacySet = LEGACY_INTEGRATIONS.every((id) => unique.includes(id))
+  if (!hasLegacySet) {
+    return unique
+  }
+
+  const out = [...unique]
+  for (const id of ALL_INTEGRATIONS) {
+    if (!out.includes(id)) {
+      out.push(id)
+    }
+  }
+  return out
 }
 
 function resolveServer(

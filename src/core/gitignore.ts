@@ -4,7 +4,15 @@ import type { SyncMode } from '../types.js'
 import { pathExists, removeIfExists, writeTextAtomic } from './fs.js'
 
 const BASE_MANAGED_ENTRIES = ['.agents/mcp/local.json', '.agents/generated/']
-const SOURCE_ONLY_ENTRIES = ['.codex/', '.gemini/', '.vscode/mcp.json', '.claude/skills']
+const SOURCE_ONLY_ENTRIES = [
+  '.codex/',
+  '.gemini/',
+  '.vscode/mcp.json',
+  '.claude/skills',
+  '.cursor/',
+  '.antigravity/',
+  '.agent/skills'
+]
 
 export async function ensureProjectGitignore(projectRoot: string, syncMode: SyncMode): Promise<boolean> {
   const gitignorePath = path.join(projectRoot, '.gitignore')

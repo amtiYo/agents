@@ -11,13 +11,14 @@ export async function initializeProjectSkeleton(args: {
   projectRoot: string
   force: boolean
   integrations: ProjectConfig['enabledIntegrations']
+  integrationOptions: ProjectConfig['integrationOptions']
   syncMode: SyncMode
   selectedSkillPacks: string[]
   selectedSkills: string[]
   preset: string
   selectedMcpServers: string[]
 }): Promise<{ changed: string[]; linkMode: LinkMode; linkWarning?: string }> {
-  const { projectRoot, force, integrations, syncMode, selectedSkillPacks, selectedSkills, preset, selectedMcpServers } =
+  const { projectRoot, force, integrations, integrationOptions, syncMode, selectedSkillPacks, selectedSkills, preset, selectedMcpServers } =
     args
 
   const paths = getProjectPaths(projectRoot)
@@ -33,6 +34,7 @@ export async function initializeProjectSkeleton(args: {
 
   const config = createDefaultProjectConfig(projectRoot, link.mode)
   config.enabledIntegrations = [...integrations]
+  config.integrationOptions = { ...integrationOptions }
   config.syncMode = syncMode
   config.selectedSkillPacks = [...selectedSkillPacks]
   config.selectedSkills = [...selectedSkills]

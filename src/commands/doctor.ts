@@ -4,7 +4,7 @@ import { loadProjectConfig } from '../core/config.js'
 import { pathExists } from '../core/fs.js'
 import { ensureRootAgentsLink } from '../core/linking.js'
 import { loadResolvedRegistry } from '../core/mcp.js'
-import { getProjectPaths } from '../core/paths.js'
+import { getAntigravityUserMcpPath, getProjectPaths } from '../core/paths.js'
 import { commandExists, runCommand } from '../core/shell.js'
 import { performSync } from '../core/sync.js'
 import { ensureCodexProjectTrusted, getCodexTrustState } from '../core/trust.js'
@@ -108,7 +108,16 @@ export async function runDoctor(options: DoctorOptions): Promise<void> {
   }
 
   const trackedChecks = config.syncMode === 'source-only'
-    ? ['.codex/config.toml', '.gemini/settings.json', '.vscode/mcp.json', '.claude/skills']
+    ? [
+        '.codex/config.toml',
+        '.gemini/settings.json',
+        '.vscode/mcp.json',
+        '.cursor/mcp.json',
+        '.antigravity/mcp.json',
+        '.claude/skills',
+        '.cursor/skills',
+        '.agent/skills'
+      ]
     : []
   trackedChecks.push('.agents/generated', '.agents/mcp/local.json')
   const trackedByGit: string[] = []
@@ -145,6 +154,16 @@ export async function runDoctor(options: DoctorOptions): Promise<void> {
       }
     }
     await performSync({ projectRoot: options.projectRoot, check: false, verbose: false })
+  }
+
+  if (config.enabledIntegrations.includes('antigravity') && config.integrationOptions.antigravityGlobalSync) {
+    const globalPath = getAntigravityUserMcpPath()
+    if (!(await pathExists(globalPath)) && !options.fix) {
+      issues.push({
+        level: 'warning',
+        message: `Antigravity global MCP file not found yet: ${globalPath} (will be created on sync).`
+      })
+    }
   }
 
   report(issues)

@@ -14,6 +14,13 @@ Project-local standard for AGENTS.md + MCP + SKILLS.
 ## Generated files
 - `generated/*`: renderer outputs used by `agents sync`
 
+## Common materialized outputs
+- `.codex/config.toml`
+- `.gemini/settings.json`
+- `.vscode/mcp.json`
+- `.cursor/mcp.json`
+- `.antigravity/mcp.json`
+
 ## Where global defaults live
 - Global catalog: `~/.config/agents/catalog.json`
 - Override path with `AGENTS_CATALOG_PATH`

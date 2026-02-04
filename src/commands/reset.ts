@@ -19,12 +19,34 @@ export async function runReset(options: ResetOptions): Promise<void> {
         paths.rootAgentsMd,
         paths.codexDir,
         paths.geminiDir,
+        paths.cursorDir,
+        paths.antigravityDir,
+        paths.agentDir,
         paths.vscodeMcp,
         paths.claudeDir
       ]
     : options.localOnly
-      ? [paths.codexDir, paths.geminiDir, paths.vscodeMcp, paths.claudeSkillsBridge]
-      : [paths.generatedDir, paths.codexDir, paths.geminiDir, paths.vscodeMcp, paths.claudeSkillsBridge]
+      ? [
+          paths.codexDir,
+          paths.geminiDir,
+          paths.cursorDir,
+          paths.antigravityDir,
+          paths.vscodeMcp,
+          paths.claudeSkillsBridge,
+          paths.cursorSkillsBridge,
+          paths.antigravitySkillsBridge
+        ]
+      : [
+          paths.generatedDir,
+          paths.codexDir,
+          paths.geminiDir,
+          paths.cursorDir,
+          paths.antigravityDir,
+          paths.vscodeMcp,
+          paths.claudeSkillsBridge,
+          paths.cursorSkillsBridge,
+          paths.antigravitySkillsBridge
+        ]
 
   const removed: string[] = []
 

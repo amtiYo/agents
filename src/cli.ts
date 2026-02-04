@@ -20,7 +20,7 @@ async function main(): Promise<void> {
   program
     .name('agents')
     .description('Onboarding-first CLI for AGENTS.md + MCP + skills across LLM coding tools')
-    .version('0.3.1')
+    .version('0.4.0')
 
   program
     .command('start')
@@ -54,7 +54,7 @@ async function main(): Promise<void> {
     .command('connect')
     .description('Enable LLM integrations and sync')
     .option('--path <dir>', 'Target project directory', process.cwd())
-    .option('--llm <list>', 'Comma-separated list: codex,claude,gemini,copilot_vscode')
+    .option('--llm <list>', 'Comma-separated list: codex,claude,gemini,copilot_vscode,cursor,antigravity')
     .option('--interactive', 'Open interactive selector')
     .option('--verbose', 'Print detailed sync output', false)
     .action(async (opts: { path: string; llm?: string; interactive?: boolean; verbose: boolean }) => {
@@ -70,7 +70,7 @@ async function main(): Promise<void> {
     .command('disconnect')
     .description('Disable LLM integrations and sync')
     .option('--path <dir>', 'Target project directory', process.cwd())
-    .option('--llm <list>', 'Comma-separated list: codex,claude,gemini,copilot_vscode')
+    .option('--llm <list>', 'Comma-separated list: codex,claude,gemini,copilot_vscode,cursor,antigravity')
     .option('--interactive', 'Open interactive selector')
     .option('--verbose', 'Print detailed sync output', false)
     .action(async (opts: { path: string; llm?: string; interactive?: boolean; verbose: boolean }) => {

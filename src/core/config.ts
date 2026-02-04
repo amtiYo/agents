@@ -10,6 +10,10 @@ export function createDefaultProjectConfig(projectRoot: string, linkMode: LinkMo
     projectRoot: path.resolve(projectRoot),
     agentsMdPath: '.agents/AGENTS.md',
     enabledIntegrations: [],
+    integrationOptions: {
+      cursorAutoApprove: true,
+      antigravityGlobalSync: true
+    },
     linkMode,
     syncMode: 'source-only',
     selectedSkillPacks: [],
@@ -29,6 +33,16 @@ export async function loadProjectConfig(projectRoot: string): Promise<ProjectCon
     throw new Error(
       `Unsupported project schema version ${String(config.schemaVersion)}. Expected ${String(PROJECT_SCHEMA_VERSION)}.`,
     )
+  }
+
+  if (!config.integrationOptions) {
+    config.integrationOptions = {
+      cursorAutoApprove: true,
+      antigravityGlobalSync: true
+    }
+  } else {
+    config.integrationOptions.cursorAutoApprove = config.integrationOptions.cursorAutoApprove !== false
+    config.integrationOptions.antigravityGlobalSync = config.integrationOptions.antigravityGlobalSync !== false
   }
 
   return config

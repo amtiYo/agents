@@ -17,6 +17,10 @@ export async function runInit(options: InitOptions): Promise<void> {
     projectRoot,
     force: options.force,
     integrations: [],
+    integrationOptions: {
+      cursorAutoApprove: true,
+      antigravityGlobalSync: true
+    },
     syncMode: 'source-only',
     selectedSkillPacks: [],
     selectedSkills: [],

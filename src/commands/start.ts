@@ -63,7 +63,7 @@ export async function runStart(options: StartOptions): Promise<void> {
     ? await selectIntegrations(defaults.integrationDefaults)
     : defaults.integrationDefaults
 
-  const trust = await resolveTrustDecision({
+  const access = await resolveIntegrationAccess({
     projectRoot,
     selectedIntegrations,
     interactive,
@@ -105,6 +105,7 @@ export async function runStart(options: StartOptions): Promise<void> {
     projectRoot,
     force: true,
     integrations: selectedIntegrations,
+    integrationOptions: access.integrationOptions,
     syncMode,
     selectedSkillPacks,
     selectedSkills,
@@ -131,7 +132,9 @@ export async function runStart(options: StartOptions): Promise<void> {
     `Extra skills: ${selectedSkills.join(', ') || '(none)'}`,
     `Sync mode: ${syncMode}`,
     `Link mode: ${init.linkMode}`,
-    `Codex trust: ${trust.summary}`
+    `Codex trust: ${access.summaries.codex}`,
+    `Cursor approval: ${access.summaries.cursor}`,
+    `Antigravity sync: ${access.summaries.antigravity}`
   ]
 
   if (init.linkWarning) {
@@ -164,46 +167,99 @@ export async function runStart(options: StartOptions): Promise<void> {
   }
 }
 
-async function resolveTrustDecision(args: {
+async function resolveIntegrationAccess(args: {
   projectRoot: string
   selectedIntegrations: IntegrationName[]
   interactive: boolean
   autoApprove: boolean
-}): Promise<{ summary: string }> {
+}): Promise<{
+  integrationOptions: { cursorAutoApprove: boolean; antigravityGlobalSync: boolean }
+  summaries: { codex: string; cursor: string; antigravity: string }
+}> {
   const { projectRoot, selectedIntegrations, interactive, autoApprove } = args
-  if (!selectedIntegrations.includes('codex')) {
-    return { summary: 'not required' }
+
+  const summaries: { codex: string; cursor: string; antigravity: string } = {
+    codex: 'not required',
+    cursor: 'not required',
+    antigravity: 'not required'
   }
 
-  const state = await getCodexTrustState(projectRoot)
-  if (state === 'trusted') {
-    return { summary: 'already trusted' }
+  const integrationOptions = {
+    cursorAutoApprove: true,
+    antigravityGlobalSync: true
   }
 
-  let approve = autoApprove
-  if (interactive) {
-    clack.note(
-      [
-        'Codex reads project .codex/config.toml only for trusted projects.',
-        'Without trust, MCP from this project may not appear in codex mcp list.'
-      ].join('\n'),
-      'Codex trust required',
-    )
-    approve = await confirmOrCancel({
-      message: 'Trust this project in Codex now?',
-      initialValue: true
-    })
+  if (selectedIntegrations.includes('codex')) {
+    const state = await getCodexTrustState(projectRoot)
+    if (state === 'trusted') {
+      summaries.codex = 'already trusted'
+    } else {
+      let approve = autoApprove
+      if (interactive) {
+        clack.note(
+          [
+            'Codex reads project .codex/config.toml only for trusted projects.',
+            'Without trust, MCP from this project may not appear in codex mcp list.'
+          ].join('\n'),
+          'Codex trust required',
+        )
+        approve = await confirmOrCancel({
+          message: 'Trust this project in Codex now?',
+          initialValue: true
+        })
+      }
+
+      if (!approve) {
+        summaries.codex = 'skipped (project may stay untrusted)'
+      } else {
+        const result = await ensureCodexProjectTrusted(projectRoot)
+        summaries.codex = result.changed ? `trusted (updated ${result.path})` : 'already trusted'
+      }
+    }
   }
 
-  if (!approve) {
-    return { summary: 'skipped (project may stay untrusted)' }
+  if (selectedIntegrations.includes('cursor')) {
+    let approve = autoApprove
+    if (interactive) {
+      clack.note(
+        [
+          'Cursor MCP servers require approval before they are loaded.',
+          'agents can auto-approve project-selected MCP servers via cursor-agent.'
+        ].join('\n'),
+        'Cursor MCP approval',
+      )
+      approve = await confirmOrCancel({
+        message: 'Auto-approve selected MCP servers in Cursor?',
+        initialValue: true
+      })
+    }
+    integrationOptions.cursorAutoApprove = approve
+    summaries.cursor = approve ? 'enabled' : 'disabled'
   }
 
-  const result = await ensureCodexProjectTrusted(projectRoot)
-  if (result.changed) {
-    return { summary: `trusted (updated ${result.path})` }
+  if (selectedIntegrations.includes('antigravity')) {
+    let approve = autoApprove
+    if (interactive) {
+      clack.note(
+        [
+          'Antigravity MCP servers are stored in a user-level profile file.',
+          'agents can keep a managed project-scoped subset in that global file.'
+        ].join('\n'),
+        'Antigravity global MCP sync',
+      )
+      approve = await confirmOrCancel({
+        message: 'Allow global Antigravity MCP sync for this project?',
+        initialValue: true
+      })
+    }
+    integrationOptions.antigravityGlobalSync = approve
+    summaries.antigravity = approve ? 'enabled' : 'disabled'
   }
-  return { summary: 'already trusted' }
+
+  return {
+    integrationOptions,
+    summaries
+  }
 }
 
 function collectPreflight(): Array<{ label: string; ok: boolean; detail: string }> {
@@ -228,7 +284,17 @@ function renderPreflight(items: Array<{ label: string; ok: boolean; detail: stri
 
 async function shouldOfferCleanup(projectRoot: string): Promise<boolean> {
   const paths = getProjectPaths(projectRoot)
-  const candidates = [paths.generatedDir, paths.codexDir, paths.geminiDir, paths.vscodeMcp, paths.claudeSkillsBridge]
+  const candidates = [
+    paths.generatedDir,
+    paths.codexDir,
+    paths.geminiDir,
+    paths.cursorDir,
+    paths.antigravityDir,
+    paths.vscodeMcp,
+    paths.claudeSkillsBridge,
+    paths.cursorSkillsBridge,
+    paths.antigravitySkillsBridge
+  ]
   for (const candidate of candidates) {
     if (await pathExists(candidate)) return true
   }

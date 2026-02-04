@@ -69,6 +69,8 @@ export async function syncSkills(args: {
   await syncClaudeSkillsBridge({
     projectRoot,
     claudeEnabled: config.enabledIntegrations.includes('claude'),
+    cursorEnabled: config.enabledIntegrations.includes('cursor'),
+    antigravityEnabled: config.enabledIntegrations.includes('antigravity'),
     check,
     changed,
     warnings
@@ -76,7 +78,12 @@ export async function syncSkills(args: {
 
   const nextState: SkillsState = {
     managedSkillIds: desiredSkillIds,
-    bridgeMode: config.enabledIntegrations.includes('claude') ? 'symlink' : 'none'
+    bridgeMode:
+      config.enabledIntegrations.includes('claude') ||
+      config.enabledIntegrations.includes('cursor') ||
+      config.enabledIntegrations.includes('antigravity')
+        ? 'symlink'
+        : 'none'
   }
 
   if (!equalState(nextState, state)) {
@@ -121,28 +128,75 @@ function renderSkillMarkdown(skill: { name: string; description: string; instruc
 async function syncClaudeSkillsBridge(args: {
   projectRoot: string
   claudeEnabled: boolean
+  cursorEnabled: boolean
+  antigravityEnabled: boolean
   check: boolean
   changed: string[]
   warnings: string[]
 }): Promise<void> {
-  const { projectRoot, claudeEnabled, check, changed, warnings } = args
+  const { projectRoot, claudeEnabled, cursorEnabled, antigravityEnabled, check, changed, warnings } = args
   const paths = getProjectPaths(projectRoot)
 
-  if (!claudeEnabled) {
+  await syncToolSkillsBridge({
+    enabled: claudeEnabled,
+    projectRoot,
+    parentDir: paths.claudeDir,
+    bridgePath: paths.claudeSkillsBridge,
+    label: '.claude/skills',
+    check,
+    changed,
+    warnings
+  })
+
+  await syncToolSkillsBridge({
+    enabled: cursorEnabled,
+    projectRoot,
+    parentDir: paths.cursorDir,
+    bridgePath: paths.cursorSkillsBridge,
+    label: '.cursor/skills',
+    check,
+    changed,
+    warnings
+  })
+
+  await syncToolSkillsBridge({
+    enabled: antigravityEnabled,
+    projectRoot,
+    parentDir: paths.agentDir,
+    bridgePath: paths.antigravitySkillsBridge,
+    label: '.agent/skills',
+    check,
+    changed,
+    warnings
+  })
+}
+
+async function syncToolSkillsBridge(args: {
+  enabled: boolean
+  projectRoot: string
+  parentDir: string
+  bridgePath: string
+  label: string
+  check: boolean
+  changed: string[]
+  warnings: string[]
+}): Promise<void> {
+  const { enabled, projectRoot, parentDir, bridgePath, label, check, changed, warnings } = args
+  const paths = getProjectPaths(projectRoot)
+  const expectedRelative = path.relative(path.dirname(bridgePath), paths.agentsSkillsDir) || '.'
+
+  if (!enabled) {
     return
   }
 
-  await ensureDir(paths.claudeDir)
-
-  const bridgePath = paths.claudeSkillsBridge
-  const expectedRelative = '../.agents/skills'
+  await ensureDir(parentDir)
 
   const exists = await pathExists(bridgePath)
   if (exists) {
     const linkInfo = await import('node:fs/promises').then(({ lstat }) => lstat(bridgePath))
     if (linkInfo.isSymbolicLink()) {
       const current = await import('node:fs/promises').then(({ readlink }) => readlink(bridgePath))
-      if (current === expectedRelative) {
+      if (current === expectedRelative || path.resolve(path.dirname(bridgePath), current) === paths.agentsSkillsDir) {
         return
       }
       changed.push(path.relative(projectRoot, bridgePath) || bridgePath)
@@ -157,7 +211,7 @@ async function syncClaudeSkillsBridge(args: {
         }
         return
       } else {
-        warnings.push(`Found existing .claude/skills that is not managed by agents: ${bridgePath}`)
+        warnings.push(`Found existing ${label} that is not managed by agents: ${bridgePath}`)
         return
       }
     }
@@ -173,7 +227,7 @@ async function syncClaudeSkillsBridge(args: {
     await copyDir(paths.agentsSkillsDir, bridgePath)
     await writeTextAtomic(path.join(bridgePath, '.agents_bridge'), 'managed-by-agents\n')
     const message = error instanceof Error ? error.message : String(error)
-    warnings.push(`Claude skills bridge fallback to copy mode: ${message}`)
+    warnings.push(`${label} bridge fallback to copy mode: ${message}`)
   }
 }
 

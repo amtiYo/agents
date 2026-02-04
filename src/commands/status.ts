@@ -1,9 +1,10 @@
+import { createHash } from 'node:crypto'
 import path from 'node:path'
 import { ensureGlobalCatalog } from '../core/catalog.js'
 import { loadProjectConfig } from '../core/config.js'
 import { listDirNames, pathExists, readJson } from '../core/fs.js'
 import { loadSelection, loadResolvedRegistry } from '../core/mcp.js'
-import { getProjectPaths } from '../core/paths.js'
+import { getAntigravityUserMcpPath, getProjectPaths } from '../core/paths.js'
 import { commandExists, runCommand } from '../core/shell.js'
 import { getCodexTrustState } from '../core/trust.js'
 import type { CatalogFile, ProjectConfig } from '../types.js'
@@ -39,6 +40,7 @@ export async function runStatus(options: StatusOptions): Promise<void> {
   const resolvedSkills = getResolvedSkillIds(config, catalog)
   const skillsProbe = await probeSkills(paths.agentsSkillsDir, resolvedSkills)
   const expectedCodexServers = resolved.serversByTarget.codex.map((server) => server.name)
+  const expectedCursorServers = resolved.serversByTarget.cursor.map((server) => server.name)
 
   const files = {
     '.agents/project.json': await pathExists(paths.agentsProject),
@@ -49,7 +51,11 @@ export async function runStatus(options: StatusOptions): Promise<void> {
     '.codex/config.toml': await pathExists(paths.codexConfig),
     '.gemini/settings.json': await pathExists(paths.geminiSettings),
     '.vscode/mcp.json': await pathExists(paths.vscodeMcp),
-    '.claude/skills': await pathExists(paths.claudeSkillsBridge)
+    '.cursor/mcp.json': await pathExists(paths.cursorMcp),
+    '.antigravity/mcp.json': await pathExists(paths.antigravityProjectMcp),
+    '.claude/skills': await pathExists(paths.claudeSkillsBridge),
+    '.cursor/skills': await pathExists(paths.cursorSkillsBridge),
+    '.agent/skills': await pathExists(paths.antigravitySkillsBridge)
   }
 
   const probes: Record<string, string> = {}
@@ -58,6 +64,8 @@ export async function runStatus(options: StatusOptions): Promise<void> {
   if (config.enabledIntegrations.includes('claude')) probes.claude = probeClaude(options.projectRoot)
   if (config.enabledIntegrations.includes('gemini')) probes.gemini = probeGemini(options.projectRoot)
   if (config.enabledIntegrations.includes('copilot_vscode')) probes.copilot_vscode = await probeCopilot(paths.vscodeMcp)
+  if (config.enabledIntegrations.includes('cursor')) probes.cursor = probeCursor(options.projectRoot, expectedCursorServers)
+  if (config.enabledIntegrations.includes('antigravity')) probes.antigravity = await probeAntigravity(options.projectRoot)
   probes.skills = skillsProbe
 
   if (resolved.missingRequiredEnv.length > 0) {
@@ -165,6 +173,42 @@ async function probeCopilot(vscodeMcpPath: string): Promise<string> {
   }
 }
 
+function probeCursor(projectRoot: string, expectedServerNames: string[]): string {
+  if (!commandExists('cursor-agent')) return 'cursor-agent CLI not found'
+  const result = runCommand('cursor-agent', ['mcp', 'list'], projectRoot)
+  if (!result.ok) return `failed (${compact(result.stderr)})`
+
+  const output = stripAnsi(`${result.stdout}\n${result.stderr}`)
+  const lines = output
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+
+  const loaded = lines.filter((line) => line.includes(': ready')).length
+  const notApproved = lines.filter((line) => line.includes('needs approval')).length
+  const missing = expectedServerNames.filter((name) => !lines.some((line) => line.startsWith(`${name}:`)))
+
+  const parts = [`${loaded} ready`]
+  if (notApproved > 0) parts.push(`${notApproved} needs approval`)
+  if (missing.length > 0) parts.push(`missing in list: ${missing.join(', ')}`)
+  return parts.join(', ')
+}
+
+async function probeAntigravity(projectRoot: string): Promise<string> {
+  const globalPath = getAntigravityUserMcpPath()
+  if (!(await pathExists(globalPath))) return `global MCP file missing (${globalPath})`
+
+  try {
+    const parsed = await readJson<{ servers?: Record<string, unknown> }>(globalPath)
+    const digest = projectHash(projectRoot)
+    const prefix = `agents__${digest}__`
+    const managed = Object.keys(parsed.servers ?? {}).filter((name) => name.startsWith(prefix))
+    return `${managed.length} managed server(s) in global profile`
+  } catch {
+    return 'invalid Antigravity global MCP JSON'
+  }
+}
+
 function compact(input: string): string {
   return input.trim().split('\n').at(-1) ?? 'unknown'
 }
@@ -222,4 +266,8 @@ async function probeSkills(skillsDir: string, expectedSkillIds: string[]): Promi
 
 function stripAnsi(input: string): string {
   return input.replace(/\u001b\[[0-9;]*m/g, '')
+}
+
+function projectHash(projectRoot: string): string {
+  return createHash('sha1').update(path.resolve(projectRoot)).digest('hex').slice(0, 10)
 }

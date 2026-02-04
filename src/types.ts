@@ -2,7 +2,7 @@ export const PROJECT_SCHEMA_VERSION = 2
 export const MCP_SELECTION_SCHEMA_VERSION = 1
 export const CATALOG_SCHEMA_VERSION = 1
 
-export type IntegrationName = 'codex' | 'claude' | 'gemini' | 'copilot_vscode'
+export type IntegrationName = 'codex' | 'claude' | 'gemini' | 'copilot_vscode' | 'cursor' | 'antigravity'
 export type LinkMode = 'symlink' | 'copy'
 export type SyncMode = 'source-only' | 'commit-generated'
 
@@ -13,6 +13,10 @@ export interface ProjectConfig {
   projectRoot: string
   agentsMdPath: string
   enabledIntegrations: IntegrationName[]
+  integrationOptions: {
+    cursorAutoApprove: boolean
+    antigravityGlobalSync: boolean
+  }
   linkMode: LinkMode
   syncMode: SyncMode
   selectedSkillPacks: string[]

@@ -33,7 +33,7 @@ const DEFAULT_CATALOG: CatalogFile = {
       transport: 'stdio',
       command: 'npx',
       args: ['-y', '@modelcontextprotocol/server-filesystem', '${PROJECT_ROOT}'],
-      targets: ['codex', 'claude', 'gemini', 'copilot_vscode'],
+      targets: ['codex', 'claude', 'gemini', 'copilot_vscode', 'cursor', 'antigravity'],
       enabled: true
     },
     fetch: {
@@ -45,7 +45,7 @@ const DEFAULT_CATALOG: CatalogFile = {
       env: {
         FASTMCP_LOG_LEVEL: 'ERROR'
       },
-      targets: ['codex', 'claude', 'gemini', 'copilot_vscode'],
+      targets: ['codex', 'claude', 'gemini', 'copilot_vscode', 'cursor', 'antigravity'],
       enabled: true
     },
     git: {
@@ -57,7 +57,7 @@ const DEFAULT_CATALOG: CatalogFile = {
       env: {
         FASTMCP_LOG_LEVEL: 'ERROR'
       },
-      targets: ['codex', 'claude', 'gemini', 'copilot_vscode'],
+      targets: ['codex', 'claude', 'gemini', 'copilot_vscode', 'cursor', 'antigravity'],
       enabled: true
     },
     playwright: {
@@ -66,7 +66,7 @@ const DEFAULT_CATALOG: CatalogFile = {
       transport: 'stdio',
       command: 'npx',
       args: ['-y', '@playwright/mcp@latest'],
-      targets: ['codex', 'claude', 'gemini', 'copilot_vscode'],
+      targets: ['codex', 'claude', 'gemini', 'copilot_vscode', 'cursor', 'antigravity'],
       enabled: true
     },
     context7: {
@@ -76,7 +76,7 @@ const DEFAULT_CATALOG: CatalogFile = {
       command: 'npx',
       args: ['-y', '@upstash/context7-mcp', '--api-key', '${CONTEXT7_API_KEY}'],
       requiredEnv: ['CONTEXT7_API_KEY'],
-      targets: ['codex', 'claude', 'gemini', 'copilot_vscode'],
+      targets: ['codex', 'claude', 'gemini', 'copilot_vscode', 'cursor', 'antigravity'],
       enabled: true
     }
   },
