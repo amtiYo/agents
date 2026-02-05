@@ -1,15 +1,15 @@
-import path from 'node:path'
-import { lstat, readlink } from 'node:fs/promises'
-import { loadProjectConfig } from '../core/config.js'
+import { loadAgentsConfig } from '../core/config.js'
 import { pathExists } from '../core/fs.js'
-import { ensureRootAgentsLink } from '../core/linking.js'
 import { loadResolvedRegistry } from '../core/mcp.js'
-import { getAntigravityUserMcpPath, getProjectPaths } from '../core/paths.js'
+import { getProjectPaths } from '../core/paths.js'
 import { commandExists, runCommand } from '../core/shell.js'
 import { performSync } from '../core/sync.js'
 import { ensureCodexProjectTrusted, getCodexTrustState } from '../core/trust.js'
 import { validateSkillsDirectory } from '../core/skillsValidation.js'
+import { validateVscodeSettingsParse } from '../core/vscodeSettings.js'
 import { INTEGRATIONS } from '../integrations/registry.js'
+import { listMcpEntries, loadMcpState } from '../core/mcpCrud.js'
+import { isPlaceholderValue, isSecretLikeKey } from '../core/mcpSecrets.js'
 
 export interface DoctorOptions {
   projectRoot: string
@@ -25,42 +25,29 @@ export async function runDoctor(options: DoctorOptions): Promise<void> {
   const paths = getProjectPaths(options.projectRoot)
   const issues: Issue[] = []
 
-  if (!(await pathExists(paths.agentsProject))) {
-    issues.push({ level: 'error', message: 'Missing .agents/project.json (run agents start)' })
+  if (!(await pathExists(paths.agentsConfig))) {
+    issues.push({ level: 'error', message: 'Missing .agents/agents.json (run agents start)' })
     report(issues)
     process.exitCode = 1
     return
   }
 
-  if (!(await pathExists(paths.mcpSelection))) {
-    issues.push({ level: 'error', message: 'Missing .agents/mcp/selection.json (run agents start)' })
+  if (!(await pathExists(paths.agentsLocal))) {
+    issues.push({ level: 'warning', message: 'Missing .agents/local.json (run agents start or create manually)' })
+  }
+
+  if (!(await pathExists(paths.rootAgentsMd))) {
+    issues.push({ level: 'error', message: 'Missing root AGENTS.md' })
   }
 
   let config
   try {
-    config = await loadProjectConfig(options.projectRoot)
+    config = await loadAgentsConfig(options.projectRoot)
   } catch (error) {
     issues.push({ level: 'error', message: error instanceof Error ? error.message : String(error) })
     report(issues)
     process.exitCode = 1
     return
-  }
-
-  if (!(await pathExists(paths.agentsMd))) {
-    issues.push({ level: 'error', message: 'Missing .agents/AGENTS.md' })
-  }
-
-  if (!(await pathExists(paths.rootAgentsMd))) {
-    issues.push({ level: 'warning', message: 'Missing root AGENTS.md link/copy' })
-  } else {
-    const info = await lstat(paths.rootAgentsMd)
-    if (info.isSymbolicLink()) {
-      const target = await readlink(paths.rootAgentsMd)
-      const resolved = path.resolve(options.projectRoot, target)
-      if (resolved !== paths.agentsMd) {
-        issues.push({ level: 'warning', message: 'Root AGENTS.md points to unexpected target' })
-      }
-    }
   }
 
   try {
@@ -78,13 +65,41 @@ export async function runDoctor(options: DoctorOptions): Promise<void> {
     })
   }
 
+  try {
+    const mcpState = await loadMcpState(options.projectRoot)
+    const entries = listMcpEntries(mcpState)
+    for (const entry of entries) {
+      for (const warning of collectPlaceholderWarnings(entry.name, entry.server, entry.localOverride)) {
+        issues.push({ level: 'warning', message: warning })
+      }
+      for (const warning of collectSecretLiteralWarnings(entry.name, entry.server)) {
+        issues.push({ level: 'warning', message: warning })
+      }
+    }
+  } catch (error) {
+    issues.push({
+      level: 'warning',
+      message: error instanceof Error ? `Failed to inspect MCP configs: ${error.message}` : 'Failed to inspect MCP configs'
+    })
+  }
+
   const skillWarnings = await validateSkillsDirectory(paths.agentsSkillsDir)
   for (const warning of skillWarnings) {
     issues.push({ level: 'warning', message: warning })
   }
 
+  if (config.workspace.vscode.hideGenerated) {
+    const valid = await validateVscodeSettingsParse(paths.vscodeSettings)
+    if (!valid) {
+      issues.push({
+        level: 'warning',
+        message: 'VS Code settings are invalid JSONC; .vscode/settings.json cannot be updated while hideGenerated is enabled.'
+      })
+    }
+  }
+
   for (const integration of INTEGRATIONS) {
-    if (!config.enabledIntegrations.includes(integration.id)) continue
+    if (!config.integrations.enabled.includes(integration.id)) continue
     if (!integration.requiredBinary) continue
     if (!commandExists(integration.requiredBinary)) {
       issues.push({
@@ -94,16 +109,14 @@ export async function runDoctor(options: DoctorOptions): Promise<void> {
     }
   }
 
-  const codexEnabled = config.enabledIntegrations.includes('codex')
+  const codexEnabled = config.integrations.enabled.includes('codex')
   if (codexEnabled) {
     const codexTrust = await getCodexTrustState(options.projectRoot)
-    if (codexTrust !== 'trusted') {
-      if (!options.fix) {
-        issues.push({
-          level: 'warning',
-          message: 'Codex project trust is not set; project .codex/config.toml may be ignored.'
-        })
-      }
+    if (codexTrust !== 'trusted' && !options.fix) {
+      issues.push({
+        level: 'warning',
+        message: 'Codex project trust is not set; project .codex/config.toml may be ignored.'
+      })
     }
   }
 
@@ -113,11 +126,13 @@ export async function runDoctor(options: DoctorOptions): Promise<void> {
         '.gemini/settings.json',
         '.vscode/mcp.json',
         '.cursor/mcp.json',
+        '.antigravity/mcp.json',
         '.claude/skills',
-        '.cursor/skills'
+        '.cursor/skills',
+        '.gemini/skills'
       ]
     : []
-  trackedChecks.push('.agents/generated', '.agents/mcp/local.json')
+  trackedChecks.push('.agents/generated', '.agents/local.json')
   const trackedByGit: string[] = []
   for (const candidate of trackedChecks) {
     if (!isGitTracked(options.projectRoot, candidate)) continue
@@ -131,12 +146,6 @@ export async function runDoctor(options: DoctorOptions): Promise<void> {
   }
 
   if (options.fix) {
-    if (await pathExists(paths.agentsMd)) {
-      const linkResult = await ensureRootAgentsLink(options.projectRoot, { forceReplace: true })
-      if (linkResult.warning) {
-        issues.push({ level: 'warning', message: linkResult.warning })
-      }
-    }
     for (const trackedPath of trackedByGit) {
       const removed = untrackGitPath(options.projectRoot, trackedPath)
       if (!removed) {
@@ -154,14 +163,11 @@ export async function runDoctor(options: DoctorOptions): Promise<void> {
     await performSync({ projectRoot: options.projectRoot, check: false, verbose: false })
   }
 
-  if (config.enabledIntegrations.includes('antigravity') && config.integrationOptions.antigravityGlobalSync) {
-    const globalPath = getAntigravityUserMcpPath()
-    if (!(await pathExists(globalPath)) && !options.fix) {
-      issues.push({
-        level: 'warning',
-        message: `Antigravity global MCP file not found yet: ${globalPath} (will be created on sync).`
-      })
-    }
+  if (config.integrations.enabled.includes('antigravity') && !(await pathExists(paths.antigravityProjectMcp)) && !options.fix) {
+    issues.push({
+      level: 'warning',
+      message: 'Antigravity project MCP file missing: .antigravity/mcp.json (run agents sync).'
+    })
   }
 
   report(issues)
@@ -194,4 +200,125 @@ function untrackGitPath(projectRoot: string, relativePath: string): boolean {
   if (!commandExists('git')) return false
   const result = runCommand('git', ['rm', '--cached', '-r', '--', relativePath], projectRoot)
   return result.ok
+}
+
+function collectPlaceholderWarnings(
+  name: string,
+  server: {
+    command?: string
+    url?: string
+    cwd?: string
+    args?: string[]
+    env?: Record<string, string>
+    headers?: Record<string, string>
+  },
+  localOverride: {
+    command?: string
+    url?: string
+    cwd?: string
+    args?: string[]
+    env?: Record<string, string>
+    headers?: Record<string, string>
+  } | undefined,
+): string[] {
+  const warnings: string[] = []
+
+  for (const placeholder of extractPlaceholders(server.command)) {
+    if (placeholder === 'PROJECT_ROOT') continue
+    if (localOverride?.command !== undefined) continue
+    if (!process.env[placeholder]) {
+      warnings.push(`MCP server "${name}" has unresolved placeholder in command: \${${placeholder}}`)
+    }
+  }
+  for (const placeholder of extractPlaceholders(server.url)) {
+    if (placeholder === 'PROJECT_ROOT') continue
+    if (localOverride?.url !== undefined) continue
+    if (!process.env[placeholder]) {
+      warnings.push(`MCP server "${name}" has unresolved placeholder in url: \${${placeholder}}`)
+    }
+  }
+  for (const placeholder of extractPlaceholders(server.cwd)) {
+    if (placeholder === 'PROJECT_ROOT') continue
+    if (localOverride?.cwd !== undefined) continue
+    if (!process.env[placeholder]) {
+      warnings.push(`MCP server "${name}" has unresolved placeholder in cwd: \${${placeholder}}`)
+    }
+  }
+
+  if (!localOverride?.args) {
+    for (const arg of server.args ?? []) {
+      for (const placeholder of extractPlaceholders(arg)) {
+        if (placeholder === 'PROJECT_ROOT') continue
+        if (!process.env[placeholder]) {
+          warnings.push(`MCP server "${name}" has unresolved placeholder in args: \${${placeholder}}`)
+        }
+      }
+    }
+  }
+
+  for (const [key, value] of Object.entries(server.env ?? {})) {
+    if (localOverride?.env && key in localOverride.env) continue
+    for (const placeholder of extractPlaceholders(value)) {
+      if (placeholder === 'PROJECT_ROOT') continue
+      if (!process.env[placeholder]) {
+        warnings.push(`MCP server "${name}" has unresolved placeholder in env "${key}": \${${placeholder}}`)
+      }
+    }
+  }
+
+  for (const [key, value] of Object.entries(server.headers ?? {})) {
+    if (localOverride?.headers && key in localOverride.headers) continue
+    for (const placeholder of extractPlaceholders(value)) {
+      if (placeholder === 'PROJECT_ROOT') continue
+      if (!process.env[placeholder]) {
+        warnings.push(`MCP server "${name}" has unresolved placeholder in header "${key}": \${${placeholder}}`)
+      }
+    }
+  }
+
+  return warnings
+}
+
+function collectSecretLiteralWarnings(
+  name: string,
+  server: {
+    env?: Record<string, string>
+    headers?: Record<string, string>
+    args?: string[]
+  },
+): string[] {
+  const warnings: string[] = []
+
+  for (const [key, value] of Object.entries(server.env ?? {})) {
+    if (!isSecretLikeKey(key)) continue
+    if (isPlaceholderValue(value)) continue
+    warnings.push(`MCP server "${name}" may contain a secret literal in env "${key}". Move it to .agents/local.json.`)
+  }
+
+  for (const [key, value] of Object.entries(server.headers ?? {})) {
+    if (!isSecretLikeKey(key)) continue
+    if (isPlaceholderValue(value)) continue
+    warnings.push(`MCP server "${name}" may contain a secret literal in header "${key}". Move it to .agents/local.json.`)
+  }
+
+  const args = server.args ?? []
+  for (let i = 0; i < args.length - 1; i += 1) {
+    const arg = args[i]
+    if (!/^--?(api[-_]?key|token|secret|password|passphrase|auth|authorization)$/i.test(arg)) continue
+    const candidate = args[i + 1]
+    if (candidate.startsWith('-')) continue
+    if (isPlaceholderValue(candidate)) continue
+    warnings.push(`MCP server "${name}" may contain a secret literal in args near "${arg}". Move it to .agents/local.json.`)
+  }
+
+  return warnings
+}
+
+function extractPlaceholders(value: string | undefined): string[] {
+  if (!value) return []
+  const out = new Set<string>()
+  for (const match of value.matchAll(/\$\{([A-Z0-9_]+)\}/g)) {
+    if (match[1]) out.add(match[1])
+  }
+  return [...out]
 }

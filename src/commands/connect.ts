@@ -1,6 +1,7 @@
 import prompts from 'prompts'
-import { loadProjectConfig, saveProjectConfig } from '../core/config.js'
+import { loadAgentsConfig, saveAgentsConfig } from '../core/config.js'
 import { performSync } from '../core/sync.js'
+import { formatWarnings } from '../core/warnings.js'
 import type { IntegrationName } from '../types.js'
 import { INTEGRATIONS, parseIntegrationList } from '../integrations/registry.js'
 
@@ -12,7 +13,7 @@ export interface ConnectOptions {
 }
 
 export async function runConnect(options: ConnectOptions): Promise<void> {
-  const config = await loadProjectConfig(options.projectRoot)
+  const config = await loadAgentsConfig(options.projectRoot)
 
   const rawSelection = options.llm
 
@@ -20,13 +21,13 @@ export async function runConnect(options: ConnectOptions): Promise<void> {
   if (rawSelection) {
     selected = parseIntegrationList(rawSelection)
   } else if (options.interactive) {
-    selected = await promptSelection(config.enabledIntegrations)
+    selected = await promptSelection(config.integrations.enabled)
   } else {
     throw new Error('No LLM selected. Use --llm or --interactive.')
   }
 
-  config.enabledIntegrations = selected
-  await saveProjectConfig(options.projectRoot, config)
+  config.integrations.enabled = selected
+  await saveAgentsConfig(options.projectRoot, config)
 
   const syncResult = await performSync({
     projectRoot: options.projectRoot,
@@ -35,8 +36,9 @@ export async function runConnect(options: ConnectOptions): Promise<void> {
   })
 
   process.stdout.write(`Enabled integrations: ${selected.join(', ') || '(none)'}\n`)
-  if (syncResult.warnings.length > 0) {
-    process.stdout.write(`Warnings:\n- ${syncResult.warnings.join('\n- ')}\n`)
+  const warningBlock = formatWarnings(syncResult.warnings, 5)
+  if (warningBlock) {
+    process.stdout.write(warningBlock)
   }
   process.stdout.write(`Updated ${syncResult.changed.length} item(s).\n`)
 }

@@ -1,22 +1,21 @@
 import path from 'node:path'
 import * as clack from '@clack/prompts'
 import color from 'picocolors'
-import { ensureGlobalCatalog } from '../core/catalog.js'
 import { pathExists } from '../core/fs.js'
 import { ensureProjectGitignore } from '../core/gitignore.js'
 import { initializeProjectSkeleton } from '../core/project.js'
 import { performSync } from '../core/sync.js'
 import { commandExists } from '../core/shell.js'
-import type { CatalogFile, IntegrationName, SyncMode } from '../types.js'
+import type { IntegrationName, SyncMode } from '../types.js'
 import { INTEGRATIONS } from '../integrations/registry.js'
 import { getProjectPaths } from '../core/paths.js'
 import { runReset } from './reset.js'
 import { ensureCodexProjectTrusted, getCodexTrustState } from '../core/trust.js'
+import { formatWarnings, normalizeWarnings } from '../core/warnings.js'
 
 export interface StartOptions {
   projectRoot: string
   nonInteractive: boolean
-  profile?: string
   yes: boolean
 }
 
@@ -26,25 +25,17 @@ export async function runStart(options: StartOptions): Promise<void> {
     throw new Error(`Project path does not exist: ${projectRoot}`)
   }
 
-  const { catalog, path: catalogPath, created } = await ensureGlobalCatalog()
   const interactive = !options.nonInteractive && !options.yes
 
   if (interactive) {
     clack.intro(color.cyan('agents start'))
-    clack.note(
-      [
-        'One command setup for AGENTS.md + LLM integrations + MCP + SKILLS.',
-        `Global catalog: ${catalogPath}`,
-        created ? 'Catalog file was created automatically.' : 'Using existing global catalog file.'
-      ].join('\n'),
-      'Welcome',
-    )
+    clack.note('One command setup for AGENTS.md + LLM integrations + MCP + SKILLS.', 'Welcome')
   }
 
   const preflight = collectPreflight()
-
-  if (interactive) {
-    clack.note(renderPreflight(preflight), 'Preflight')
+  const missingPreflight = preflight.filter((item) => !item.ok)
+  if (interactive && missingPreflight.length > 0) {
+    clack.note(renderPreflight(missingPreflight), 'Preflight warnings')
   }
 
   if (interactive && (await shouldOfferCleanup(projectRoot))) {
@@ -57,8 +48,7 @@ export async function runStart(options: StartOptions): Promise<void> {
     }
   }
 
-  const defaults = getDefaults(catalog, options.profile)
-
+  const defaults = getDefaults()
   const selectedIntegrations = interactive
     ? await selectIntegrations(defaults.integrationDefaults)
     : defaults.integrationDefaults
@@ -70,18 +60,9 @@ export async function runStart(options: StartOptions): Promise<void> {
     autoApprove: options.yes || options.nonInteractive
   })
 
-  const preset = interactive ? await selectPreset(catalog, defaults.presetId) : defaults.presetId
-  const presetServers = getPresetServerIds(catalog, preset)
-
-  const additionalServerIds = interactive
-    ? await selectAdditionalMcp(catalog, presetServers)
-    : []
-  const selectedMcpServers = [...new Set([...presetServers, ...additionalServerIds])]
-
-  const selectedSkillPacks = interactive
-    ? await selectSkillPacks(catalog, defaults.skillPackDefaults)
-    : defaults.skillPackDefaults
-  const selectedSkills = interactive ? await selectSkills(catalog, selectedSkillPacks) : []
+  const hideGeneratedInVscode = interactive
+    ? await selectVscodeHideDefaults(defaults.hideGeneratedInVscode)
+    : defaults.hideGeneratedInVscode
 
   const syncMode = interactive
     ? await selectSyncMode(defaults.syncMode)
@@ -107,10 +88,7 @@ export async function runStart(options: StartOptions): Promise<void> {
     integrations: selectedIntegrations,
     integrationOptions: access.integrationOptions,
     syncMode,
-    selectedSkillPacks,
-    selectedSkills,
-    preset,
-    selectedMcpServers
+    hideGeneratedInVscode
   })
 
   await ensureProjectGitignore(projectRoot, syncMode)
@@ -126,28 +104,24 @@ export async function runStart(options: StartOptions): Promise<void> {
   const summaryLines = [
     `Project: ${projectRoot}`,
     `Integrations: ${selectedIntegrations.join(', ') || '(none)'}`,
-    `MCP preset: ${preset}`,
-    `MCP servers: ${selectedMcpServers.join(', ') || '(none)'}`,
-    `Skill packs: ${selectedSkillPacks.join(', ') || '(none)'}`,
-    `Extra skills: ${selectedSkills.join(', ') || '(none)'}`,
     `Sync mode: ${syncMode}`,
-    `Link mode: ${init.linkMode}`,
+    `VS Code hide tool dirs: ${hideGeneratedInVscode ? 'enabled' : 'disabled'}`,
     `Codex trust: ${access.summaries.codex}`,
     `Cursor approval: ${access.summaries.cursor}`,
-    `Antigravity sync: ${access.summaries.antigravity}`
+    `Antigravity sync: ${access.summaries.antigravity}`,
+    `Created/updated: ${init.changed.length}`
   ]
 
-  if (init.linkWarning) {
-    summaryLines.push(`Link warning: ${init.linkWarning}`)
-  }
-  if (sync.warnings.length > 0) {
-    summaryLines.push(`Warnings: ${sync.warnings.length}`)
+  const normalizedWarnings = normalizeWarnings(sync.warnings)
+  if (normalizedWarnings.length > 0) {
+    summaryLines.push(`Warnings: ${normalizedWarnings.length}`)
   }
 
   if (interactive) {
     clack.note(summaryLines.join('\n'), 'Summary')
-    if (sync.warnings.length > 0) {
-      clack.note(sync.warnings.map((warning) => `- ${warning}`).join('\n'), 'Warnings')
+    const warningBlock = formatWarnings(normalizedWarnings, 4)
+    if (warningBlock) {
+      clack.note(warningBlock.replace(/^Warnings:\n/, '').trim(), 'Warnings')
     }
     clack.outro(
       [
@@ -162,8 +136,9 @@ export async function runStart(options: StartOptions): Promise<void> {
 
   process.stdout.write(`Setup complete for ${projectRoot}\n`)
   process.stdout.write(`${summaryLines.join('\n')}\n`)
-  if (sync.warnings.length > 0) {
-    process.stdout.write(`Warnings:\n- ${sync.warnings.join('\n- ')}\n`)
+  const warningBlock = formatWarnings(normalizedWarnings, 4)
+  if (warningBlock) {
+    process.stdout.write(warningBlock)
   }
 }
 
@@ -186,7 +161,7 @@ async function resolveIntegrationAccess(args: {
 
   const integrationOptions = {
     cursorAutoApprove: true,
-    antigravityGlobalSync: true
+    antigravityGlobalSync: false
   }
 
   if (selectedIntegrations.includes('codex')) {
@@ -238,22 +213,8 @@ async function resolveIntegrationAccess(args: {
   }
 
   if (selectedIntegrations.includes('antigravity')) {
-    let approve = autoApprove
-    if (interactive) {
-      clack.note(
-        [
-          'Antigravity MCP servers are stored in a user-level profile file.',
-          'agents can keep a managed project-scoped subset in that global file.'
-        ].join('\n'),
-        'Antigravity global MCP sync',
-      )
-      approve = await confirmOrCancel({
-        message: 'Allow global Antigravity MCP sync for this project?',
-        initialValue: true
-      })
-    }
-    integrationOptions.antigravityGlobalSync = approve
-    summaries.antigravity = approve ? 'enabled' : 'disabled'
+    integrationOptions.antigravityGlobalSync = false
+    summaries.antigravity = 'project-local'
   }
 
   return {
@@ -294,7 +255,8 @@ async function shouldOfferCleanup(projectRoot: string): Promise<boolean> {
     legacyAgentDir,
     paths.vscodeMcp,
     paths.claudeSkillsBridge,
-    paths.cursorSkillsBridge
+    paths.cursorSkillsBridge,
+    paths.geminiSkillsBridge
   ]
   for (const candidate of candidates) {
     if (await pathExists(candidate)) return true
@@ -302,32 +264,26 @@ async function shouldOfferCleanup(projectRoot: string): Promise<boolean> {
   return false
 }
 
-function getDefaults(catalog: CatalogFile, profile?: string): {
+function getDefaults(): {
   integrationDefaults: IntegrationName[]
-  presetId: string
   syncMode: SyncMode
-  skillPackDefaults: string[]
+  hideGeneratedInVscode: boolean
 } {
   const available = INTEGRATIONS.filter((integration) => {
     if (!integration.requiredBinary) return true
     return commandExists(integration.requiredBinary)
   }).map((integration) => integration.id)
 
-  // Keep onboarding compact by default: preselect only one integration.
   const integrationDefaults: IntegrationName[] = available.includes('codex')
     ? ['codex']
     : available.length > 0
       ? [available[0]]
       : ['codex']
 
-  const presetExists = profile ? catalog.mcpPresets.some((presetDef) => presetDef.id === profile) : false
-  const presetId = presetExists ? (profile as string) : 'safe-core'
-
   return {
     integrationDefaults,
-    presetId,
     syncMode: 'source-only',
-    skillPackDefaults: catalog.skillPacks.some((pack) => pack.id === 'skills-starter') ? ['skills-starter'] : []
+    hideGeneratedInVscode: true
   }
 }
 
@@ -351,15 +307,10 @@ async function selectIntegrations(defaults: IntegrationName[]): Promise<Integrat
   return (value as IntegrationName[]) ?? []
 }
 
-async function selectPreset(catalog: CatalogFile, defaultPreset: string): Promise<string> {
-  const value = await clack.select({
-    message: 'Choose MCP preset',
-    initialValue: defaultPreset,
-    options: catalog.mcpPresets.map((preset) => ({
-      value: preset.id,
-      label: preset.label,
-      hint: preset.description
-    }))
+async function selectVscodeHideDefaults(defaultValue: boolean): Promise<boolean> {
+  const value = await clack.confirm({
+    message: 'Hide tool directories in VS Code explorer/search by default?',
+    initialValue: defaultValue
   })
 
   if (clack.isCancel(value)) {
@@ -367,87 +318,7 @@ async function selectPreset(catalog: CatalogFile, defaultPreset: string): Promis
     process.exit(1)
   }
 
-  return value as string
-}
-
-function getPresetServerIds(catalog: CatalogFile, presetId: string): string[] {
-  const preset = catalog.mcpPresets.find((item) => item.id === presetId)
-  if (!preset) return []
-  return [...preset.serverIds]
-}
-
-async function selectAdditionalMcp(catalog: CatalogFile, presetServers: string[]): Promise<string[]> {
-  const presetSet = new Set(presetServers)
-  const extraCandidates = Object.entries(catalog.mcpServers)
-    .filter(([id]) => !presetSet.has(id))
-    .map(([id, server]) => ({ value: id, label: server.label, hint: server.description }))
-
-  if (extraCandidates.length === 0) return []
-
-  const value = await clack.multiselect({
-    message: 'Optional: add more MCP servers',
-    required: false,
-    options: extraCandidates
-  })
-
-  if (clack.isCancel(value)) {
-    clack.cancel('Setup canceled.')
-    process.exit(1)
-  }
-
-  return (value as string[]) ?? []
-}
-
-async function selectSkillPacks(catalog: CatalogFile, defaults: string[]): Promise<string[]> {
-  if (catalog.skillPacks.length === 0) return []
-
-  const value = await clack.multiselect({
-    message: 'Optional: choose skill packs',
-    required: false,
-    initialValues: defaults,
-    options: catalog.skillPacks.map((pack) => ({
-      value: pack.id,
-      label: pack.label,
-      hint: pack.description
-    }))
-  })
-
-  if (clack.isCancel(value)) {
-    clack.cancel('Setup canceled.')
-    process.exit(1)
-  }
-
-  return (value as string[]) ?? []
-}
-
-async function selectSkills(catalog: CatalogFile, selectedPacks: string[]): Promise<string[]> {
-  const fromPacks = new Set<string>()
-  for (const packId of selectedPacks) {
-    const pack = catalog.skillPacks.find((entry) => entry.id === packId)
-    if (!pack) continue
-    for (const skillId of pack.skillIds) {
-      fromPacks.add(skillId)
-    }
-  }
-
-  const options = Object.entries(catalog.skills)
-    .filter(([id]) => !fromPacks.has(id))
-    .map(([id, skill]) => ({ value: id, label: skill.name, hint: skill.description }))
-
-  if (options.length === 0) return []
-
-  const value = await clack.multiselect({
-    message: 'Optional: add extra standalone skills',
-    required: false,
-    options
-  })
-
-  if (clack.isCancel(value)) {
-    clack.cancel('Setup canceled.')
-    process.exit(1)
-  }
-
-  return (value as string[]) ?? []
+  return Boolean(value)
 }
 
 async function selectSyncMode(defaultSyncMode: SyncMode): Promise<SyncMode> {

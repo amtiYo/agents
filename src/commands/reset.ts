@@ -2,6 +2,7 @@ import path from 'node:path'
 import { cleanupManagedGitignore } from '../core/gitignore.js'
 import { getProjectPaths } from '../core/paths.js'
 import { pathExists, removeIfExists } from '../core/fs.js'
+import { cleanupVscodeSettingsIfManaged } from '../core/vscodeSettings.js'
 
 export interface ResetOptions {
   projectRoot: string
@@ -13,6 +14,17 @@ export async function runReset(options: ResetOptions): Promise<void> {
   const projectRoot = path.resolve(options.projectRoot)
   const paths = getProjectPaths(projectRoot)
   const legacyAgentDir = path.join(projectRoot, '.agent')
+
+  const removed: string[] = []
+  if (options.hard) {
+    const vscodeSettingsRemoved = await cleanupVscodeSettingsIfManaged({
+      settingsPath: paths.vscodeSettings,
+      statePath: paths.generatedVscodeSettingsState
+    })
+    if (vscodeSettingsRemoved) {
+      removed.push(path.relative(projectRoot, paths.vscodeSettings) || paths.vscodeSettings)
+    }
+  }
 
   const targets = options.hard
     ? [
@@ -48,8 +60,6 @@ export async function runReset(options: ResetOptions): Promise<void> {
           paths.claudeSkillsBridge,
           paths.cursorSkillsBridge
         ]
-
-  const removed: string[] = []
 
   for (const target of targets) {
     if (!(await pathExists(target))) continue

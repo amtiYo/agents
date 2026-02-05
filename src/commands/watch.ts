@@ -3,6 +3,7 @@ import { lstat, readdir } from 'node:fs/promises'
 import { performSync } from '../core/sync.js'
 import { getProjectPaths } from '../core/paths.js'
 import { pathExists } from '../core/fs.js'
+import { formatWarnings } from '../core/warnings.js'
 
 export interface WatchOptions {
   projectRoot: string
@@ -65,8 +66,9 @@ async function runSingleSync(projectRoot: string, quiet: boolean): Promise<void>
       process.stdout.write(`Updated ${result.changed.length} item(s):\n- ${result.changed.join('\n- ')}\n`)
     }
 
-    if (result.warnings.length > 0) {
-      process.stdout.write(`Warnings:\n- ${result.warnings.join('\n- ')}\n`)
+    const warningBlock = formatWarnings(result.warnings, 5)
+    if (warningBlock) {
+      process.stdout.write(warningBlock)
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
@@ -77,10 +79,9 @@ async function runSingleSync(projectRoot: string, quiet: boolean): Promise<void>
 async function snapshotSignature(projectRoot: string): Promise<string> {
   const paths = getProjectPaths(projectRoot)
   const parts = await Promise.all([
-    fingerprintPath(paths.agentsProject, 'project'),
-    fingerprintPath(paths.agentsMd, 'agents_md'),
-    fingerprintPath(paths.mcpSelection, 'selection'),
-    fingerprintPath(paths.mcpLocal, 'local'),
+    fingerprintPath(paths.agentsConfig, 'agents_config'),
+    fingerprintPath(paths.rootAgentsMd, 'agents_md'),
+    fingerprintPath(paths.agentsLocal, 'local'),
     fingerprintTree(paths.agentsSkillsDir, 'skills')
   ])
 

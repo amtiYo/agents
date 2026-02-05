@@ -22,7 +22,11 @@ export async function ensureDir(dirPath: string): Promise<void> {
 
 export async function readJson<T>(filePath: string): Promise<T> {
   const raw = await readFile(filePath, 'utf8')
-  return JSON.parse(raw) as T
+  try {
+    return JSON.parse(raw) as T
+  } catch (error) {
+    throw new Error(`Failed to parse JSON from ${filePath}: ${error instanceof Error ? error.message : String(error)}`)
+  }
 }
 
 export async function writeJsonAtomic(filePath: string, value: unknown): Promise<void> {

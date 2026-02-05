@@ -8,13 +8,12 @@ That fragmentation creates noise, duplicated setup, and broken onboarding.
 `agents` solves this by giving one project standard that can drive multiple LLM tools.
 It **extends AGENTS.md**, not replaces it:
 - AGENTS.md for instructions
-- MCP selection for tools
+- MCP servers for tools
 - SKILLS for reusable workflows
 
 ## What it standardizes
 - One project source-of-truth under `.agents/`
 - One guided setup command: `agents start`
-- One global shared catalog for presets: `~/.config/agents/catalog.json`
 - One sync command to materialize client configs: `agents sync`
 
 ## Supported tools (current)
@@ -45,7 +44,7 @@ agents sync --check
 `agents start` includes setup confirmations for trust/approval-sensitive integrations:
 - Codex project trust
 - Cursor MCP auto-approval
-- Antigravity global MCP sync
+- Antigravity project-local MCP materialization is automatic
 
 By default, the wizard preselects only one integration (Codex when available) to keep setup compact.
 
@@ -56,34 +55,49 @@ By default, the wizard preselects only one integration (Codex when available) to
 
 ## Commands
 ```bash
-agents start [--path <dir>] [--non-interactive] [--profile <name>] [--yes]
+agents start [--path <dir>] [--non-interactive] [--yes]
 agents init [--path <dir>] [--force]
 agents connect [--path <dir>] [--llm codex,claude,gemini,copilot_vscode,cursor,antigravity] [--interactive]
 agents disconnect [--path <dir>] [--llm codex,claude,gemini,copilot_vscode,cursor,antigravity] [--interactive]
 agents sync [--path <dir>] [--check] [--verbose]
 agents watch [--path <dir>] [--interval <ms>] [--once] [--quiet]
-agents status [--path <dir>] [--json]
+agents status [--path <dir>] [--json] [--verbose]
 agents doctor [--path <dir>] [--fix]
 agents reset [--path <dir>] [--local-only] [--hard]
+agents mcp list [--path <dir>] [--json]
+agents mcp add [name] [--path <dir>] [--transport stdio|http|sse] [--command <cmd>] [--arg <value>] [--url <url>] [--env KEY=VALUE] [--header KEY=VALUE] [--secret-env KEY=VALUE] [--secret-header KEY=VALUE] [--secret-arg index=value] [--target <integration>] [--replace]
+agents mcp import [--path <dir>] [--file <json>] [--json <text>] [--url <url>] [--name <name>] [--target <integration>] [--replace]
+agents mcp remove <name> [--path <dir>] [--ignore-missing]
+agents mcp test [name] [--path <dir>] [--json]
+agents mcp doctor [name] [--path <dir>] [--json]
 ```
+
+## MCP toolkit (0.7.1)
+- `agents mcp add`: add one server via flags or interactive prompts; if `[name]` is an `http(s)` URL, it auto-runs import flow.
+- `agents mcp import`: import strict JSON/JSONC snippets (`--file`, `--json`, `--url`, or stdin).
+- `agents mcp remove`: delete a server from `.agents/agents.json` + `.agents/local.json`.
+- `agents mcp list`: inspect configured servers and local overrides.
+- `agents mcp test`: validate transport/command/url/required env consistency.
+- `agents mcp doctor`: alias for `agents mcp test`.
+
+## Output UX
+- `agents status` prints a compact summary by default.
+- `agents status --verbose` prints full files/probes details.
 
 ## Project layout
 ```text
 <project>/
-  AGENTS.md -> .agents/AGENTS.md
+  AGENTS.md
   .agents/
-    AGENTS.md
     README.md
-    project.json
-    mcp/
-      selection.json
-      local.json
-      local.example.json
+    agents.json
+    local.json
     skills/
       README.md
       skill-guide/SKILL.md
       <other-skills>/SKILL.md
     generated/
+      vscode.settings.state.json
 ```
 
 ## Reset semantics
@@ -94,30 +108,18 @@ agents reset [--path <dir>] [--local-only] [--hard]
 ## Git strategy (default)
 Default is `source-only`:
 - keep `.agents/*` in git,
-- ignore generated/local files (`.agents/generated`, `.agents/mcp/local.json`, `.codex`, `.gemini`, `.vscode/mcp.json`, `.claude/skills`, `.cursor`).
-
-## Global catalog
-Default location:
-- macOS/Linux: `~/.config/agents/catalog.json`
-- Windows: `%APPDATA%/agents/catalog.json`
-
-Override path with:
-```bash
-export AGENTS_CATALOG_PATH=/custom/path/catalog.json
-```
+- ignore generated/local files (`.agents/generated`, `.agents/local.json`, `.codex`, `.gemini`, `.vscode/mcp.json`, `.claude/skills`, `.cursor`).
 
 Optional Codex config path override (useful for tests):
 ```bash
 export AGENTS_CODEX_CONFIG_PATH=/custom/path/codex.toml
 ```
 
-Optional Antigravity global MCP path override:
-```bash
-export AGENTS_ANTIGRAVITY_MCP_PATH=/custom/path/mcp.json
-```
+Antigravity uses project-local materialization:
+- `.antigravity/mcp.json`
 
 ## Codex visibility note
-`codex mcp list` can differ from project-selected MCP in `.agents`.
+`codex mcp list` can differ from project-selected MCP in `.agents/agents.json`.
 `agents status` shows both:
 - project trust state (`codex_trust`)
 - codex CLI list output
@@ -147,8 +149,15 @@ Community feedback is the fastest way to turn this into a practical cross-tool s
 
 ## References
 - https://agents.md
+- https://agentskills.io/home
 - https://cursor.com/docs/context/mcp
-- https://cursor.com/docs/cli/mcp
 - https://cursor.com/docs/context/skills
 - https://antigravity.google/docs/mcp
 - https://antigravity.google/docs/skills
+- https://developers.openai.com/codex/guides/agents-md
+- https://developers.openai.com/codex/mcp
+- https://developers.openai.com/codex/skills
+- https://geminicli.com/docs/cli/skills/
+- https://geminicli.com/docs/tools/mcp-server/
+- https://code.claude.com/docs/en/mcp
+- https://code.claude.com/docs/en/skills

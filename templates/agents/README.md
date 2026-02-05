@@ -3,23 +3,23 @@
 Project-local standard for AGENTS.md + MCP + SKILLS.
 
 ## Source files (commit these)
-- `project.json`: selected LLM integrations + sync mode
-- `AGENTS.md`: canonical instruction document
-- `mcp/selection.json`: selected MCP ids
+- `agents.json`: selected integrations + MCP servers + workspace behavior
 - `skills/*/SKILL.md`: project skills
 
+## Root instruction file
+- `../AGENTS.md`: canonical instruction document
+
 ## Local/private files (do not commit)
-- `mcp/local.json`: machine-specific overrides and secrets
+- `local.json`: machine-specific MCP overrides and secrets
 
 ## Generated files
 - `generated/*`: renderer outputs used by `agents sync`
+- `generated/vscode.settings.state.json`: managed VS Code hide state
 
 ## Common materialized outputs
 - `.codex/config.toml`
 - `.gemini/settings.json`
 - `.vscode/mcp.json`
+- `.vscode/settings.json`
 - `.cursor/mcp.json`
-
-## Where global defaults live
-- Global catalog: `~/.config/agents/catalog.json`
-- Override path with `AGENTS_CATALOG_PATH`
+- `.antigravity/mcp.json`

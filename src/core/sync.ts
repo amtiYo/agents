@@ -1,10 +1,8 @@
-import { createHash } from 'node:crypto'
 import path from 'node:path'
 import { ensureDir, pathExists, readJson, readTextOrEmpty, writeJsonAtomic, writeTextAtomic } from './fs.js'
-import { loadProjectConfig, saveProjectConfig } from './config.js'
-import { ensureGlobalCatalog } from './catalog.js'
+import { loadAgentsConfig, saveAgentsConfig } from './config.js'
 import { loadResolvedRegistry } from './mcp.js'
-import { getAntigravityUserMcpPath, getProjectPaths } from './paths.js'
+import { getProjectPaths } from './paths.js'
 import { commandExists, runCommand } from './shell.js'
 import { buildCodexConfig } from '../integrations/codex.js'
 import { toManagedClaudeName } from '../integrations/claude.js'
@@ -15,6 +13,9 @@ import { buildAntigravityPayload } from '../integrations/antigravity.js'
 import { renderVscodeMcp } from './renderers.js'
 import { ensureProjectGitignore } from './gitignore.js'
 import { syncSkills } from './skills.js'
+import { syncVscodeSettings } from './vscodeSettings.js'
+import { listCursorMcpStatuses } from './cursorCli.js'
+import { validateEnvValueForShell, validateServerName } from './mcpValidation.js'
 import type { IntegrationName, ResolvedMcpServer, SyncOptions, SyncResult } from '../types.js'
 
 interface ClaudeState {
@@ -25,15 +26,10 @@ interface CursorState {
   managedNames: string[]
 }
 
-interface AntigravityState {
-  managedNames: string[]
-}
-
 export async function performSync(options: SyncOptions): Promise<SyncResult> {
   const { projectRoot, check, verbose } = options
   const paths = getProjectPaths(projectRoot)
-  const config = await loadProjectConfig(projectRoot)
-  const { catalog } = await ensureGlobalCatalog()
+  const config = await loadAgentsConfig(projectRoot)
 
   const resolved = await loadResolvedRegistry(projectRoot)
   const warnings = [...resolved.warnings]
@@ -60,7 +56,7 @@ export async function performSync(options: SyncOptions): Promise<SyncResult> {
     resolvedByTarget: resolved.serversByTarget
   })
 
-  const enabled = new Set(config.enabledIntegrations)
+  const enabled = new Set(config.integrations.enabled)
 
   if (enabled.has('codex')) {
     await materializeCodex(paths.generatedCodex, paths.codexConfig, check, changed)
@@ -73,6 +69,9 @@ export async function performSync(options: SyncOptions): Promise<SyncResult> {
   }
   if (enabled.has('cursor')) {
     await materializeCursor(paths.generatedCursor, paths.cursorMcp, check, changed)
+  }
+  if (enabled.has('antigravity')) {
+    await materializeAntigravityProject(paths.generatedAntigravity, paths.antigravityProjectMcp, check, changed)
   }
 
   await syncClaude({
@@ -87,7 +86,7 @@ export async function performSync(options: SyncOptions): Promise<SyncResult> {
 
   await syncCursor({
     enabled: enabled.has('cursor'),
-    autoApprove: config.integrationOptions.cursorAutoApprove,
+    autoApprove: config.integrations.options.cursorAutoApprove,
     check,
     projectRoot,
     servers: resolved.serversByTarget.cursor,
@@ -96,29 +95,28 @@ export async function performSync(options: SyncOptions): Promise<SyncResult> {
     warnings
   })
 
-  await syncAntigravity({
-    enabled: enabled.has('antigravity'),
-    enableGlobalSync: config.integrationOptions.antigravityGlobalSync,
-    check,
+  await syncSkills({
     projectRoot,
-    servers: resolved.serversByTarget.antigravity,
-    statePath: paths.generatedAntigravityState,
+    enabledIntegrations: config.integrations.enabled,
+    check,
     changed,
     warnings
   })
 
-  await syncSkills({
-    projectRoot,
-    config,
-    catalog,
+  await syncVscodeSettings({
+    settingsPath: paths.vscodeSettings,
+    statePath: paths.generatedVscodeSettingsState,
+    hiddenPaths: config.workspace.vscode.hiddenPaths,
+    hideGenerated: config.workspace.vscode.hideGenerated,
     check,
     changed,
-    warnings
+    warnings,
+    projectRoot
   })
 
   if (!check) {
     config.lastSync = new Date().toISOString()
-    await saveProjectConfig(projectRoot, config)
+    await saveAgentsConfig(projectRoot, config)
   }
 
   if (verbose && changed.length > 0) {
@@ -204,13 +202,23 @@ async function materializeCodex(generatedPath: string, targetPath: string, check
 }
 
 async function materializeGemini(generatedPath: string, targetPath: string, check: boolean, changed: string[]): Promise<void> {
-  const generated = JSON.parse(await readTextOrEmpty(generatedPath)) as Record<string, unknown>
+  const rawGenerated = await readTextOrEmpty(generatedPath)
+  let generated: Record<string, unknown> = {}
+  if (rawGenerated.trim()) {
+    try {
+      generated = JSON.parse(rawGenerated) as Record<string, unknown>
+    } catch (error) {
+      throw new Error(`Failed to parse generated Gemini config: ${error instanceof Error ? error.message : String(error)}`)
+    }
+  }
 
   let existing: Record<string, unknown> = {}
   if (await pathExists(targetPath)) {
     try {
       existing = await readJson<Record<string, unknown>>(targetPath)
-    } catch {
+    } catch (error) {
+      // Warn instead of silently ignoring - corrupted files should be noticed
+      console.warn(`Warning: Failed to read existing Gemini config at ${targetPath}, starting fresh. Error: ${error instanceof Error ? error.message : String(error)}`)
       existing = {}
     }
   }
@@ -246,6 +254,16 @@ async function materializeCursor(generatedPath: string, targetPath: string, chec
   await writeManagedFile(targetPath, content, path.dirname(path.dirname(targetPath)), check, changed)
 }
 
+async function materializeAntigravityProject(
+  generatedPath: string,
+  targetPath: string,
+  check: boolean,
+  changed: string[],
+): Promise<void> {
+  const content = await readTextOrEmpty(generatedPath)
+  await writeManagedFile(targetPath, content, path.dirname(path.dirname(targetPath)), check, changed)
+}
+
 async function syncClaude(args: {
   enabled: boolean
   check: boolean
@@ -262,6 +280,11 @@ async function syncClaude(args: {
     ? await readJson<ClaudeState>(statePath)
     : { managedNames: [] }
 
+  // Validate all server names before using them in commands
+  for (const server of servers) {
+    validateServerName(server.name)
+  }
+
   const desiredNames = enabled ? servers.map((server) => toManagedClaudeName(server.name)) : []
   const currentNames = state.managedNames ?? []
 
@@ -277,7 +300,8 @@ async function syncClaude(args: {
     return
   }
 
-  const namesToRemove = [...new Set([...currentNames, ...desiredNames])]
+  // Remove servers that exist in current but not in desired (proper set difference)
+  const namesToRemove = currentNames.filter((name) => !desiredNames.includes(name))
   for (const name of namesToRemove) {
     const removed = runCommand(command, ['mcp', 'remove', '-s', 'local', name], projectRoot)
     if (
@@ -326,17 +350,38 @@ async function syncCursor(args: {
     ? await readJson<CursorState>(statePath)
     : { managedNames: [] }
 
+  // Validate all server names before using them in commands
+  for (const server of servers) {
+    validateServerName(server.name)
+  }
+
   const desiredNames = enabled ? servers.map((server) => server.name) : []
   const currentNames = state.managedNames ?? []
+  const hasCursorCli = commandExists(command)
+  let namesNeedingApproval = new Set<string>()
 
-  if (equalSets(new Set(currentNames), new Set(desiredNames))) {
+  if (enabled && autoApprove && hasCursorCli) {
+    const listed = listCursorMcpStatuses(projectRoot)
+    if (!listed.ok) {
+      warnings.push(`Failed checking Cursor MCP status: ${compactError(listed.stderr)}`)
+    } else {
+      namesNeedingApproval = new Set(
+        desiredNames.filter((name) => listed.statuses[name] !== 'ready'),
+      )
+    }
+  }
+
+  if (
+    equalSets(new Set(currentNames), new Set(desiredNames))
+    && namesNeedingApproval.size === 0
+  ) {
     return
   }
   changed.push('cursor-local-approval')
 
   if (check) return
 
-  if (!commandExists(command)) {
+  if (!hasCursorCli) {
     warnings.push('Cursor CLI not found; skipped Cursor MCP approval sync.')
     return
   }
@@ -356,8 +401,12 @@ async function syncCursor(args: {
 
   const approved: string[] = []
   for (const name of desiredNames) {
+    if (!namesNeedingApproval.has(name)) {
+      approved.push(name)
+      continue
+    }
     const result = runCommand(command, ['mcp', 'enable', name], projectRoot)
-    if (!result.ok) {
+    if (!result.ok && !isCursorAlreadyEnabledError(result.stderr)) {
       warnings.push(`Failed enabling Cursor MCP server ${name}: ${compactError(result.stderr)}`)
       continue
     }
@@ -366,116 +415,6 @@ async function syncCursor(args: {
 
   await ensureDir(path.dirname(statePath))
   await writeJsonAtomic(statePath, { managedNames: approved })
-}
-
-async function syncAntigravity(args: {
-  enabled: boolean
-  enableGlobalSync: boolean
-  check: boolean
-  projectRoot: string
-  servers: ResolvedMcpServer[]
-  statePath: string
-  changed: string[]
-  warnings: string[]
-}): Promise<void> {
-  const { enabled, enableGlobalSync, check, projectRoot, servers, statePath, changed, warnings } = args
-
-  if (!enableGlobalSync) {
-    const existingState: AntigravityState = (await pathExists(statePath))
-      ? await readJson<AntigravityState>(statePath)
-      : { managedNames: [] }
-
-    const globalPath = getAntigravityUserMcpPath()
-    if (existingState.managedNames.length > 0 && (await pathExists(globalPath))) {
-      let existing: { servers?: Record<string, unknown>; inputs?: unknown[] } = { servers: {}, inputs: [] }
-      try {
-        existing = await readJson<{ servers?: Record<string, unknown>; inputs?: unknown[] }>(globalPath)
-      } catch {
-        existing = { servers: {}, inputs: [] }
-      }
-
-      const serversMap = typeof existing.servers === 'object' && existing.servers !== null
-        ? ({ ...(existing.servers as Record<string, unknown>) })
-        : {}
-      for (const name of existingState.managedNames) {
-        delete serversMap[name]
-      }
-
-      const next = {
-        servers: serversMap,
-        inputs: Array.isArray(existing.inputs) ? existing.inputs : []
-      }
-      if (JSON.stringify(existing) !== JSON.stringify(next)) {
-        changed.push('antigravity-user-mcp')
-        if (!check) {
-          await writeTextAtomic(globalPath, `${JSON.stringify(next, null, 2)}\n`)
-        }
-      }
-    }
-
-    if (existingState.managedNames.length > 0) {
-      changed.push(path.relative(projectRoot, statePath) || statePath)
-      if (!check) {
-        await writeJsonAtomic(statePath, { managedNames: [] } satisfies AntigravityState)
-      }
-    }
-    return
-  }
-
-  const globalPath = getAntigravityUserMcpPath()
-  const state: AntigravityState = (await pathExists(statePath))
-    ? await readJson<AntigravityState>(statePath)
-    : { managedNames: [] }
-
-  let existing: { servers?: Record<string, unknown>; inputs?: unknown[] } = { servers: {}, inputs: [] }
-  if (await pathExists(globalPath)) {
-    try {
-      existing = await readJson<{ servers?: Record<string, unknown>; inputs?: unknown[] }>(globalPath)
-    } catch {
-      warnings.push(`Antigravity MCP file is invalid JSON, recreating: ${globalPath}`)
-      existing = { servers: {}, inputs: [] }
-    }
-  }
-
-  const serversMap = typeof existing.servers === 'object' && existing.servers !== null
-    ? ({ ...(existing.servers as Record<string, unknown>) })
-    : {}
-
-  const prefix = antigravityManagedPrefix(projectRoot)
-  const desired = enabled
-    ? Object.fromEntries(servers.map((server) => [antigravityManagedName(prefix, server.name), toAntigravityServer(server)]))
-    : {}
-
-  for (const name of Object.keys(serversMap)) {
-    if (name.startsWith(prefix)) {
-      delete serversMap[name]
-    }
-  }
-  for (const [name, server] of Object.entries(desired)) {
-    serversMap[name] = server
-  }
-
-  const next = {
-    servers: serversMap,
-    inputs: Array.isArray(existing.inputs) ? existing.inputs : []
-  }
-
-  const before = JSON.stringify(existing)
-  const after = JSON.stringify(next)
-  if (before !== after) {
-    changed.push('antigravity-user-mcp')
-    if (!check) {
-      await writeTextAtomic(globalPath, `${JSON.stringify(next, null, 2)}\n`)
-    }
-  }
-
-  const managedNames = Object.keys(desired).sort((a, b) => a.localeCompare(b))
-  if (!equalSets(new Set(state.managedNames ?? []), new Set(managedNames))) {
-    changed.push(path.relative(projectRoot, statePath) || statePath)
-    if (!check) {
-      await writeJsonAtomic(statePath, { managedNames })
-    }
-  }
 }
 
 function addClaudeServer(
@@ -490,11 +429,16 @@ function addClaudeServer(
     }
 
     const args: string[] = ['mcp', 'add', '-s', 'local', name]
+    // Validate environment variables before using them
     for (const [key, value] of Object.entries(server.env ?? {})) {
+      validateEnvValueForShell(key, value, 'environment variable')
       args.push('-e', `${key}=${value}`)
     }
     args.push('--', server.command, ...(server.args ?? []))
     const result = runCommand(command, args, projectRoot)
+    if (!result.ok && isClaudeAlreadyExistsError(result.stderr)) {
+      return { ok: true, stderr: result.stderr }
+    }
     return { ok: result.ok, stderr: result.stderr }
   }
 
@@ -503,36 +447,16 @@ function addClaudeServer(
   }
 
   const args: string[] = ['mcp', 'add', '-s', 'local', '-t', server.transport, name, server.url]
+  // Validate headers before using them
   for (const [key, value] of Object.entries(server.headers ?? {})) {
+    validateEnvValueForShell(key, value, 'header')
     args.push('-H', `${key}: ${value}`)
   }
   const result = runCommand(command, args, projectRoot)
+  if (!result.ok && isClaudeAlreadyExistsError(result.stderr)) {
+    return { ok: true, stderr: result.stderr }
+  }
   return { ok: result.ok, stderr: result.stderr }
-}
-
-function antigravityManagedPrefix(projectRoot: string): string {
-  const digest = createHash('sha1').update(path.resolve(projectRoot)).digest('hex').slice(0, 10)
-  return `agents__${digest}__`
-}
-
-function antigravityManagedName(prefix: string, serverName: string): string {
-  return `${prefix}${serverName}`
-}
-
-function toAntigravityServer(server: ResolvedMcpServer): Record<string, unknown> {
-  if (server.transport === 'stdio') {
-    return {
-      command: server.command,
-      args: server.args ?? [],
-      ...(server.env ? { env: server.env } : {})
-    }
-  }
-
-  return {
-    type: server.transport,
-    url: server.url,
-    ...(server.headers ? { headers: server.headers } : {})
-  }
 }
 
 async function writeManagedFile(
@@ -562,6 +486,15 @@ function equalSets(a: Set<string>, b: Set<string>): boolean {
 
 function compactError(stderr: string): string {
   return stderr.trim().split('\n').at(-1) ?? 'unknown error'
+}
+
+function isClaudeAlreadyExistsError(stderr: string): boolean {
+  return stderr.toLowerCase().includes('already exists in local config')
+}
+
+function isCursorAlreadyEnabledError(stderr: string): boolean {
+  const lowered = stderr.toLowerCase()
+  return lowered.includes('already enabled') || lowered.includes('already approved')
 }
 
 function uniqueSorted(values: string[]): string[] {

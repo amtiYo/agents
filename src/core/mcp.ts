@@ -1,59 +1,42 @@
 import type {
-  CatalogFile,
-  CatalogMcpServer,
   IntegrationName,
-  McpLocalFile,
-  McpSelection,
+  LocalOverridesFile,
+  McpServerDefinition,
   ResolvedMcpServer,
   ResolvedRegistry
 } from '../types.js'
-import { MCP_SELECTION_SCHEMA_VERSION } from '../types.js'
-import { ensureGlobalCatalog } from './catalog.js'
+import { loadAgentsConfig } from './config.js'
 import { pathExists, readJson } from './fs.js'
 import { getProjectPaths } from './paths.js'
 
 const ALL_INTEGRATIONS: IntegrationName[] = ['codex', 'claude', 'gemini', 'copilot_vscode', 'cursor', 'antigravity']
 const LEGACY_INTEGRATIONS: IntegrationName[] = ['codex', 'claude', 'gemini', 'copilot_vscode']
 
-export async function loadSelection(projectRoot: string): Promise<McpSelection> {
+export async function loadLocalOverrides(projectRoot: string): Promise<LocalOverridesFile> {
   const paths = getProjectPaths(projectRoot)
-  if (!(await pathExists(paths.mcpSelection))) {
-    throw new Error(`Missing MCP selection file: ${paths.mcpSelection}. Run "agents start".`)
+  if (!(await pathExists(paths.agentsLocal))) {
+    return { mcpServers: {} }
   }
-
-  const selection = await readJson<McpSelection>(paths.mcpSelection)
-  if (selection.schemaVersion !== MCP_SELECTION_SCHEMA_VERSION) {
-    throw new Error(
-      `Unsupported MCP selection schema ${String(selection.schemaVersion)}. Expected ${String(MCP_SELECTION_SCHEMA_VERSION)}.`,
-    )
-  }
-  return selection
+  return readJson<LocalOverridesFile>(paths.agentsLocal)
 }
 
 export async function loadResolvedRegistry(projectRoot: string): Promise<ResolvedRegistry> {
-  const paths = getProjectPaths(projectRoot)
-  const { catalog } = await ensureGlobalCatalog()
-  const selection = await loadSelection(projectRoot)
+  const config = await loadAgentsConfig(projectRoot)
+  const local = await loadLocalOverrides(projectRoot)
 
-  const local = (await pathExists(paths.mcpLocal))
-    ? await readJson<McpLocalFile>(paths.mcpLocal)
-    : { mcpServers: {} }
-
-  return resolveFromCatalogAndSelection({
+  return resolveFromConfigAndLocal({
     projectRoot,
-    catalog,
-    selection,
+    servers: config.mcp.servers,
     local
   })
 }
 
-export function resolveFromCatalogAndSelection(input: {
+export function resolveFromConfigAndLocal(input: {
   projectRoot: string
-  catalog: CatalogFile
-  selection: McpSelection
-  local: McpLocalFile
+  servers: Record<string, McpServerDefinition>
+  local: LocalOverridesFile
 }): ResolvedRegistry {
-  const { projectRoot, catalog, selection, local } = input
+  const { projectRoot, servers, local } = input
 
   const warnings: string[] = []
   const missingRequiredEnv: string[] = []
@@ -68,26 +51,19 @@ export function resolveFromCatalogAndSelection(input: {
   }
 
   const selectedServerNames: string[] = []
+  const localOverrides = local?.mcpServers ?? {}
 
-  for (const name of selection.selectedMcpServers) {
-    const base = catalog.mcpServers[name]
-    const override = local.mcpServers[name]
-
-    if (!base && !override) {
-      warnings.push(`Selected MCP server "${name}" not found in catalog or local overrides.`)
-      continue
-    }
-
-    const merged = deepMerge(base ?? {}, override ?? {}) as CatalogMcpServer
+  for (const name of Object.keys(servers).sort((a, b) => a.localeCompare(b))) {
+    const base = servers[name]
+    const override = localOverrides[name]
+    const merged = deepMerge(base ?? {}, override ?? {}) as McpServerDefinition
 
     if (!merged.transport) {
       warnings.push(`MCP server "${name}" is invalid: missing transport.`)
       continue
     }
 
-    if (merged.enabled === false) {
-      continue
-    }
+    if (merged.enabled === false) continue
 
     const missing = (merged.requiredEnv ?? []).filter((envName) => !process.env[envName])
     if (missing.length > 0) {
@@ -142,7 +118,7 @@ function normalizeTargets(targets: IntegrationName[] | undefined): IntegrationNa
 
 function resolveServer(
   name: string,
-  server: CatalogMcpServer,
+  server: McpServerDefinition,
   projectRoot: string,
   warnings: string[],
 ): ResolvedMcpServer {

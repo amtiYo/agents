@@ -12,8 +12,8 @@ Deliver correct, maintainable changes with minimal risk.
 - Prefer reversible changes and deterministic outputs.
 
 ## MCP & Skills
-- MCP selection: `.agents/mcp/selection.json`
-- Local MCP overrides/secrets: `.agents/mcp/local.json`
+- MCP server definitions: `.agents/agents.json`
+- Local MCP overrides/secrets: `.agents/local.json`
 - Project skills: `.agents/skills/*/SKILL.md`
 
 ## Workflow

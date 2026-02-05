@@ -1,144 +1,29 @@
 import path from 'node:path'
-import { copyDir, ensureDir, pathExists, readJson, readTextOrEmpty, removeIfExists, writeJsonAtomic, writeTextAtomic } from './fs.js'
-import { getProjectPaths } from './paths.js'
-import type { CatalogFile, ProjectConfig } from '../types.js'
 import { lstat, readdir, readlink, symlink } from 'node:fs/promises'
-
-interface SkillsState {
-  managedSkillIds: string[]
-  bridgeMode: 'symlink' | 'copy' | 'none'
-}
-
-const DEFAULT_STATE: SkillsState = {
-  managedSkillIds: [],
-  bridgeMode: 'none'
-}
+import { copyDir, ensureDir, pathExists, removeIfExists, writeTextAtomic } from './fs.js'
+import { getProjectPaths } from './paths.js'
+import type { IntegrationName } from '../types.js'
 
 export async function syncSkills(args: {
   projectRoot: string
-  config: ProjectConfig
-  catalog: CatalogFile
+  enabledIntegrations: IntegrationName[]
   check: boolean
   changed: string[]
   warnings: string[]
 }): Promise<void> {
-  const { projectRoot, config, catalog, check, changed, warnings } = args
+  const { projectRoot, enabledIntegrations, check, changed, warnings } = args
   const paths = getProjectPaths(projectRoot)
-  const state = (await pathExists(paths.generatedSkillsState))
-    ? await readJson<SkillsState>(paths.generatedSkillsState)
-    : DEFAULT_STATE
-
-  const desiredSkillIds = getDesiredSkillIds(config, catalog)
-  const hasManagedSkills = desiredSkillIds.length > 0
 
   await ensureDir(paths.agentsSkillsDir)
 
-  const currentManaged = new Set(state.managedSkillIds)
-  const desired = new Set(desiredSkillIds)
-
-  for (const skillId of state.managedSkillIds) {
-    if (desired.has(skillId)) continue
-    const skillDir = path.join(paths.agentsSkillsDir, skillId)
-    if (await pathExists(skillDir)) {
-      changed.push(path.relative(projectRoot, skillDir) || skillDir)
-      if (!check) {
-        await removeIfExists(skillDir)
-      }
-    }
-  }
-
-  for (const skillId of desiredSkillIds) {
-    const skill = catalog.skills[skillId]
-    if (!skill) {
-      warnings.push(`Unknown skill id "${skillId}" from selected packs/skills.`)
-      continue
-    }
-
-    const skillDir = path.join(paths.agentsSkillsDir, skillId)
-    const skillFile = path.join(skillDir, 'SKILL.md')
-    const content = renderSkillMarkdown(skill)
-
-    const previous = await readTextOrEmpty(skillFile)
-    if (previous !== content) {
-      changed.push(path.relative(projectRoot, skillFile) || skillFile)
-      if (!check) {
-        await ensureDir(skillDir)
-        await writeTextAtomic(skillFile, content)
-      }
-    }
-  }
-
-  await syncClaudeSkillsBridge({
-    projectRoot,
-    claudeEnabled: config.enabledIntegrations.includes('claude') && hasManagedSkills,
-    cursorEnabled: config.enabledIntegrations.includes('cursor') && hasManagedSkills,
-    check,
-    changed,
-    warnings
-  })
-  await cleanupLegacyAntigravityBridge({
-    projectRoot,
-    check,
-    changed
-  })
-
-  const nextState: SkillsState = {
-    managedSkillIds: desiredSkillIds,
-    bridgeMode:
-      hasManagedSkills &&
-      (config.enabledIntegrations.includes('claude') ||
-      config.enabledIntegrations.includes('cursor'))
-        ? 'symlink'
-        : 'none'
-  }
-
-  if (!equalState(nextState, state)) {
-    changed.push(path.relative(projectRoot, paths.generatedSkillsState) || paths.generatedSkillsState)
-    if (!check) {
-      await writeJsonAtomic(paths.generatedSkillsState, nextState)
-    }
-  }
-
-}
-
-function getDesiredSkillIds(config: ProjectConfig, catalog: CatalogFile): string[] {
-  const set = new Set<string>()
-
-  for (const packId of config.selectedSkillPacks) {
-    const pack = catalog.skillPacks.find((item) => item.id === packId)
-    if (!pack) continue
-    for (const skillId of pack.skillIds) {
-      set.add(skillId)
-    }
-  }
-
-  for (const skillId of config.selectedSkills) {
-    set.add(skillId)
-  }
-
-  return [...set].sort((a, b) => a.localeCompare(b))
-}
-
-function renderSkillMarkdown(skill: { name: string; description: string; instructions: string }): string {
-  return `---\nname: ${skill.name}\ndescription: ${skill.description}\n---\n\n${skill.instructions}\n`
-}
-
-async function syncClaudeSkillsBridge(args: {
-  projectRoot: string
-  claudeEnabled: boolean
-  cursorEnabled: boolean
-  check: boolean
-  changed: string[]
-  warnings: string[]
-}): Promise<void> {
-  const { projectRoot, claudeEnabled, cursorEnabled, check, changed, warnings } = args
-  const paths = getProjectPaths(projectRoot)
+  const hasSkills = await hasSkillDirectories(paths.agentsSkillsDir)
 
   await syncToolSkillsBridge({
-    enabled: claudeEnabled,
+    enabled: enabledIntegrations.includes('claude') && hasSkills,
     projectRoot,
     parentDir: paths.claudeDir,
     bridgePath: paths.claudeSkillsBridge,
+    sourcePath: paths.agentsSkillsDir,
     label: '.claude/skills',
     check,
     changed,
@@ -146,15 +31,47 @@ async function syncClaudeSkillsBridge(args: {
   })
 
   await syncToolSkillsBridge({
-    enabled: cursorEnabled,
+    enabled: enabledIntegrations.includes('cursor') && hasSkills,
     projectRoot,
     parentDir: paths.cursorDir,
     bridgePath: paths.cursorSkillsBridge,
+    sourcePath: paths.agentsSkillsDir,
     label: '.cursor/skills',
     check,
     changed,
     warnings
   })
+
+  await syncToolSkillsBridge({
+    enabled: enabledIntegrations.includes('gemini') && hasSkills,
+    projectRoot,
+    parentDir: paths.geminiDir,
+    bridgePath: paths.geminiSkillsBridge,
+    sourcePath: paths.agentsSkillsDir,
+    label: '.gemini/skills',
+    check,
+    changed,
+    warnings
+  })
+
+  await cleanupLegacyAntigravityBridge({
+    projectRoot,
+    check,
+    changed
+  })
+}
+
+async function hasSkillDirectories(skillsDir: string): Promise<boolean> {
+  if (!(await pathExists(skillsDir))) return false
+  const entries = await readdir(skillsDir, { withFileTypes: true })
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue
+    const skillFile = path.join(skillsDir, entry.name, 'SKILL.md')
+    if (await pathExists(skillFile)) {
+      return true
+    }
+  }
+  return false
 }
 
 async function syncToolSkillsBridge(args: {
@@ -162,23 +79,22 @@ async function syncToolSkillsBridge(args: {
   projectRoot: string
   parentDir: string
   bridgePath: string
+  sourcePath: string
   label: string
   check: boolean
   changed: string[]
   warnings: string[]
 }): Promise<void> {
-  const { enabled, projectRoot, parentDir, bridgePath, label, check, changed, warnings } = args
-  const paths = getProjectPaths(projectRoot)
-  const expectedRelative = path.relative(path.dirname(bridgePath), paths.agentsSkillsDir) || '.'
+  const { enabled, projectRoot, parentDir, bridgePath, sourcePath, label, check, changed, warnings } = args
+  const expectedRelative = path.relative(path.dirname(bridgePath), sourcePath) || '.'
 
   if (!enabled) {
-    const removed = await cleanupManagedBridge(bridgePath, expectedRelative, paths.agentsSkillsDir)
+    const removed = await cleanupManagedBridge(bridgePath, expectedRelative, sourcePath)
     if (removed) {
       changed.push(path.relative(projectRoot, bridgePath) || bridgePath)
-      if (check) {
-        return
+      if (!check) {
+        await removeIfExists(bridgePath)
       }
-      await removeIfExists(bridgePath)
     }
     return
   }
@@ -190,7 +106,7 @@ async function syncToolSkillsBridge(args: {
     const linkInfo = await lstat(bridgePath)
     if (linkInfo.isSymbolicLink()) {
       const current = await readlink(bridgePath)
-      if (current === expectedRelative || path.resolve(path.dirname(bridgePath), current) === paths.agentsSkillsDir) {
+      if (current === expectedRelative || path.resolve(path.dirname(bridgePath), current) === sourcePath) {
         return
       }
       changed.push(path.relative(projectRoot, bridgePath) || bridgePath)
@@ -201,7 +117,7 @@ async function syncToolSkillsBridge(args: {
       const marker = path.join(bridgePath, '.agents_bridge')
       if (await pathExists(marker)) {
         if (!check) {
-          await copyDir(paths.agentsSkillsDir, bridgePath)
+          await copyDir(sourcePath, bridgePath)
         }
         return
       } else {
@@ -217,20 +133,11 @@ async function syncToolSkillsBridge(args: {
   try {
     await symlink(expectedRelative, bridgePath)
   } catch (error) {
-    await copyDir(paths.agentsSkillsDir, bridgePath)
+    await copyDir(sourcePath, bridgePath)
     await writeTextAtomic(path.join(bridgePath, '.agents_bridge'), 'managed-by-agents\n')
     const message = error instanceof Error ? error.message : String(error)
     warnings.push(`${label} bridge fallback to copy mode: ${message}`)
   }
-}
-
-function equalState(a: SkillsState, b: SkillsState): boolean {
-  if (a.bridgeMode !== b.bridgeMode) return false
-  if (a.managedSkillIds.length !== b.managedSkillIds.length) return false
-  for (let i = 0; i < a.managedSkillIds.length; i += 1) {
-    if (a.managedSkillIds[i] !== b.managedSkillIds[i]) return false
-  }
-  return true
 }
 
 async function cleanupManagedBridge(bridgePath: string, expectedRelative: string, expectedAbsolute: string): Promise<boolean> {

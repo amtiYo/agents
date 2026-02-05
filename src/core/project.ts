@@ -1,76 +1,52 @@
 import path from 'node:path'
-import { MCP_SELECTION_SCHEMA_VERSION } from '../types.js'
-import type { LinkMode, McpSelection, ProjectConfig, SyncMode } from '../types.js'
-import { ensureDir, pathExists, writeJsonAtomic } from './fs.js'
-import { createDefaultProjectConfig, saveProjectConfig } from './config.js'
+import type { AgentsConfig, IntegrationName, SyncMode } from '../types.js'
+import { ensureDir, pathExists } from './fs.js'
+import { createDefaultAgentsConfig, saveAgentsConfig } from './config.js'
 import { getProjectPaths } from './paths.js'
 import { scaffoldBaseTemplates } from './templates.js'
-import { ensureRootAgentsLink } from './linking.js'
 
 export async function initializeProjectSkeleton(args: {
   projectRoot: string
   force: boolean
-  integrations: ProjectConfig['enabledIntegrations']
-  integrationOptions: ProjectConfig['integrationOptions']
+  integrations: IntegrationName[]
+  integrationOptions: AgentsConfig['integrations']['options']
   syncMode: SyncMode
-  selectedSkillPacks: string[]
-  selectedSkills: string[]
-  preset: string
-  selectedMcpServers: string[]
-}): Promise<{ changed: string[]; linkMode: LinkMode; linkWarning?: string }> {
-  const { projectRoot, force, integrations, integrationOptions, syncMode, selectedSkillPacks, selectedSkills, preset, selectedMcpServers } =
-    args
+  hideGeneratedInVscode: boolean
+}): Promise<{ changed: string[] }> {
+  const { projectRoot, force, integrations, integrationOptions, syncMode, hideGeneratedInVscode } = args
 
   const paths = getProjectPaths(projectRoot)
   await ensureDir(paths.agentsDir)
-  await ensureDir(paths.mcpDir)
   await ensureDir(paths.generatedDir)
   await ensureDir(paths.agentsSkillsDir)
 
   const changed: string[] = []
   changed.push(...(await scaffoldBaseTemplates(projectRoot, force)))
 
-  const link = await ensureRootAgentsLink(projectRoot, { forceReplace: force })
+  const config = createDefaultAgentsConfig({
+    enabledIntegrations: integrations,
+    integrationOptions,
+    syncMode,
+    hideGenerated: hideGeneratedInVscode
+  })
 
-  const config = createDefaultProjectConfig(projectRoot, link.mode)
-  config.enabledIntegrations = [...integrations]
-  config.integrationOptions = { ...integrationOptions }
-  config.syncMode = syncMode
-  config.selectedSkillPacks = [...selectedSkillPacks]
-  config.selectedSkills = [...selectedSkills]
-
-  await saveProjectConfig(projectRoot, config)
-  changed.push(path.relative(projectRoot, paths.agentsProject) || paths.agentsProject)
-
-  const selection: McpSelection = {
-    schemaVersion: MCP_SELECTION_SCHEMA_VERSION,
-    preset,
-    selectedMcpServers: [...new Set(selectedMcpServers)].sort((a, b) => a.localeCompare(b))
+  if (force || !(await pathExists(paths.agentsConfig))) {
+    await saveAgentsConfig(projectRoot, config)
+    changed.push(path.relative(projectRoot, paths.agentsConfig) || paths.agentsConfig)
   }
-  await writeJsonAtomic(paths.mcpSelection, selection)
-  changed.push(path.relative(projectRoot, paths.mcpSelection) || paths.mcpSelection)
 
-  return {
-    changed,
-    linkMode: link.mode,
-    linkWarning: link.warning
-  }
+  return { changed }
 }
 
 export async function updateProjectState(args: {
   projectRoot: string
-  config: ProjectConfig
-  selection?: McpSelection
+  config: AgentsConfig
 }): Promise<void> {
-  const { projectRoot, config, selection } = args
-  const paths = getProjectPaths(projectRoot)
-  await saveProjectConfig(projectRoot, config)
-  if (selection) {
-    await writeJsonAtomic(paths.mcpSelection, selection)
-  }
+  const { projectRoot, config } = args
+  await saveAgentsConfig(projectRoot, config)
 }
 
 export async function projectInitialized(projectRoot: string): Promise<boolean> {
   const paths = getProjectPaths(projectRoot)
-  return pathExists(paths.agentsProject)
+  return pathExists(paths.agentsConfig)
 }

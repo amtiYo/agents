@@ -1,6 +1,7 @@
 import prompts from 'prompts'
-import { loadProjectConfig, saveProjectConfig } from '../core/config.js'
+import { loadAgentsConfig, saveAgentsConfig } from '../core/config.js'
 import { performSync } from '../core/sync.js'
+import { formatWarnings } from '../core/warnings.js'
 import type { IntegrationName } from '../types.js'
 import { INTEGRATIONS, parseIntegrationList } from '../integrations/registry.js'
 
@@ -12,23 +13,23 @@ export interface DisconnectOptions {
 }
 
 export async function runDisconnect(options: DisconnectOptions): Promise<void> {
-  const config = await loadProjectConfig(options.projectRoot)
-  const enabled = new Set(config.enabledIntegrations)
+  const config = await loadAgentsConfig(options.projectRoot)
+  const enabled = new Set(config.integrations.enabled)
 
   const rawSelection = options.llm
 
   const toDisable = rawSelection
     ? parseIntegrationList(rawSelection)
     : options.interactive
-      ? await promptSelection(config.enabledIntegrations)
+      ? await promptSelection(config.integrations.enabled)
       : []
 
   for (const integration of toDisable) {
     enabled.delete(integration)
   }
 
-  config.enabledIntegrations = [...enabled]
-  await saveProjectConfig(options.projectRoot, config)
+  config.integrations.enabled = [...enabled]
+  await saveAgentsConfig(options.projectRoot, config)
 
   const syncResult = await performSync({
     projectRoot: options.projectRoot,
@@ -36,9 +37,10 @@ export async function runDisconnect(options: DisconnectOptions): Promise<void> {
     verbose: options.verbose
   })
 
-  process.stdout.write(`Enabled integrations: ${config.enabledIntegrations.join(', ') || '(none)'}\n`)
-  if (syncResult.warnings.length > 0) {
-    process.stdout.write(`Warnings:\n- ${syncResult.warnings.join('\n- ')}\n`)
+  process.stdout.write(`Enabled integrations: ${config.integrations.enabled.join(', ') || '(none)'}\n`)
+  const warningBlock = formatWarnings(syncResult.warnings, 5)
+  if (warningBlock) {
+    process.stdout.write(warningBlock)
   }
   process.stdout.write(`Updated ${syncResult.changed.length} item(s).\n`)
 }

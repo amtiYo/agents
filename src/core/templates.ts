@@ -11,14 +11,12 @@ const TEMPLATE_ROOT = path.resolve(__dirname, '../../templates/agents')
 export async function scaffoldBaseTemplates(projectRoot: string, force: boolean): Promise<string[]> {
   const paths = getProjectPaths(projectRoot)
   await ensureDir(paths.agentsDir)
-  await ensureDir(paths.mcpDir)
   await ensureDir(paths.generatedDir)
   await ensureDir(paths.agentsSkillsDir)
 
   const pairs: Array<{ from: string; to: string }> = [
-    { from: path.join(TEMPLATE_ROOT, 'AGENTS.md'), to: paths.agentsMd },
+    { from: path.join(TEMPLATE_ROOT, 'AGENTS.md'), to: paths.rootAgentsMd },
     { from: path.join(TEMPLATE_ROOT, 'README.md'), to: paths.agentsReadme },
-    { from: path.join(TEMPLATE_ROOT, 'mcp', 'local.example.json'), to: paths.mcpLocalExample },
     { from: path.join(TEMPLATE_ROOT, 'skills', 'README.md'), to: path.join(paths.agentsSkillsDir, 'README.md') },
     {
       from: path.join(TEMPLATE_ROOT, 'skills', 'skill-guide', 'SKILL.md'),
@@ -37,9 +35,9 @@ export async function scaffoldBaseTemplates(projectRoot: string, force: boolean)
     changed.push(path.relative(projectRoot, pair.to) || pair.to)
   }
 
-  if (!(await pathExists(paths.mcpLocal))) {
-    await writeTextAtomic(paths.mcpLocal, '{\n  "mcpServers": {}\n}\n')
-    changed.push(path.relative(projectRoot, paths.mcpLocal) || paths.mcpLocal)
+  if (!(await pathExists(paths.agentsLocal))) {
+    await writeTextAtomic(paths.agentsLocal, '{\n  "mcpServers": {}\n}\n')
+    changed.push(path.relative(projectRoot, paths.agentsLocal) || paths.agentsLocal)
   }
 
   return changed

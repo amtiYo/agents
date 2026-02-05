@@ -1,4 +1,5 @@
 import { performSync } from '../core/sync.js'
+import { formatWarnings } from '../core/warnings.js'
 
 export interface SyncCommandOptions {
   projectRoot: string
@@ -13,8 +14,9 @@ export async function runSync(options: SyncCommandOptions): Promise<void> {
     verbose: options.verbose
   })
 
-  if (result.warnings.length > 0) {
-    process.stdout.write(`Warnings:\n- ${result.warnings.join('\n- ')}\n`)
+  const warningBlock = formatWarnings(result.warnings, 5)
+  if (warningBlock) {
+    process.stdout.write(warningBlock)
   }
 
   if (result.changed.length === 0) {

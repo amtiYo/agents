@@ -1,38 +1,38 @@
-export const PROJECT_SCHEMA_VERSION = 2
-export const MCP_SELECTION_SCHEMA_VERSION = 1
-export const CATALOG_SCHEMA_VERSION = 1
+export const AGENTS_SCHEMA_VERSION = 3
 
 export type IntegrationName = 'codex' | 'claude' | 'gemini' | 'copilot_vscode' | 'cursor' | 'antigravity'
-export type LinkMode = 'symlink' | 'copy'
 export type SyncMode = 'source-only' | 'commit-generated'
 
 export type McpTransportType = 'stdio' | 'http' | 'sse'
 
-export interface ProjectConfig {
+export interface AgentsConfig {
   schemaVersion: number
-  projectRoot: string
-  agentsMdPath: string
-  enabledIntegrations: IntegrationName[]
-  integrationOptions: {
-    cursorAutoApprove: boolean
-    antigravityGlobalSync: boolean
+  instructions: {
+    path: string
   }
-  linkMode: LinkMode
+  integrations: {
+    enabled: IntegrationName[]
+    options: {
+      cursorAutoApprove: boolean
+      antigravityGlobalSync: boolean
+    }
+  }
   syncMode: SyncMode
-  selectedSkillPacks: string[]
-  selectedSkills: string[]
+  mcp: {
+    servers: Record<string, McpServerDefinition>
+  }
+  workspace: {
+    vscode: {
+      hideGenerated: boolean
+      hiddenPaths: string[]
+    }
+  }
   lastSync: string | null
 }
 
-export interface McpSelection {
-  schemaVersion: number
-  preset: string
-  selectedMcpServers: string[]
-}
-
-export interface CatalogMcpServer {
-  label: string
-  description: string
+export interface McpServerDefinition {
+  label?: string
+  description?: string
   transport: McpTransportType
   command?: string
   args?: string[]
@@ -45,36 +45,25 @@ export interface CatalogMcpServer {
   enabled?: boolean
 }
 
-export interface CatalogMcpPreset {
-  id: string
-  label: string
-  description: string
-  serverIds: string[]
+export interface LocalOverridesFile {
+  mcpServers: Record<string, Partial<McpServerDefinition>>
 }
 
-export interface CatalogSkill {
-  name: string
-  description: string
-  instructions: string
+export interface VscodeSettingsState {
+  managedPaths: string[]
 }
 
-export interface CatalogSkillPack {
-  id: string
-  label: string
-  description: string
-  skillIds: string[]
-}
-
-export interface CatalogFile {
+export interface LegacyProjectConfig {
   schemaVersion: number
-  mcpPresets: CatalogMcpPreset[]
-  mcpServers: Record<string, CatalogMcpServer>
-  skillPacks: CatalogSkillPack[]
-  skills: Record<string, CatalogSkill>
-}
-
-export interface McpLocalFile {
-  mcpServers: Record<string, Partial<CatalogMcpServer>>
+  projectRoot: string
+  agentsMdPath: string
+  enabledIntegrations: IntegrationName[]
+  integrationOptions: {
+    cursorAutoApprove: boolean
+    antigravityGlobalSync: boolean
+  }
+  syncMode: SyncMode
+  lastSync: string | null
 }
 
 export interface ResolvedMcpServer {

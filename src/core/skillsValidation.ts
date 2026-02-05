@@ -42,8 +42,8 @@ export async function validateSkillsDirectory(skillsDir: string): Promise<string
 
     if (!description) {
       warnings.push(`Skill "${dirName}" is missing required frontmatter field "description".`)
-    } else if (description.length > 1024) {
-      warnings.push(`Skill "${dirName}" description is longer than 1024 characters.`)
+    } else if (description.length > 300) {
+      warnings.push(`Skill "${dirName}" description is longer than 300 characters.`)
     }
   }
 

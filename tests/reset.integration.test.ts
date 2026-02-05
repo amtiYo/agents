@@ -43,10 +43,10 @@ describe('reset command', () => {
     const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-reset-hard-'))
 
     try {
-      await mkdir(path.join(projectRoot, '.agents', 'mcp'), { recursive: true })
-      await writeFile(path.join(projectRoot, '.agents', 'project.json'), '{}\n')
-      await writeFile(path.join(projectRoot, '.agents', 'mcp', 'selection.json'), '{}\n')
-      await writeFile(path.join(projectRoot, '.gitignore'), '.agents/mcp/local.json\n.agents/generated/\n.custom\n')
+      await mkdir(path.join(projectRoot, '.agents'), { recursive: true })
+      await writeFile(path.join(projectRoot, '.agents', 'agents.json'), '{}\n')
+      await writeFile(path.join(projectRoot, '.agents', 'local.json'), '{}\n')
+      await writeFile(path.join(projectRoot, '.gitignore'), '.agents/local.json\n.agents/generated/\n.custom\n')
       await writeFile(path.join(projectRoot, 'AGENTS.md'), 'placeholder\n')
 
       await runReset({ projectRoot, localOnly: false, hard: true })
@@ -56,8 +56,40 @@ describe('reset command', () => {
 
       const gitignore = await readFile(path.join(projectRoot, '.gitignore'), 'utf8')
       expect(gitignore).toContain('.custom')
-      expect(gitignore).not.toContain('.agents/mcp/local.json')
+      expect(gitignore).not.toContain('.agents/local.json')
       expect(gitignore).not.toContain('.agents/generated/')
+    } finally {
+      await rm(projectRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('hard reset removes .vscode/settings.json only when fully managed', async () => {
+    const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-reset-vscode-'))
+
+    try {
+      await mkdir(path.join(projectRoot, '.agents', 'generated'), { recursive: true })
+      await mkdir(path.join(projectRoot, '.vscode'), { recursive: true })
+      await writeFile(path.join(projectRoot, '.agents', 'agents.json'), '{}\n')
+      await writeFile(path.join(projectRoot, 'AGENTS.md'), 'placeholder\n')
+      await writeFile(
+        path.join(projectRoot, '.vscode', 'settings.json'),
+        JSON.stringify(
+          {
+            'files.exclude': { '**/.codex': true },
+            'search.exclude': { '**/.codex': true }
+          },
+          null,
+          2,
+        ),
+      )
+      await writeFile(
+        path.join(projectRoot, '.agents', 'generated', 'vscode.settings.state.json'),
+        JSON.stringify({ managedPaths: ['**/.codex'] }, null, 2),
+      )
+
+      await runReset({ projectRoot, localOnly: false, hard: true })
+
+      expect(await exists(path.join(projectRoot, '.vscode', 'settings.json'))).toBe(false)
     } finally {
       await rm(projectRoot, { recursive: true, force: true })
     }

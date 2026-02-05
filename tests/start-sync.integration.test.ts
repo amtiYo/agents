@@ -6,23 +6,15 @@ import { runStart } from '../src/commands/start.js'
 import { performSync } from '../src/core/sync.js'
 
 const tempDirs: string[] = []
-let previousCatalogPath: string | undefined
 let previousPathEnv: string | undefined
 let previousCodexConfigPath: string | undefined
 
 beforeEach(() => {
-  previousCatalogPath = process.env.AGENTS_CATALOG_PATH
   previousPathEnv = process.env.PATH
   previousCodexConfigPath = process.env.AGENTS_CODEX_CONFIG_PATH
 })
 
 afterEach(async () => {
-  if (previousCatalogPath === undefined) {
-    delete process.env.AGENTS_CATALOG_PATH
-  } else {
-    process.env.AGENTS_CATALOG_PATH = previousCatalogPath
-  }
-
   if (previousPathEnv === undefined) {
     delete process.env.PATH
   } else {
@@ -52,11 +44,9 @@ async function exists(filePath: string): Promise<boolean> {
 describe('start + sync flow', () => {
   it('bootstraps project from one command and stays idempotent', async () => {
     const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-start-'))
-    const catalogDir = await mkdtemp(path.join(os.tmpdir(), 'agents-catalog-'))
     const codexDir = await mkdtemp(path.join(os.tmpdir(), 'agents-codex-'))
-    tempDirs.push(projectRoot, catalogDir, codexDir)
+    tempDirs.push(projectRoot, codexDir)
 
-    process.env.AGENTS_CATALOG_PATH = path.join(catalogDir, 'catalog.json')
     process.env.AGENTS_CODEX_CONFIG_PATH = path.join(codexDir, 'config.toml')
     process.env.PATH = '/dev/null'
 
@@ -66,19 +56,19 @@ describe('start + sync flow', () => {
       yes: true
     })
 
-    expect(await exists(path.join(projectRoot, '.agents', 'project.json'))).toBe(true)
-    expect(await exists(path.join(projectRoot, '.agents', 'mcp', 'selection.json'))).toBe(true)
+    expect(await exists(path.join(projectRoot, '.agents', 'agents.json'))).toBe(true)
+    expect(await exists(path.join(projectRoot, '.agents', 'local.json'))).toBe(true)
     expect(await exists(path.join(projectRoot, '.agents', 'skills'))).toBe(true)
     expect(await exists(path.join(projectRoot, '.codex', 'config.toml'))).toBe(true)
+    expect(await exists(path.join(projectRoot, '.vscode', 'settings.json'))).toBe(true)
 
-    const projectConfig = JSON.parse(await readFile(path.join(projectRoot, '.agents', 'project.json'), 'utf8'))
-    expect(projectConfig.schemaVersion).toBe(2)
+    const projectConfig = JSON.parse(await readFile(path.join(projectRoot, '.agents', 'agents.json'), 'utf8'))
+    expect(projectConfig.schemaVersion).toBe(3)
     expect(projectConfig.syncMode).toBe('source-only')
-    expect(projectConfig.enabledIntegrations).toContain('codex')
-    expect(projectConfig.selectedSkillPacks).toContain('skills-starter')
+    expect(projectConfig.integrations.enabled).toContain('codex')
+    expect(projectConfig.workspace.vscode.hideGenerated).toBe(true)
 
-    const selection = JSON.parse(await readFile(path.join(projectRoot, '.agents', 'mcp', 'selection.json'), 'utf8'))
-    expect(selection.selectedMcpServers).toEqual(['fetch', 'filesystem', 'git'])
+    expect(Object.keys(projectConfig.mcp.servers).sort()).toEqual(['fetch', 'filesystem', 'git'])
     expect(await exists(path.join(projectRoot, '.agents', 'skills', 'skill-guide', 'SKILL.md'))).toBe(true)
 
     const check = await performSync({ projectRoot, check: true, verbose: false })
