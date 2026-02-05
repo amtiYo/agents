@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises'
 import { parse, type ParseError } from 'jsonc-parser'
 import type { McpServerDefinition, McpTransportType } from '../types.js'
-import { parseTargetOptions, validateTransport } from './mcpValidation.js'
+import { parseTargetOptions, validateEnvKey, validateHeaderKey, validateTransport } from './mcpValidation.js'
 
 interface ImportedServer {
   name: string
@@ -160,10 +160,18 @@ function normalizeServerDefinition(value: unknown, serverName: string): McpServe
     out.url = url
   }
 
-  const env = readStringMap(value.env, `${serverName}.env`)
+  const env = readStringMap(
+    value.env,
+    `${serverName}.env`,
+    (key) => validateEnvKey(key, 'environment variable'),
+  )
   if (Object.keys(env).length > 0) out.env = env
 
-  const headers = readStringMap(value.headers, `${serverName}.headers`)
+  const headers = readStringMap(
+    value.headers,
+    `${serverName}.headers`,
+    (key) => validateHeaderKey(key, 'header'),
+  )
   if (Object.keys(headers).length > 0) out.headers = headers
 
   return out
@@ -234,13 +242,18 @@ function readStringArray(value: unknown, label: string): string[] | undefined {
   return [...value]
 }
 
-function readStringMap(value: unknown, label: string): Record<string, string> {
+function readStringMap(
+  value: unknown,
+  label: string,
+  validateKey?: (key: string) => void,
+): Record<string, string> {
   if (value === undefined || value === null) return {}
   if (!isObject(value)) {
     throw new Error(`Field "${label}" must be an object of string values.`)
   }
   const out: Record<string, string> = {}
   for (const [key, entry] of Object.entries(value)) {
+    validateKey?.(key)
     if (typeof entry !== 'string') {
       throw new Error(`Field "${label}.${key}" must be a string.`)
     }

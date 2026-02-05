@@ -1,7 +1,9 @@
+import TOML from '@iarna/toml'
 import { loadAgentsConfig } from '../core/config.js'
-import { pathExists } from '../core/fs.js'
+import { pathExists, readJson, readTextOrEmpty } from '../core/fs.js'
 import { loadResolvedRegistry } from '../core/mcp.js'
 import { getProjectPaths } from '../core/paths.js'
+import type { ProjectPaths } from '../core/paths.js'
 import { commandExists, runCommand } from '../core/shell.js'
 import { performSync } from '../core/sync.js'
 import { ensureCodexProjectTrusted, getCodexTrustState } from '../core/trust.js'
@@ -10,6 +12,8 @@ import { validateVscodeSettingsParse } from '../core/vscodeSettings.js'
 import { INTEGRATIONS } from '../integrations/registry.js'
 import { listMcpEntries, loadMcpState } from '../core/mcpCrud.js'
 import { isPlaceholderValue, isSecretLikeKey } from '../core/mcpSecrets.js'
+import { validateEnvKey, validateHeaderKey } from '../core/mcpValidation.js'
+import type { IntegrationName } from '../types.js'
 
 export interface DoctorOptions {
   projectRoot: string
@@ -75,6 +79,9 @@ export async function runDoctor(options: DoctorOptions): Promise<void> {
       for (const warning of collectSecretLiteralWarnings(entry.name, entry.server)) {
         issues.push({ level: 'warning', message: warning })
       }
+      for (const message of collectInvalidKeyIssues(entry.name, entry.server, entry.localOverride)) {
+        issues.push({ level: 'error', message })
+      }
     }
   } catch (error) {
     issues.push({
@@ -82,6 +89,8 @@ export async function runDoctor(options: DoctorOptions): Promise<void> {
       message: error instanceof Error ? `Failed to inspect MCP configs: ${error.message}` : 'Failed to inspect MCP configs'
     })
   }
+
+  await validateManagedConfigSyntax(paths, config.integrations.enabled, issues)
 
   const skillWarnings = await validateSkillsDirectory(paths.agentsSkillsDir)
   for (const warning of skillWarnings) {
@@ -312,6 +321,112 @@ function collectSecretLiteralWarnings(
   }
 
   return warnings
+}
+
+function collectInvalidKeyIssues(
+  name: string,
+  server: {
+    env?: Record<string, string>
+    headers?: Record<string, string>
+  },
+  localOverride: {
+    env?: Record<string, string>
+    headers?: Record<string, string>
+  } | undefined,
+): string[] {
+  const messages: string[] = []
+  messages.push(...collectInvalidKeyIssuesForSource(name, server, '.agents/agents.json'))
+  if (localOverride) {
+    messages.push(...collectInvalidKeyIssuesForSource(name, localOverride, '.agents/local.json'))
+  }
+  return messages
+}
+
+function collectInvalidKeyIssuesForSource(
+  name: string,
+  server: {
+    env?: Record<string, string>
+    headers?: Record<string, string>
+  },
+  source: string,
+): string[] {
+  const messages: string[] = []
+
+  for (const key of Object.keys(server.env ?? {})) {
+    try {
+      validateEnvKey(key)
+    } catch (error) {
+      messages.push(
+        `MCP server "${name}" has invalid environment variable key "${key}" in ${source}: ${error instanceof Error ? error.message : String(error)}`,
+      )
+    }
+  }
+
+  for (const key of Object.keys(server.headers ?? {})) {
+    try {
+      validateHeaderKey(key)
+    } catch (error) {
+      messages.push(
+        `MCP server "${name}" has invalid header key "${key}" in ${source}: ${error instanceof Error ? error.message : String(error)}`,
+      )
+    }
+  }
+
+  return messages
+}
+
+async function validateManagedConfigSyntax(
+  paths: ProjectPaths,
+  enabledIntegrations: IntegrationName[],
+  issues: Issue[],
+): Promise<void> {
+  await validateTomlIfExists(paths.generatedCodex, '.agents/generated/codex.config.toml', issues)
+  await validateJsonIfExists(paths.generatedGemini, '.agents/generated/gemini.settings.json', issues)
+  await validateJsonIfExists(paths.generatedCopilot, '.agents/generated/copilot.vscode.mcp.json', issues)
+  await validateJsonIfExists(paths.generatedCursor, '.agents/generated/cursor.mcp.json', issues)
+  await validateJsonIfExists(paths.generatedAntigravity, '.agents/generated/antigravity.mcp.json', issues)
+  await validateJsonIfExists(paths.generatedClaude, '.agents/generated/claude.mcp.json', issues)
+
+  if (enabledIntegrations.includes('codex')) {
+    await validateTomlIfExists(paths.codexConfig, '.codex/config.toml', issues)
+  }
+  if (enabledIntegrations.includes('gemini')) {
+    await validateJsonIfExists(paths.geminiSettings, '.gemini/settings.json', issues)
+  }
+  if (enabledIntegrations.includes('copilot_vscode')) {
+    await validateJsonIfExists(paths.vscodeMcp, '.vscode/mcp.json', issues)
+  }
+  if (enabledIntegrations.includes('cursor')) {
+    await validateJsonIfExists(paths.cursorMcp, '.cursor/mcp.json', issues)
+  }
+  if (enabledIntegrations.includes('antigravity')) {
+    await validateJsonIfExists(paths.antigravityProjectMcp, '.antigravity/mcp.json', issues)
+  }
+}
+
+async function validateTomlIfExists(filePath: string, label: string, issues: Issue[]): Promise<void> {
+  if (!(await pathExists(filePath))) return
+  const raw = await readTextOrEmpty(filePath)
+  try {
+    TOML.parse(raw)
+  } catch (error) {
+    issues.push({
+      level: 'error',
+      message: `Invalid TOML in ${label}: ${error instanceof Error ? error.message : String(error)}`
+    })
+  }
+}
+
+async function validateJsonIfExists(filePath: string, label: string, issues: Issue[]): Promise<void> {
+  if (!(await pathExists(filePath))) return
+  try {
+    await readJson<unknown>(filePath)
+  } catch (error) {
+    issues.push({
+      level: 'error',
+      message: `Invalid JSON in ${label}: ${error instanceof Error ? error.message : String(error)}`
+    })
+  }
 }
 
 function extractPlaceholders(value: string | undefined): string[] {

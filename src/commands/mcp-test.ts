@@ -1,19 +1,62 @@
 import path from 'node:path'
-import { commandExists } from '../core/shell.js'
-import { listMcpEntries, loadMcpState } from '../core/mcpCrud.js'
-import type { McpServerDefinition } from '../types.js'
+import { listMcpEntries, loadMcpState, type McpServerEntry } from '../core/mcpCrud.js'
+import { commandExists, runCommand } from '../core/shell.js'
+import { listCursorMcpStatuses, type CursorServerState } from '../core/cursorCli.js'
+import { toManagedClaudeName } from '../integrations/claude.js'
+import type { IntegrationName, McpServerDefinition } from '../types.js'
+
+const ALL_INTEGRATIONS: IntegrationName[] = [
+  'codex',
+  'claude',
+  'gemini',
+  'copilot_vscode',
+  'cursor',
+  'antigravity'
+]
+
+const DEFAULT_RUNTIME_TIMEOUT_MS = 8000
 
 export interface McpTestOptions {
   projectRoot: string
   name?: string
   json: boolean
+  runtime?: boolean
+  runtimeTimeoutMs?: number
 }
 
 interface ServerTestResult {
   name: string
   status: 'ok' | 'error'
   messages: string[]
+  runtime?: Partial<Record<IntegrationName, RuntimeIntegrationResult>>
 }
+
+interface RuntimeIntegrationResult {
+  status: 'ok' | 'error' | 'unsupported' | 'unavailable' | 'unknown'
+  message: string
+}
+
+interface RuntimeSummary {
+  enabled: boolean
+  timeoutMs: number
+  availableIntegrations: IntegrationName[]
+  errors: number
+}
+
+interface RuntimeCheckResult {
+  perServer: Record<string, Partial<Record<IntegrationName, RuntimeIntegrationResult>>>
+  availableIntegrations: IntegrationName[]
+  errors: number
+}
+
+interface RuntimeProbe<T> {
+  available: boolean
+  detail: string
+  data?: T
+}
+
+type ClaudeRuntimeStatus = 'ok' | 'error' | 'unknown'
+type GeminiRuntimeStatus = 'ok' | 'error' | 'unknown'
 
 export async function runMcpTest(options: McpTestOptions): Promise<void> {
   const state = await loadMcpState(options.projectRoot)
@@ -26,14 +69,44 @@ export async function runMcpTest(options: McpTestOptions): Promise<void> {
     throw new Error(`MCP server "${options.name}" does not exist.`)
   }
 
-  const results: ServerTestResult[] = filtered.map((entry) => testServer(entry.name, entry.mergedServer))
-  const errors = results.filter((result) => result.status === 'error')
+  const runtimeEnabled = options.runtime === true
+  const runtimeTimeoutMs = options.runtimeTimeoutMs ?? DEFAULT_RUNTIME_TIMEOUT_MS
+  const runtime = runtimeEnabled
+    ? runRuntimeChecks(filtered, options.projectRoot, runtimeTimeoutMs)
+    : null
 
-  const payload = {
+  const results: ServerTestResult[] = filtered.map((entry) => {
+    const tested = testServer(entry.name, entry.mergedServer)
+    if (runtimeEnabled && runtime) {
+      tested.runtime = runtime.perServer[entry.name] ?? {}
+    }
+    return tested
+  })
+
+  const staticErrors = results.filter((result) => result.status === 'error').length
+  const runtimeErrors = runtime?.errors ?? 0
+  const totalErrors = runtimeEnabled ? staticErrors + runtimeErrors : staticErrors
+
+  const payload: {
+    projectRoot: string
+    tested: number
+    errors: number
+    results: ServerTestResult[]
+    runtime?: RuntimeSummary
+  } = {
     projectRoot: path.resolve(options.projectRoot),
     tested: results.length,
-    errors: errors.length,
+    errors: totalErrors,
     results
+  }
+
+  if (runtimeEnabled && runtime) {
+    payload.runtime = {
+      enabled: true,
+      timeoutMs: runtimeTimeoutMs,
+      availableIntegrations: runtime.availableIntegrations,
+      errors: runtime.errors
+    }
   }
 
   if (options.json) {
@@ -47,10 +120,23 @@ export async function runMcpTest(options: McpTestOptions): Promise<void> {
       for (const message of result.messages) {
         process.stdout.write(`  - ${message}\n`)
       }
+      if (runtimeEnabled && result.runtime) {
+        for (const integration of Object.keys(result.runtime).sort()) {
+          const typed = integration as IntegrationName
+          const runtimeResult = result.runtime[typed]
+          if (!runtimeResult) continue
+          process.stdout.write(`  - runtime/${typed}: ${runtimeResult.status} (${runtimeResult.message})\n`)
+        }
+      }
+    }
+    if (runtimeEnabled && payload.runtime) {
+      process.stdout.write(
+        `Runtime summary: ${payload.runtime.availableIntegrations.length} integration(s) available, ${payload.runtime.errors} error(s).\n`,
+      )
     }
   }
 
-  if (errors.length > 0) {
+  if (totalErrors > 0) {
     process.exitCode = 1
   }
 }
@@ -93,6 +179,291 @@ function testServer(name: string, server: McpServerDefinition): ServerTestResult
   }
 }
 
+function runRuntimeChecks(entries: McpServerEntry[], projectRoot: string, timeoutMs: number): RuntimeCheckResult {
+  const claudeProbe = probeClaude(projectRoot, timeoutMs)
+  const geminiProbe = probeGemini(projectRoot, timeoutMs)
+  const cursorProbe = probeCursor(projectRoot, timeoutMs)
+
+  const availableIntegrations: IntegrationName[] = []
+  if (claudeProbe.available) availableIntegrations.push('claude')
+  if (geminiProbe.available) availableIntegrations.push('gemini')
+  if (cursorProbe.available) availableIntegrations.push('cursor')
+
+  const perServer: Record<string, Partial<Record<IntegrationName, RuntimeIntegrationResult>>> = {}
+  let errors = 0
+
+  for (const entry of entries) {
+    const targets = resolveTargets(entry.server)
+    const runtimeByIntegration: Partial<Record<IntegrationName, RuntimeIntegrationResult>> = {}
+
+    for (const integration of targets) {
+      if (integration === 'codex' || integration === 'copilot_vscode' || integration === 'antigravity') {
+        runtimeByIntegration[integration] = {
+          status: 'unsupported',
+          message: 'Runtime health introspection is not supported for this integration.'
+        }
+        continue
+      }
+
+      if (integration === 'claude') {
+        runtimeByIntegration.claude = checkClaudeServer(entry.name, claudeProbe)
+        if (claudeProbe.available && runtimeByIntegration.claude.status === 'error') errors += 1
+        continue
+      }
+
+      if (integration === 'gemini') {
+        runtimeByIntegration.gemini = checkGeminiServer(entry.name, geminiProbe)
+        if (geminiProbe.available && runtimeByIntegration.gemini.status === 'error') errors += 1
+        continue
+      }
+
+      if (integration === 'cursor') {
+        runtimeByIntegration.cursor = checkCursorServer(entry.name, cursorProbe)
+        if (cursorProbe.available && runtimeByIntegration.cursor.status === 'error') errors += 1
+      }
+    }
+
+    perServer[entry.name] = runtimeByIntegration
+  }
+
+  return {
+    perServer,
+    availableIntegrations,
+    errors
+  }
+}
+
+function checkClaudeServer(name: string, probe: RuntimeProbe<Record<string, ClaudeRuntimeStatus>>): RuntimeIntegrationResult {
+  if (!probe.available || !probe.data) {
+    return {
+      status: 'unavailable',
+      message: probe.detail
+    }
+  }
+  const managed = toManagedClaudeName(name)
+  const status = probe.data[managed]
+  if (status === 'ok') {
+    return {
+      status: 'ok',
+      message: 'Connected'
+    }
+  }
+  if (status === 'error') {
+    return {
+      status: 'error',
+      message: 'Failed/Disconnected'
+    }
+  }
+  if (status === 'unknown') {
+    return {
+      status: 'unknown',
+      message: 'Unknown runtime state'
+    }
+  }
+  return {
+    status: 'error',
+    message: `Missing from claude mcp list as ${managed}`
+  }
+}
+
+function checkGeminiServer(name: string, probe: RuntimeProbe<Record<string, GeminiRuntimeStatus>>): RuntimeIntegrationResult {
+  if (!probe.available || !probe.data) {
+    return {
+      status: 'unavailable',
+      message: probe.detail
+    }
+  }
+  const status = probe.data[name]
+  if (status === 'ok') {
+    return {
+      status: 'ok',
+      message: 'Connected'
+    }
+  }
+  if (status === 'error') {
+    return {
+      status: 'error',
+      message: 'Disconnected/Failed'
+    }
+  }
+  if (status === 'unknown') {
+    return {
+      status: 'unknown',
+      message: 'Unknown runtime state'
+    }
+  }
+  return {
+    status: 'error',
+    message: `Missing from gemini mcp list as ${name}`
+  }
+}
+
+function checkCursorServer(name: string, probe: RuntimeProbe<Record<string, CursorServerState>>): RuntimeIntegrationResult {
+  if (!probe.available || !probe.data) {
+    return {
+      status: 'unavailable',
+      message: probe.detail
+    }
+  }
+  const status = probe.data[name]
+  if (status === undefined) {
+    return {
+      status: 'error',
+      message: `Missing from cursor mcp list as ${name}`
+    }
+  }
+  if (status === 'ready') {
+    return {
+      status: 'ok',
+      message: 'Ready'
+    }
+  }
+  if (status === 'needs-approval') {
+    return {
+      status: 'error',
+      message: 'Needs approval'
+    }
+  }
+  if (status === 'disabled') {
+    return {
+      status: 'error',
+      message: 'Disabled'
+    }
+  }
+  if (status === 'error') {
+    return {
+      status: 'error',
+      message: 'Connection failed'
+    }
+  }
+  return {
+    status: 'unknown',
+    message: 'Unknown runtime state'
+  }
+}
+
+function probeClaude(projectRoot: string, timeoutMs: number): RuntimeProbe<Record<string, ClaudeRuntimeStatus>> {
+  if (!commandExists('claude')) {
+    return {
+      available: false,
+      detail: 'claude CLI not found'
+    }
+  }
+  const result = runCommand('claude', ['mcp', 'list'], projectRoot, timeoutMs)
+  if (!result.ok) {
+    return {
+      available: false,
+      detail: compact(result.stderr) || 'claude mcp list failed'
+    }
+  }
+  return {
+    available: true,
+    detail: 'ok',
+    data: parseClaudeRuntimeStatuses(`${result.stdout}\n${result.stderr}`)
+  }
+}
+
+function probeGemini(projectRoot: string, timeoutMs: number): RuntimeProbe<Record<string, GeminiRuntimeStatus>> {
+  if (!commandExists('gemini')) {
+    return {
+      available: false,
+      detail: 'gemini CLI not found'
+    }
+  }
+  const result = runCommand('gemini', ['mcp', 'list'], projectRoot, timeoutMs)
+  if (!result.ok) {
+    return {
+      available: false,
+      detail: compact(result.stderr) || 'gemini mcp list failed'
+    }
+  }
+  return {
+    available: true,
+    detail: 'ok',
+    data: parseGeminiRuntimeStatuses(`${result.stdout}\n${result.stderr}`)
+  }
+}
+
+function probeCursor(projectRoot: string, timeoutMs: number): RuntimeProbe<Record<string, CursorServerState>> {
+  if (!commandExists('cursor-agent')) {
+    return {
+      available: false,
+      detail: 'cursor-agent CLI not found'
+    }
+  }
+  const listed = listCursorMcpStatuses(projectRoot, timeoutMs)
+  if (!listed.ok) {
+    return {
+      available: false,
+      detail: compact(listed.stderr) || 'cursor-agent mcp list failed'
+    }
+  }
+  return {
+    available: true,
+    detail: 'ok',
+    data: listed.statuses
+  }
+}
+
+function parseClaudeRuntimeStatuses(output: string): Record<string, ClaudeRuntimeStatus> {
+  const statuses: Record<string, ClaudeRuntimeStatus> = {}
+  const lines = output
+    .split('\n')
+    .map((line) => line.replace(/\u001B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~]|\][^\u0007]*(?:\u0007|\u001B\\))/g, '').trim())
+    .filter(Boolean)
+
+  for (const line of lines) {
+    const match = line.match(/^([a-zA-Z0-9._:-]+):\s*(.+)$/)
+    if (!match?.[1] || !match[2]) continue
+    const name = match[1]
+    const detail = match[2].toLowerCase()
+    if (detail.includes('✗') || detail.includes('failed') || detail.includes('disconnected') || detail.includes('error')) {
+      statuses[name] = 'error'
+      continue
+    }
+    if (detail.includes('✓') || detail.includes('connected')) {
+      statuses[name] = 'ok'
+      continue
+    }
+    statuses[name] = 'unknown'
+  }
+
+  return statuses
+}
+
+function parseGeminiRuntimeStatuses(output: string): Record<string, GeminiRuntimeStatus> {
+  const statuses: Record<string, GeminiRuntimeStatus> = {}
+  const lines = output
+    .split('\n')
+    .map((line) => line.replace(/\u001B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~]|\][^\u0007]*(?:\u0007|\u001B\\))/g, '').trim())
+    .filter(Boolean)
+
+  for (const line of lines) {
+    const match = line.match(/^(?:[✓✗]\s*)?([a-zA-Z0-9._:-]+):\s*(.+)$/)
+    if (!match?.[1] || !match[2]) continue
+    const name = match[1]
+    const detail = match[2].toLowerCase()
+    if (line.includes('✗') || detail.includes('disconnected') || detail.includes('failed') || detail.includes('error')) {
+      statuses[name] = 'error'
+      continue
+    }
+    if (line.includes('✓') || detail.includes('connected')) {
+      statuses[name] = 'ok'
+      continue
+    }
+    statuses[name] = 'unknown'
+  }
+
+  return statuses
+}
+
+function resolveTargets(server: McpServerDefinition): IntegrationName[] {
+  if (!server.targets || server.targets.length === 0) {
+    return ALL_INTEGRATIONS
+  }
+  return [...new Set(server.targets)]
+}
+
 function isValidHttpUrl(value: string): boolean {
   try {
     const parsed = new URL(value)
@@ -100,4 +471,8 @@ function isValidHttpUrl(value: string): boolean {
   } catch {
     return false
   }
+}
+
+function compact(input: string): string {
+  return input.trim().split('\n').at(-1) ?? ''
 }

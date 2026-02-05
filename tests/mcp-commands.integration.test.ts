@@ -223,6 +223,62 @@ describe('mcp command integration', () => {
     expect(config.mcp.servers['my-repo']?.env?.GITHUB_TOKEN).toBe('${GITHUB_TOKEN}')
     expect(local.mcpServers['my-repo']?.env?.GITHUB_TOKEN).toBeUndefined()
   })
+
+  it('fails fast for invalid env keys in mcp add', async () => {
+    const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-mcp-cmds-'))
+    tempDirs.push(projectRoot)
+
+    await runInit({ projectRoot, force: true })
+
+    await expect(
+      runMcpAdd({
+        projectRoot,
+        name: 'invalid-env',
+        transport: 'stdio',
+        command: 'npx',
+        args: ['-y', '@upstash/context7-mcp'],
+        env: ['BAD KEY=123'],
+        headers: [],
+        secretEnv: [],
+        secretHeaders: [],
+        secretArgs: [],
+        targets: [],
+        disabled: false,
+        replace: false,
+        noSync: true,
+        nonInteractive: true
+      }),
+    ).rejects.toThrow(/Invalid environment variable key/)
+  })
+
+  it('fails fast for invalid header keys in mcp import', async () => {
+    const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-mcp-cmds-'))
+    tempDirs.push(projectRoot)
+
+    await runInit({ projectRoot, force: true })
+
+    await expect(
+      runMcpImport({
+        projectRoot,
+        json: JSON.stringify({
+          mcpServers: {
+            docs: {
+              url: 'https://example.com/mcp',
+              headers: {
+                'Bad Header': 'x'
+              }
+            }
+          }
+        }),
+        file: undefined,
+        name: undefined,
+        targets: [],
+        replace: false,
+        noSync: true,
+        nonInteractive: true
+      }),
+    ).rejects.toThrow(/Invalid header key/)
+  })
 })
 
 async function captureStdout(fn: () => Promise<void>): Promise<string> {

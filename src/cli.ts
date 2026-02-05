@@ -25,7 +25,7 @@ async function main(): Promise<void> {
   program
     .name('agents')
     .description('Onboarding-first CLI for AGENTS.md + MCP + skills across LLM coding tools')
-    .version('0.7.5')
+    .version('0.7.6')
 
   program
     .command('start')
@@ -287,11 +287,15 @@ async function main(): Promise<void> {
     .description('Validate MCP server definitions')
     .option('--path <dir>', 'Target project directory', process.cwd())
     .option('--json', 'Output machine-readable JSON', false)
-    .action(async (name: string | undefined, opts: { path: string; json: boolean }) => {
+    .option('--runtime', 'Run runtime health checks via integration CLIs (best-effort)', false)
+    .option('--runtime-timeout-ms <ms>', 'Timeout for each runtime CLI probe', '8000')
+    .action(async (name: string | undefined, opts: { path: string; json: boolean; runtime: boolean; runtimeTimeoutMs: string }) => {
       await runMcpTest({
         projectRoot: resolvePath(opts.path),
         name,
-        json: Boolean(opts.json)
+        json: Boolean(opts.json),
+        runtime: Boolean(opts.runtime),
+        runtimeTimeoutMs: Number.parseInt(opts.runtimeTimeoutMs, 10)
       })
     })
 
@@ -300,11 +304,15 @@ async function main(): Promise<void> {
     .description('Alias for "agents mcp test"')
     .option('--path <dir>', 'Target project directory', process.cwd())
     .option('--json', 'Output machine-readable JSON', false)
-    .action(async (name: string | undefined, opts: { path: string; json: boolean }) => {
+    .option('--runtime', 'Run runtime health checks via integration CLIs (best-effort)', false)
+    .option('--runtime-timeout-ms <ms>', 'Timeout for each runtime CLI probe', '8000')
+    .action(async (name: string | undefined, opts: { path: string; json: boolean; runtime: boolean; runtimeTimeoutMs: string }) => {
       await runMcpTest({
         projectRoot: resolvePath(opts.path),
         name,
-        json: Boolean(opts.json)
+        json: Boolean(opts.json),
+        runtime: Boolean(opts.runtime),
+        runtimeTimeoutMs: Number.parseInt(opts.runtimeTimeoutMs, 10)
       })
     })
 

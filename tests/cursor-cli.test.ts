@@ -16,7 +16,9 @@ describe('cursorCli parser', () => {
       '\u001b[2K\u001b[1A\u001b[2K\u001b[Gappsai: ready',
       'context7: not loaded (needs approval)',
       'fetch: disabled',
-      'filesystem: something unexpected',
+      'filesystem: Error: Connection failed',
+      'git: disconnected',
+      'docs: something unexpected',
       'noise line'
     ].join('\n')
 
@@ -24,8 +26,9 @@ describe('cursorCli parser', () => {
     expect(statuses.appsai).toBe('ready')
     expect(statuses.context7).toBe('needs-approval')
     expect(statuses.fetch).toBe('disabled')
-    expect(statuses.filesystem).toBe('unknown')
+    expect(statuses.filesystem).toBe('error')
+    expect(statuses.git).toBe('error')
+    expect(statuses.docs).toBe('unknown')
     expect(statuses.noise).toBeUndefined()
   })
 })
-

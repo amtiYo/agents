@@ -1,6 +1,6 @@
 import { runCommand } from './shell.js'
 
-export type CursorServerState = 'ready' | 'needs-approval' | 'disabled' | 'unknown'
+export type CursorServerState = 'ready' | 'needs-approval' | 'disabled' | 'error' | 'unknown'
 
 export interface CursorMcpListResult {
   ok: boolean
@@ -43,6 +43,15 @@ export function parseCursorMcpStatuses(output: string): Record<string, CursorSer
       statuses[name] = 'disabled'
       continue
     }
+    if (
+      statusText.includes('error')
+      || statusText.includes('failed')
+      || statusText.includes('disconnected')
+      || statusText.includes('connection failed')
+    ) {
+      statuses[name] = 'error'
+      continue
+    }
 
     statuses[name] = 'unknown'
   }
@@ -50,8 +59,8 @@ export function parseCursorMcpStatuses(output: string): Record<string, CursorSer
   return statuses
 }
 
-export function listCursorMcpStatuses(projectRoot: string): CursorMcpListResult {
-  const result = runCommand('cursor-agent', ['mcp', 'list'], projectRoot)
+export function listCursorMcpStatuses(projectRoot: string, timeoutMs?: number): CursorMcpListResult {
+  const result = runCommand('cursor-agent', ['mcp', 'list'], projectRoot, timeoutMs)
   if (!result.ok) {
     return {
       ok: false,
@@ -66,4 +75,3 @@ export function listCursorMcpStatuses(projectRoot: string): CursorMcpListResult 
     stderr: result.stderr
   }
 }
-

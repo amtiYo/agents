@@ -84,6 +84,37 @@ describe('parseImportedServers', () => {
     expect(() => parseImportedServers(payload)).toThrow(/Unsupported import shape/)
   })
 
+  it('fails for invalid env keys in imported payload', () => {
+    const payload = JSON.stringify({
+      mcpServers: {
+        docs: {
+          command: 'npx',
+          args: ['-y', '@upstash/context7-mcp'],
+          env: {
+            'BAD KEY': '123'
+          }
+        }
+      }
+    })
+
+    expect(() => parseImportedServers(payload)).toThrow(/Invalid environment variable key/)
+  })
+
+  it('fails for invalid header keys in imported payload', () => {
+    const payload = JSON.stringify({
+      mcpServers: {
+        docs: {
+          url: 'https://example.com/mcp',
+          headers: {
+            'Bad Header': 'x'
+          }
+        }
+      }
+    })
+
+    expect(() => parseImportedServers(payload)).toThrow(/Invalid header key/)
+  })
+
   it('extracts JSON from HTML code block payloads', () => {
     const html = `
       <html>

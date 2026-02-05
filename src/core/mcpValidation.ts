@@ -3,6 +3,8 @@ import { INTEGRATION_IDS, parseIntegrationList } from '../integrations/registry.
 
 const SERVER_NAME_PATTERN = /^[a-zA-Z0-9_\-:.]+$/
 const TRANSPORTS: McpTransportType[] = ['stdio', 'http', 'sse']
+const ENV_KEY_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/
+const HEADER_KEY_PATTERN = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/
 
 export function validateServerName(name: string): void {
   if (!name.trim()) {
@@ -36,6 +38,22 @@ export function parseKeyValue(input: string, label: string): { key: string; valu
     throw new Error(`Invalid ${label} "${input}". Key cannot be empty.`)
   }
   return { key, value }
+}
+
+export function validateEnvKey(key: string, context = 'environment variable'): void {
+  if (!ENV_KEY_PATTERN.test(key)) {
+    throw new Error(
+      `Invalid ${context} key "${key}": must match ${ENV_KEY_PATTERN.toString()}`,
+    )
+  }
+}
+
+export function validateHeaderKey(key: string, context = 'header'): void {
+  if (!HEADER_KEY_PATTERN.test(key)) {
+    throw new Error(
+      `Invalid ${context} key "${key}": must match ${HEADER_KEY_PATTERN.toString()}`,
+    )
+  }
 }
 
 export function parseSecretArg(input: string): { index: number; value: string } {

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import TOML from '@iarna/toml'
 import { renderCodexToml, renderGeminiServers, renderVscodeMcp } from '../src/core/renderers.js'
 import type { ResolvedMcpServer } from '../src/types.js'
 
@@ -12,16 +13,29 @@ const servers: ResolvedMcpServer[] = [
   {
     name: 'http-tools',
     transport: 'http',
-    url: 'https://example.com/mcp'
+    url: 'https://example.com/mcp',
+    headers: {
+      Authorization: 'Bearer token'
+    }
+  },
+  {
+    name: 'sse-tools',
+    transport: 'sse',
+    url: 'https://example.com/sse'
   }
 ]
 
 describe('renderers', () => {
-  it('renders codex toml and skips unsupported transports', () => {
+  it('renders codex toml for stdio/http/sse and stays valid TOML', () => {
     const rendered = renderCodexToml(servers)
     expect(rendered.content).toContain('[mcp_servers."filesystem"]')
-    expect(rendered.content).not.toContain('http-tools')
-    expect(rendered.warnings.join(' ')).toContain('non-stdio')
+    expect(rendered.content).toContain('[mcp_servers."http-tools"]')
+    expect(rendered.content).toContain('url = "https://example.com/mcp"')
+    expect(rendered.content).toContain('[mcp_servers."http-tools".http_headers]')
+    expect(rendered.content).toContain('"Authorization" = "Bearer token"')
+    expect(rendered.content).toContain('[mcp_servers."sse-tools"]')
+    expect(rendered.warnings.join(' ')).toContain('legacy sse transport')
+    expect(() => TOML.parse(rendered.content)).not.toThrow()
   })
 
   it('renders gemini server map for stdio and http', () => {
@@ -34,6 +48,10 @@ describe('renderers', () => {
       'http-tools': {
         type: 'http',
         url: 'https://example.com/mcp'
+      },
+      'sse-tools': {
+        type: 'sse',
+        url: 'https://example.com/sse'
       }
     })
   })
@@ -48,6 +66,10 @@ describe('renderers', () => {
       'http-tools': {
         type: 'http',
         url: 'https://example.com/mcp'
+      },
+      'sse-tools': {
+        type: 'sse',
+        url: 'https://example.com/sse'
       }
     })
   })

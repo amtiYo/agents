@@ -7,17 +7,20 @@ export interface ShellResult {
   stderr: string
 }
 
-export function runCommand(cmd: string, args: string[], cwd: string): ShellResult {
+export function runCommand(cmd: string, args: string[], cwd: string, timeoutMs?: number): ShellResult {
   const result = spawnSync(cmd, args, {
     cwd,
-    encoding: 'utf8'
+    encoding: 'utf8',
+    ...(timeoutMs !== undefined ? { timeout: timeoutMs } : {})
   })
+
+  const stderr = result.stderr ?? (result.error ? String(result.error.message ?? result.error) : '')
 
   return {
     ok: (result.status ?? 1) === 0,
     code: result.status ?? 1,
     stdout: result.stdout ?? '',
-    stderr: result.stderr ?? ''
+    stderr
   }
 }
 

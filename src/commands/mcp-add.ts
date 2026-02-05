@@ -10,6 +10,8 @@ import {
   parseSecretArg,
   parseTargetOptions,
   resolveDefaultTargets,
+  validateEnvKey,
+  validateHeaderKey,
   validateServerName,
   validateTransport
 } from '../core/mcpValidation.js'
@@ -116,10 +118,10 @@ export async function runMcpAdd(options: McpAddOptions): Promise<void> {
   const defaultTargets = resolveDefaultTargets(config)
   const targets: IntegrationName[] = parsedTargets.length > 0 ? parsedTargets : defaultTargets.targets
 
-  const envMap = toMap(options.env, 'env')
-  const headerMap = toMap(options.headers, 'header')
-  const explicitSecretEnv = toMap(options.secretEnv, 'secret env')
-  const explicitSecretHeaders = toMap(options.secretHeaders, 'secret header')
+  const envMap = toMap(options.env, 'env', (key) => validateEnvKey(key, 'environment variable'))
+  const headerMap = toMap(options.headers, 'header', (key) => validateHeaderKey(key, 'header'))
+  const explicitSecretEnv = toMap(options.secretEnv, 'secret env', (key) => validateEnvKey(key, 'secret environment variable'))
+  const explicitSecretHeaders = toMap(options.secretHeaders, 'secret header', (key) => validateHeaderKey(key, 'secret header'))
   const explicitSecretArgs = (options.secretArgs ?? []).map(parseSecretArg)
 
   if (explicitSecretArgs.length > 0 && args.length === 0) {
@@ -225,10 +227,15 @@ function isHttpUrl(value: string): boolean {
   }
 }
 
-function toMap(values: string[] | undefined, label: string): Record<string, string> {
+function toMap(
+  values: string[] | undefined,
+  label: string,
+  validateKey?: (key: string) => void,
+): Record<string, string> {
   const out: Record<string, string> = {}
   for (const entry of values ?? []) {
     const parsed = parseKeyValue(entry, label)
+    validateKey?.(parsed.key)
     out[parsed.key] = parsed.value
   }
   return out

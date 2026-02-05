@@ -5,6 +5,39 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+## [0.7.6] - 2026-02-05
+
+### Added
+
+- `agents mcp test --runtime` and `--runtime-timeout-ms` for best-effort live MCP health checks via Claude, Gemini, and Cursor CLIs.
+- Doctor now validates syntax for generated/materialized configs:
+  - TOML: `.agents/generated/codex.config.toml`, `.codex/config.toml`
+  - JSON: generated/materialized Gemini/Copilot/Cursor/Antigravity/Claude payloads
+- New test suites:
+  - `tests/mcp-test-runtime.integration.test.ts`
+  - `tests/cursor-sync.integration.test.ts`
+  - `tests/doctor.integration.test.ts`
+  - `tests/sync-validation.integration.test.ts`
+
+### Changed
+
+- Codex renderer now includes URL-based MCP servers (`http` and legacy `sse`) instead of skipping non-stdio servers.
+- Codex TOML output now quotes env/header keys safely and writes HTTP headers under `http_headers`.
+- `agents mcp test` output now includes runtime details when `--runtime` is used.
+- Cursor status parsing recognizes connection failures as an explicit `error` state.
+- Cursor auto-approval sync no longer retries enable loops for `unknown/error` runtime statuses, improving idempotency.
+- CLI version bumped to `0.7.6`.
+
+### Fixed
+
+- Prevented invalid env/header keys from producing broken Codex TOML:
+  - fail-fast validation in `mcp add` and `mcp import`
+  - fail-fast validation during `agents sync` for existing bad configs
+- `agents doctor` now reports invalid MCP env/header keys as errors.
+- Eliminated repeated `cursor-local-approval` drift in `agents sync --check` when Cursor reports persistent connection errors.
+
 ## [0.7.5] - 2026-02-05
 
 ### Fixed

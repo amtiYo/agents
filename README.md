@@ -69,21 +69,39 @@ agents mcp list [--path <dir>] [--json]
 agents mcp add [name] [--path <dir>] [--transport stdio|http|sse] [--command <cmd>] [--arg <value>] [--url <url>] [--env KEY=VALUE] [--header KEY=VALUE] [--secret-env KEY=VALUE] [--secret-header KEY=VALUE] [--secret-arg index=value] [--target <integration>] [--replace]
 agents mcp import [--path <dir>] [--file <json>] [--json <text>] [--url <url>] [--name <name>] [--target <integration>] [--replace]
 agents mcp remove <name> [--path <dir>] [--ignore-missing]
-agents mcp test [name] [--path <dir>] [--json]
-agents mcp doctor [name] [--path <dir>] [--json]
+agents mcp test [name] [--path <dir>] [--json] [--runtime] [--runtime-timeout-ms <ms>]
+agents mcp doctor [name] [--path <dir>] [--json] [--runtime] [--runtime-timeout-ms <ms>]
 ```
 
-## MCP toolkit (0.7.5)
+## MCP toolkit (0.7.6)
 - `agents mcp add`: add one server via flags or interactive prompts; if `[name]` is an `http(s)` URL, it auto-runs import flow.
 - `agents mcp import`: import strict JSON/JSONC snippets (`--file`, `--json`, `--url`, or stdin).
 - Interactive import now prompts for template secret values (tokens/keys) and lets you skip with Enter; skipped values can be added later in `.agents/local.json`.
+- Fail-fast validation now blocks invalid env/header keys during add/import.
 - `agents mcp remove`: delete a server from `.agents/agents.json` + `.agents/local.json`.
 - `agents mcp list`: inspect configured servers and local overrides.
-- `agents mcp test`: validate transport/command/url/required env consistency.
+- `agents mcp test`: validates transport/command/url/required env consistency; optional `--runtime` mode checks live connectivity via Claude/Gemini/Cursor CLIs.
 - `agents mcp doctor`: alias for `agents mcp test`.
 - Secret values entered during import are now passed through safely to CLI integrations without over-restrictive character blocking.
 - Import parser now also accepts plain code blocks without `language-json` class and plain map payloads like `{ "appcontext": { "url": "...", "type": "sse" } }`.
 - Claude sync now reconciles against actual `claude mcp list` managed entries (`agents__*`) and removes stale leftovers from previous runs.
+- Codex generated config now includes URL-based MCP servers (`http`/legacy `sse`) in addition to stdio servers.
+
+## Migration notes
+- If `agents mcp add/import` now fails with an invalid key error, rename env keys to shell-safe format (`[A-Za-z_][A-Za-z0-9_]*`) and header keys to HTTP token format.
+- If `agents sync` fails after upgrade, run `agents doctor` and fix reported invalid env/header keys in `.agents/agents.json` or `.agents/local.json`.
+
+## Release checklist (smoke)
+```bash
+agents start --non-interactive --yes
+agents connect --llm codex,claude,gemini,copilot_vscode,cursor,antigravity
+agents mcp add https://mcpservers.org/servers/upstash/context7-mcp --non-interactive
+agents mcp add https://mcpservers.org/servers/microsoft/playwright-mcp --non-interactive
+agents mcp test --runtime --json
+agents sync
+agents sync --check
+agents status --verbose
+```
 
 ## Output UX
 - `agents status` prints a compact summary by default.

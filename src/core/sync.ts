@@ -16,7 +16,7 @@ import { syncSkills } from './skills.js'
 import { syncVscodeSettings } from './vscodeSettings.js'
 import { listCursorMcpStatuses } from './cursorCli.js'
 import { listClaudeManagedServerNames } from './claudeCli.js'
-import { validateEnvValueForShell, validateServerName } from './mcpValidation.js'
+import { validateEnvKey, validateEnvValueForShell, validateHeaderKey, validateServerName } from './mcpValidation.js'
 import type { IntegrationName, ResolvedMcpServer, SyncOptions, SyncResult } from '../types.js'
 
 interface ClaudeState {
@@ -37,6 +37,7 @@ export async function performSync(options: SyncOptions): Promise<SyncResult> {
   if (resolved.missingRequiredEnv.length > 0) {
     warnings.push(`Skipped servers because required env vars are missing: ${resolved.missingRequiredEnv.join('; ')}`)
   }
+  validateResolvedServers(resolved.serversByTarget)
 
   const changed: string[] = []
 
@@ -376,9 +377,39 @@ async function syncCursor(args: {
     if (!listed.ok) {
       warnings.push(`Failed checking Cursor MCP status: ${compactError(listed.stderr)}`)
     } else {
-      namesNeedingApproval = new Set(
-        desiredNames.filter((name) => listed.statuses[name] !== 'ready'),
-      )
+      const unknownStatuses: string[] = []
+      const errorStatuses: string[] = []
+      namesNeedingApproval = new Set<string>()
+
+      for (const name of desiredNames) {
+        const status = listed.statuses[name]
+        if (status === undefined) {
+          namesNeedingApproval.add(name)
+          continue
+        }
+        if (status === 'needs-approval' || status === 'disabled') {
+          namesNeedingApproval.add(name)
+          continue
+        }
+        if (status === 'unknown') {
+          unknownStatuses.push(name)
+          continue
+        }
+        if (status === 'error') {
+          errorStatuses.push(name)
+        }
+      }
+
+      if (unknownStatuses.length > 0) {
+        warnings.push(
+          `Cursor MCP status unknown for: ${unknownStatuses.join(', ')}. Skipping auto-approval retries for these servers.`,
+        )
+      }
+      if (errorStatuses.length > 0) {
+        warnings.push(
+          `Cursor MCP connection errors for: ${errorStatuses.join(', ')}. Skipping auto-approval retries for these servers.`,
+        )
+      }
     }
   }
 
@@ -506,6 +537,34 @@ function isClaudeAlreadyExistsError(stderr: string): boolean {
 function isCursorAlreadyEnabledError(stderr: string): boolean {
   const lowered = stderr.toLowerCase()
   return lowered.includes('already enabled') || lowered.includes('already approved')
+}
+
+function validateResolvedServers(resolvedByTarget: Record<IntegrationName, ResolvedMcpServer[]>): void {
+  for (const [target, servers] of Object.entries(resolvedByTarget)) {
+    for (const server of servers) {
+      validateServerName(server.name)
+      for (const [key, value] of Object.entries(server.env ?? {})) {
+        try {
+          validateEnvKey(key, 'environment variable')
+        } catch (error) {
+          throw new Error(
+            `Invalid environment variable key "${key}" in server "${server.name}" (target: ${target}): ${error instanceof Error ? error.message : String(error)}`,
+          )
+        }
+        validateEnvValueForShell(key, value, 'environment variable')
+      }
+      for (const [key, value] of Object.entries(server.headers ?? {})) {
+        try {
+          validateHeaderKey(key, 'header')
+        } catch (error) {
+          throw new Error(
+            `Invalid header key "${key}" in server "${server.name}" (target: ${target}): ${error instanceof Error ? error.message : String(error)}`,
+          )
+        }
+        validateEnvValueForShell(key, value, 'header')
+      }
+    }
+  }
 }
 
 function uniqueSorted(values: string[]): string[] {

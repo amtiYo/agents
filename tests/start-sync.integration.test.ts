@@ -3,7 +3,9 @@ import path from 'node:path'
 import { lstat, mkdtemp, readFile, rm } from 'node:fs/promises'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { runStart } from '../src/commands/start.js'
+import { loadAgentsConfig, saveAgentsConfig } from '../src/core/config.js'
 import { performSync } from '../src/core/sync.js'
+import TOML from '@iarna/toml'
 
 const tempDirs: string[] = []
 let previousPathEnv: string | undefined
@@ -70,6 +72,20 @@ describe('start + sync flow', () => {
 
     expect(Object.keys(projectConfig.mcp.servers).sort()).toEqual(['fetch', 'filesystem', 'git'])
     expect(await exists(path.join(projectRoot, '.agents', 'skills', 'skill-guide', 'SKILL.md'))).toBe(true)
+
+    const configWithHttp = await loadAgentsConfig(projectRoot)
+    configWithHttp.mcp.servers.remoteDocs = {
+      transport: 'http',
+      url: 'https://developers.openai.com/mcp',
+      targets: ['codex']
+    }
+    await saveAgentsConfig(projectRoot, configWithHttp)
+    await performSync({ projectRoot, check: false, verbose: false })
+
+    const codexConfigText = await readFile(path.join(projectRoot, '.codex', 'config.toml'), 'utf8')
+    expect(codexConfigText).toContain('[mcp_servers."remoteDocs"]')
+    expect(codexConfigText).toContain('url = "https://developers.openai.com/mcp"')
+    expect(() => TOML.parse(codexConfigText)).not.toThrow()
 
     const check = await performSync({ projectRoot, check: true, verbose: false })
     expect(check.changed).toHaveLength(0)

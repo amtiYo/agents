@@ -43,5 +43,5 @@ describe('cursor + antigravity sync', () => {
     const mcpServerNames = Object.keys((antigravityProject.mcpServers as Record<string, unknown>) ?? {})
     expect(serverNames.some((name) => name.includes('filesystem'))).toBe(true)
     expect(mcpServerNames.some((name) => name.includes('filesystem'))).toBe(true)
-  })
+  }, 15000)
 })

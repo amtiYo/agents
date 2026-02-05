@@ -38,6 +38,7 @@ This increases setup cost and causes drift across teams.
 6. MCP lifecycle via `agents mcp add|import|list|remove|test`
    - `agents mcp add <https://...>` auto-detects URL input and switches to import flow
    - `agents mcp doctor` is an alias for quick MCP validation
+   - `agents mcp test --runtime` runs best-effort live checks for Claude/Gemini/Cursor
 
 ## Integration materialization
 - Codex -> `.codex/config.toml`
@@ -77,3 +78,4 @@ This increases setup cost and causes drift across teams.
 ## Security model
 - No secrets in committed source files.
 - Secrets and machine specifics go into `.agents/local.json` and environment variables.
+- MCP env/header keys are validated strictly during add/import/sync (fail-fast).
