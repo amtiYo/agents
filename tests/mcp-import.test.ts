@@ -61,6 +61,21 @@ describe('parseImportedServers', () => {
     expect(out[0]?.server.command).toBe('uvx')
   })
 
+  it('parses plain name->server map shape', () => {
+    const payload = JSON.stringify({
+      appcontext: {
+        url: 'http://localhost:7777/sse',
+        type: 'sse'
+      }
+    })
+
+    const out = parseImportedServers(payload)
+    expect(out).toHaveLength(1)
+    expect(out[0]?.name).toBe('appcontext')
+    expect(out[0]?.server.transport).toBe('sse')
+    expect(out[0]?.server.url).toBe('http://localhost:7777/sse')
+  })
+
   it('fails for unsupported payload shapes', () => {
     const payload = JSON.stringify({
       unsupported: true
@@ -84,6 +99,28 @@ describe('parseImportedServers', () => {
     expect(parsed).toHaveLength(1)
     expect(parsed[0]?.name).toBe('context7')
     expect(parsed[0]?.server.transport).toBe('stdio')
+  })
+
+  it('extracts JSON from generic <pre><code> blocks without language class', () => {
+    const html = `
+      <html>
+        <body>
+          <pre><code>{
+            &quot;appcontext&quot;: {
+              &quot;url&quot;: &quot;http://localhost:7777/sse&quot;,
+              &quot;type&quot;: &quot;sse&quot;
+            }
+          }</code></pre>
+        </body>
+      </html>
+    `
+
+    const extracted = extractImportPayloadFromHtml(html)
+    expect(extracted).toBeTruthy()
+    const parsed = parseImportedServers(extracted as string)
+    expect(parsed).toHaveLength(1)
+    expect(parsed[0]?.name).toBe('appcontext')
+    expect(parsed[0]?.server.transport).toBe('sse')
   })
 
   it('extracts JSON from markdown code block payloads', () => {

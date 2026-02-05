@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.4] - 2026-02-05
+
+### Fixed
+
+- `agents mcp add https://mcpservers.org/servers/appcontext-dev` now imports successfully.
+- Import parser now handles MCP snippets provided as plain `<pre><code>...</code></pre>` blocks without a `language-json` class.
+
+### Added
+
+- Import payload support for direct name->server maps:
+  - `{ "appcontext": { "url": "http://localhost:7777/sse", "type": "sse" } }`
+
+### Changed
+
+- `parseImportedServers` error/help text now documents the plain map payload shape.
+- CLI version bumped to `0.7.4`.
+
 ## [0.7.3] - 2026-02-05
 
 ### Fixed

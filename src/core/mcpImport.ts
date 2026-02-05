@@ -76,7 +76,7 @@ export function parseImportedServers(rawInput: string, explicitName?: string): I
     ]
   } else {
     throw new Error(
-      'Unsupported import shape. Allowed: {mcp:{servers}}, {mcpServers}, {servers}, or single server object.',
+      'Unsupported import shape. Allowed: {mcp:{servers}}, {mcpServers}, {servers}, {<name>:{...server...}}, or single server object.',
     )
   }
 
@@ -185,6 +185,14 @@ function extractServerContainer(value: unknown): Record<string, unknown> | null 
   }
   if (isObject(value.servers)) {
     return value.servers
+  }
+  // Also support plain map style: { "<name>": { ...server fields... } }
+  const entries = Object.entries(value)
+  if (
+    entries.length > 0
+    && entries.every(([, entryValue]) => isObject(entryValue) && looksLikeServerDefinition(entryValue))
+  ) {
+    return value
   }
   return null
 }
@@ -299,7 +307,7 @@ async function readImportInputFromUrl(url: string): Promise<string> {
 }
 
 export function extractImportPayloadFromHtml(html: string): string | null {
-  const candidates = extractJsonCodeBlocks(html)
+  const candidates = [...extractJsonCodeBlocks(html), ...extractNextFlightJsonBlocks(html)]
   for (const candidate of candidates) {
     try {
       parseImportedServers(candidate)
@@ -313,13 +321,47 @@ export function extractImportPayloadFromHtml(html: string): string | null {
 
 function extractJsonCodeBlocks(html: string): string[] {
   const blocks: string[] = []
-  const regex = /<code[^>]*class="[^"]*language-jsonc?[^"]*"[^>]*>([\s\S]*?)<\/code>/gi
-  for (const match of html.matchAll(regex)) {
+  const seen = new Set<string>()
+  const jsonRegex = /<code[^>]*class="[^"]*language-jsonc?[^"]*"[^>]*>([\s\S]*?)<\/code>/gi
+  for (const match of html.matchAll(jsonRegex)) {
     const raw = match[1]
     if (!raw) continue
     const decoded = decodeHtmlEntities(stripHtmlTags(raw)).trim()
-    if (!decoded) continue
+    if (!decoded || seen.has(decoded)) continue
+    seen.add(decoded)
     blocks.push(decoded)
+  }
+
+  // Some pages publish JSON snippets in plain <pre><code> blocks without language class.
+  const genericRegex = /<pre[^>]*>\s*<code[^>]*>([\s\S]*?)<\/code>\s*<\/pre>/gi
+  for (const match of html.matchAll(genericRegex)) {
+    const raw = match[1]
+    if (!raw) continue
+    const decoded = decodeHtmlEntities(stripHtmlTags(raw)).trim()
+    if (!decoded || seen.has(decoded)) continue
+    seen.add(decoded)
+    blocks.push(decoded)
+  }
+  return blocks
+}
+
+function extractNextFlightJsonBlocks(html: string): string[] {
+  const blocks: string[] = []
+  const regex = /"children":"((?:\\.|[^"\\])*)"/g
+  for (const match of html.matchAll(regex)) {
+    const encoded = match[1]
+    if (!encoded) continue
+
+    let decoded = ''
+    try {
+      decoded = JSON.parse(`"${encoded}"`) as string
+    } catch {
+      continue
+    }
+
+    const trimmed = decoded.trim()
+    if (!trimmed.startsWith('{') || !trimmed.endsWith('}')) continue
+    blocks.push(trimmed)
   }
   return blocks
 }
