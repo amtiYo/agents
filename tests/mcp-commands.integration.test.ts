@@ -13,13 +13,13 @@ const tempDirs: string[] = []
 
 interface AgentsFile {
   mcp: {
-    servers: Record<string, { args?: string[]; command?: string }>
+    servers: Record<string, { args?: string[]; command?: string; env?: Record<string, string> }>
   }
   lastSync?: string
 }
 
 interface LocalFile {
-  mcpServers: Record<string, { args?: string[] }>
+  mcpServers: Record<string, { args?: string[]; env?: Record<string, string> }>
 }
 
 afterEach(async () => {
@@ -166,6 +166,62 @@ describe('mcp command integration', () => {
     const config = JSON.parse(await readFile(path.join(projectRoot, '.agents', 'agents.json'), 'utf8')) as AgentsFile
     expect(config.mcp.servers.context7).toBeDefined()
     expect(config.mcp.servers.context7.command).toBe('npx')
+  })
+
+  it('prompts for template secret values during interactive import and allows skipping', async () => {
+    const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-mcp-cmds-'))
+    tempDirs.push(projectRoot)
+
+    await runInit({ projectRoot, force: true })
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            mcpServers: {
+              'my-repo': {
+                command: 'node',
+                args: ['/absolute/path/to/generated/server.mjs'],
+                env: {
+                  GITHUB_TOKEN: 'ghp_xxxx'
+                }
+              }
+            }
+          }),
+          {
+            status: 200,
+            headers: {
+              'content-type': 'application/json'
+            }
+          },
+        ),
+      ),
+    )
+
+    const promptedMessages: string[] = []
+
+    await runMcpImport({
+      projectRoot,
+      url: 'https://mcpservers.org/servers/nirholas/github-to-mcp',
+      targets: [],
+      replace: false,
+      noSync: true,
+      nonInteractive: false,
+      promptSecretValue: async (message: string) => {
+        promptedMessages.push(message)
+        return ''
+      }
+    })
+
+    expect(promptedMessages.length).toBeGreaterThan(0)
+
+    const config = JSON.parse(await readFile(path.join(projectRoot, '.agents', 'agents.json'), 'utf8')) as AgentsFile
+    const local = JSON.parse(await readFile(path.join(projectRoot, '.agents', 'local.json'), 'utf8')) as LocalFile
+
+    expect(config.mcp.servers['my-repo']).toBeDefined()
+    expect(config.mcp.servers['my-repo']?.env?.GITHUB_TOKEN).toBe('${GITHUB_TOKEN}')
+    expect(local.mcpServers['my-repo']?.env?.GITHUB_TOKEN).toBeUndefined()
   })
 })
 

@@ -51,4 +51,25 @@ describe('mcp secrets', () => {
     expect(split.localOverride.args?.[3]).toBe('my-secret')
     expect(split.localOverride.args?.[2]).toBe('--api-key')
   })
+
+  it('can placeholderize secrets without writing local values', () => {
+    const split = splitServerSecrets({
+      name: 'my-repo',
+      server: {
+        transport: 'stdio',
+        command: 'node',
+        args: ['/absolute/path/to/generated/server.mjs', '--token', 'ghp_xxxx'],
+        env: {
+          GITHUB_TOKEN: 'ghp_xxxx'
+        }
+      },
+      secretEnvKeys: ['GITHUB_TOKEN'],
+      secretArgIndexes: [2]
+    })
+
+    expect(split.publicServer.env?.GITHUB_TOKEN).toBe('${GITHUB_TOKEN}')
+    expect(split.publicServer.args?.[2]).toMatch(/^\$\{[A-Z0-9_]+\}$/)
+    expect(split.localOverride.env).toBeUndefined()
+    expect(split.localOverride.args).toBeUndefined()
+  })
 })

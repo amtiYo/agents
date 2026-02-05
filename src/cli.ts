@@ -25,7 +25,7 @@ async function main(): Promise<void> {
   program
     .name('agents')
     .description('Onboarding-first CLI for AGENTS.md + MCP + skills across LLM coding tools')
-    .version('0.7.1')
+    .version('0.7.2')
 
   program
     .command('start')

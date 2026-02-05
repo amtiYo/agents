@@ -3,6 +3,8 @@ import type { McpServerDefinition } from '../types.js'
 const PLACEHOLDER_PATTERN = /^\$\{[A-Z0-9_]+\}$/
 const SECRET_KEY_PATTERN = /(secret|token|api[_-]?key|password|passphrase|authorization|auth|bearer)/i
 const SECRET_VALUE_PATTERN = /^(sk-[A-Za-z0-9_-]{12,}|ghp_[A-Za-z0-9]{20,}|AIza[0-9A-Za-z_-]{20,}|eyJ[A-Za-z0-9_-]{10,})/
+const SECRET_TEMPLATE_PATTERN =
+  /(^\$\{[A-Z0-9_]+\}$|^ghp_x+$|^x{3,}$|token[_-]?here|your[_-]?(token|api[_-]?key|secret)|replace[_-]?me|changeme|example|placeholder|dummy|sample|<[^>]*(token|api[_-]?key|secret)[^>]*>$)/i
 const SECRET_ARG_FLAG_PATTERN = /^--?(api[-_]?key|token|secret|password|passphrase|auth|authorization)$/i
 
 interface SecretArg {
@@ -27,6 +29,15 @@ export function isSecretLikeLiteral(value: string): boolean {
   if (!value || isPlaceholderValue(value)) return false
   if (value.length >= 24 && !value.includes(' ')) return true
   return SECRET_VALUE_PATTERN.test(value)
+}
+
+export function isLikelyTemplateSecretValue(value: string): boolean {
+  if (!value) return true
+  return SECRET_TEMPLATE_PATTERN.test(value)
+}
+
+export function isSecretArgFlag(flag: string): boolean {
+  return SECRET_ARG_FLAG_PATTERN.test(flag)
 }
 
 export function inferSecretArgs(args: string[]): number[] {
@@ -57,44 +68,74 @@ export function splitServerSecrets(input: {
   secretEnv?: Record<string, string>
   secretHeaders?: Record<string, string>
   secretArgs?: SecretArg[]
+  secretEnvKeys?: string[]
+  secretHeaderKeys?: string[]
+  secretArgIndexes?: number[]
 }): SecretSplitResult {
   const publicServer: McpServerDefinition = JSON.parse(JSON.stringify(input.server)) as McpServerDefinition
   const localOverride: Partial<McpServerDefinition> = {}
 
   const secretEnv = input.secretEnv ?? {}
-  if (Object.keys(secretEnv).length > 0) {
+  const secretEnvKeys = new Set<string>([...Object.keys(secretEnv), ...(input.secretEnvKeys ?? [])])
+  if (secretEnvKeys.size > 0) {
     publicServer.env = { ...(publicServer.env ?? {}) }
-    localOverride.env = {}
-    for (const [key, value] of Object.entries(secretEnv)) {
+    const localEnv: Record<string, string> = {}
+    for (const key of [...secretEnvKeys].sort((a, b) => a.localeCompare(b))) {
       publicServer.env[key] = toPlaceholder(input.name, `env_${key}`, key)
-      localOverride.env[key] = value
+      if (Object.prototype.hasOwnProperty.call(secretEnv, key)) {
+        localEnv[key] = secretEnv[key]
+      }
+    }
+    if (Object.keys(localEnv).length > 0) {
+      localOverride.env = localEnv
     }
   }
 
   const secretHeaders = input.secretHeaders ?? {}
-  if (Object.keys(secretHeaders).length > 0) {
+  const secretHeaderKeys = new Set<string>([...Object.keys(secretHeaders), ...(input.secretHeaderKeys ?? [])])
+  if (secretHeaderKeys.size > 0) {
     publicServer.headers = { ...(publicServer.headers ?? {}) }
-    localOverride.headers = {}
-    for (const [key, value] of Object.entries(secretHeaders)) {
+    const localHeaders: Record<string, string> = {}
+    for (const key of [...secretHeaderKeys].sort((a, b) => a.localeCompare(b))) {
       publicServer.headers[key] = toPlaceholder(input.name, `header_${key}`)
-      localOverride.headers[key] = value
+      if (Object.prototype.hasOwnProperty.call(secretHeaders, key)) {
+        localHeaders[key] = secretHeaders[key]
+      }
+    }
+    if (Object.keys(localHeaders).length > 0) {
+      localOverride.headers = localHeaders
     }
   }
 
-  const secretArgs = input.secretArgs ?? []
-  if (secretArgs.length > 0) {
+  const secretArgValues = new Map<number, string>()
+  for (const entry of input.secretArgs ?? []) {
+    secretArgValues.set(entry.index, entry.value)
+  }
+  const secretArgIndexes = new Set<number>([
+    ...secretArgValues.keys(),
+    ...(input.secretArgIndexes ?? [])
+  ])
+  if (secretArgIndexes.size > 0) {
     if (!publicServer.args || publicServer.args.length === 0) {
       throw new Error('Cannot apply secret args to a server without args.')
     }
+    const secretIndexesSorted = [...secretArgIndexes].sort((a, b) => a - b)
     const localArgs = [...publicServer.args]
-    for (const entry of secretArgs) {
-      if (entry.index < 0 || entry.index >= publicServer.args.length) {
-        throw new Error(`Secret arg index ${String(entry.index)} is out of bounds for server "${input.name}".`)
+    let hasLocalArgValues = false
+    for (const index of secretIndexesSorted) {
+      if (index < 0 || index >= publicServer.args.length) {
+        throw new Error(`Secret arg index ${String(index)} is out of bounds for server "${input.name}".`)
       }
-      publicServer.args[entry.index] = toPlaceholder(input.name, `arg_${String(entry.index)}`)
-      localArgs[entry.index] = entry.value
+      publicServer.args[index] = toPlaceholder(input.name, `arg_${String(index)}`)
+      localArgs[index] = publicServer.args[index]
+      if (secretArgValues.has(index)) {
+        localArgs[index] = secretArgValues.get(index) as string
+        hasLocalArgValues = true
+      }
     }
-    localOverride.args = localArgs
+    if (hasLocalArgValues) {
+      localOverride.args = localArgs
+    }
   }
 
   return {

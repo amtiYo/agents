@@ -51,6 +51,7 @@ By default, the wizard preselects only one integration (Codex when available) to
 ## `agent` vs `agents`
 - `agents` is this project CLI.
 - `agent` is a separate third-party CLI from the Cursor/Antigravity ecosystem.
+- `antigravity` is the Antigravity CLI binary name in this project probes.
 - If `agent status` prints account info, that is expected and unrelated to `agents status`.
 
 ## Commands
@@ -72,9 +73,10 @@ agents mcp test [name] [--path <dir>] [--json]
 agents mcp doctor [name] [--path <dir>] [--json]
 ```
 
-## MCP toolkit (0.7.1)
+## MCP toolkit (0.7.2)
 - `agents mcp add`: add one server via flags or interactive prompts; if `[name]` is an `http(s)` URL, it auto-runs import flow.
 - `agents mcp import`: import strict JSON/JSONC snippets (`--file`, `--json`, `--url`, or stdin).
+- Interactive import now prompts for template secret values (tokens/keys) and lets you skip with Enter; skipped values can be added later in `.agents/local.json`.
 - `agents mcp remove`: delete a server from `.agents/agents.json` + `.agents/local.json`.
 - `agents mcp list`: inspect configured servers and local overrides.
 - `agents mcp test`: validate transport/command/url/required env consistency.

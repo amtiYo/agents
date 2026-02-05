@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.2] - 2026-02-05
+
+### Added
+
+- Interactive secret prompt during MCP import for template token/key values (for example `${GITHUB_TOKEN}`, `ghp_xxxx`):
+  - asks immediately during `agents mcp import` / URL-driven `agents mcp add`
+  - accepts Enter to skip and configure later
+  - keeps placeholders in `.agents/agents.json`
+  - stores only provided values in `.agents/local.json`
+
+### Changed
+
+- `splitServerSecrets` now supports placeholder-only secret keys/indexes without forcing local secret values.
+- README clarifies Antigravity CLI naming (`antigravity`) and the new import-time secret prompt flow.
+- CLI version bumped to `0.7.2`.
+
 ## [0.7.1] - 2026-02-05
 
 ### Added

@@ -1,6 +1,6 @@
 {
   "name": "agents-cli-dev",
-  "version": "0.7.1",
+  "version": "0.7.2",
   "description": "Onboarding-first CLI for AGENTS.md, MCP, and skills across LLM tools",
   "main": "dist/cli.js",
   "scripts": {
