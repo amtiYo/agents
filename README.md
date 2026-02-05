@@ -73,7 +73,7 @@ agents mcp test [name] [--path <dir>] [--json]
 agents mcp doctor [name] [--path <dir>] [--json]
 ```
 
-## MCP toolkit (0.7.4)
+## MCP toolkit (0.7.5)
 - `agents mcp add`: add one server via flags or interactive prompts; if `[name]` is an `http(s)` URL, it auto-runs import flow.
 - `agents mcp import`: import strict JSON/JSONC snippets (`--file`, `--json`, `--url`, or stdin).
 - Interactive import now prompts for template secret values (tokens/keys) and lets you skip with Enter; skipped values can be added later in `.agents/local.json`.
@@ -83,6 +83,7 @@ agents mcp doctor [name] [--path <dir>] [--json]
 - `agents mcp doctor`: alias for `agents mcp test`.
 - Secret values entered during import are now passed through safely to CLI integrations without over-restrictive character blocking.
 - Import parser now also accepts plain code blocks without `language-json` class and plain map payloads like `{ "appcontext": { "url": "...", "type": "sse" } }`.
+- Claude sync now reconciles against actual `claude mcp list` managed entries (`agents__*`) and removes stale leftovers from previous runs.
 
 ## Output UX
 - `agents status` prints a compact summary by default.

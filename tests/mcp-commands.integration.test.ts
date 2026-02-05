@@ -118,7 +118,7 @@ describe('mcp command integration', () => {
       verbose: false
     })
     expect(check.changed).toHaveLength(0)
-  })
+  }, 20_000)
 
   it('auto-imports MCP payload when add receives a URL', async () => {
     const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-mcp-cmds-'))

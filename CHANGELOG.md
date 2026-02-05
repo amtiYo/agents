@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.5] - 2026-02-05
+
+### Fixed
+
+- Resolved stale Claude MCP leftovers (`agents__*`) surviving across reset/start cycles.
+- Sync now reconciles with actual `claude mcp list` managed entries before applying changes, so orphaned servers are removed automatically.
+
+### Added
+
+- New Claude CLI parser utility:
+  - `src/core/claudeCli.ts`
+- New tests:
+  - `tests/claude-cli.test.ts`
+
+### Changed
+
+- Increased timeout for MCP commands integration test to stabilize environments where local CLI probes are slower.
+- CLI version bumped to `0.7.5`.
+
 ## [0.7.4] - 2026-02-05
 
 ### Fixed

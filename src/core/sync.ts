@@ -15,6 +15,7 @@ import { ensureProjectGitignore } from './gitignore.js'
 import { syncSkills } from './skills.js'
 import { syncVscodeSettings } from './vscodeSettings.js'
 import { listCursorMcpStatuses } from './cursorCli.js'
+import { listClaudeManagedServerNames } from './claudeCli.js'
 import { validateEnvValueForShell, validateServerName } from './mcpValidation.js'
 import type { IntegrationName, ResolvedMcpServer, SyncOptions, SyncResult } from '../types.js'
 
@@ -286,7 +287,17 @@ async function syncClaude(args: {
   }
 
   const desiredNames = enabled ? servers.map((server) => toManagedClaudeName(server.name)) : []
-  const currentNames = state.managedNames ?? []
+  let currentNames = state.managedNames ?? []
+  const hasClaudeCli = commandExists(command)
+
+  if (hasClaudeCli) {
+    const listed = listClaudeManagedServerNames(projectRoot)
+    if (listed.ok) {
+      currentNames = listed.names
+    } else {
+      warnings.push(`Failed checking Claude MCP status: ${compactError(listed.stderr)}`)
+    }
+  }
 
   if (equalSets(new Set(currentNames), new Set(desiredNames))) {
     return
@@ -295,7 +306,7 @@ async function syncClaude(args: {
 
   if (check) return
 
-  if (!commandExists(command)) {
+  if (!hasClaudeCli) {
     warnings.push('Claude CLI not found; skipped Claude MCP sync.')
     return
   }
