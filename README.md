@@ -73,7 +73,7 @@ agents mcp test [name] [--path <dir>] [--json]
 agents mcp doctor [name] [--path <dir>] [--json]
 ```
 
-## MCP toolkit (0.7.2)
+## MCP toolkit (0.7.3)
 - `agents mcp add`: add one server via flags or interactive prompts; if `[name]` is an `http(s)` URL, it auto-runs import flow.
 - `agents mcp import`: import strict JSON/JSONC snippets (`--file`, `--json`, `--url`, or stdin).
 - Interactive import now prompts for template secret values (tokens/keys) and lets you skip with Enter; skipped values can be added later in `.agents/local.json`.
@@ -81,6 +81,7 @@ agents mcp doctor [name] [--path <dir>] [--json]
 - `agents mcp list`: inspect configured servers and local overrides.
 - `agents mcp test`: validate transport/command/url/required env consistency.
 - `agents mcp doctor`: alias for `agents mcp test`.
+- Secret values entered during import are now passed through safely to CLI integrations without over-restrictive character blocking.
 
 ## Output UX
 - `agents status` prints a compact summary by default.

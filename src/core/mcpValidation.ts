@@ -70,9 +70,8 @@ export function resolveDefaultTargets(config: AgentsConfig): {
 }
 
 export function validateEnvValueForShell(key: string, value: string, context: string): void {
-  if (/[`$\\;|&<>(){}[\]!\n\r]/.test(value)) {
-    throw new Error(`Invalid ${context} value for "${key}": contains potentially dangerous characters`)
-  }
+  // Arguments are passed via spawnSync without a shell, so punctuation is safe.
+  // We only reject control bytes that can break transport/CLI parsing.
   if (/[\x00-\x1F\x7F]/.test(value)) {
     throw new Error(`Invalid ${context} value for "${key}": contains control characters`)
   }
