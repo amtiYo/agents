@@ -96,7 +96,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - run: npm install -g agents-standard
+      - run: npm install -g @agents-dev/cli
       - run: agents doctor
       - run: agents mcp test --json
       - run: agents sync --check

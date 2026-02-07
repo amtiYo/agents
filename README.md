@@ -1,6 +1,6 @@
 # agents
 
-[![npm version](https://img.shields.io/npm/v/agents-standard.svg)](https://www.npmjs.com/package/agents-standard)
+[![npm version](https://img.shields.io/npm/v/@agents-dev/cli.svg)](https://www.npmjs.com/package/@agents-dev/cli)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Tests](https://img.shields.io/badge/tests-77%20passing-brightgreen.svg)](https://github.com/amtiYo/agents)
 
@@ -31,7 +31,7 @@ Define your configuration once in `.agents/`, and let the CLI handle the rest. W
 ### 1. Install
 
 ```bash
-npm install -g agents-standard
+npm install -g @agents-dev/cli
 ```
 
 ### 2. Initialize

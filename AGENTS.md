@@ -1,10 +1,10 @@
 # AGENTS.md
 
-Instructions for AI coding agents working on the `agents-standard` project.
+Instructions for AI coding agents working on the `@agents-dev/cli` project.
 
 ## Project Overview
 
-**agents-standard** is a CLI tool that provides a practical standard layer for multi-LLM development. It solves the configuration fragmentation problem by syncing MCP servers, skills, and instructions across multiple AI coding tools (Codex, Claude Code, Gemini CLI, Cursor, Copilot, Antigravity) from a single source of truth.
+**@agents-dev/cli** is a CLI tool that provides a practical standard layer for multi-LLM development. It solves the configuration fragmentation problem by syncing MCP servers, skills, and instructions across multiple AI coding tools (Codex, Claude Code, Gemini CLI, Cursor, Copilot, Antigravity) from a single source of truth.
 
 **Key Principle:** One `.agents/` folder syncs to all tools. Add an MCP server once, it appears everywhere.
 
