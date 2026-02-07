@@ -18,6 +18,7 @@ import type { IntegrationName } from '../types.js'
 export interface DoctorOptions {
   projectRoot: string
   fix: boolean
+  fixDryRun?: boolean
 }
 
 interface Issue {
@@ -26,8 +27,16 @@ interface Issue {
 }
 
 export async function runDoctor(options: DoctorOptions): Promise<void> {
+  if (options.fix && options.fixDryRun) {
+    throw new Error('Use either --fix or --fix-dry-run, not both.')
+  }
+
+  const applyFixes = options.fix === true
+  const previewFixes = options.fixDryRun === true
+
   const paths = getProjectPaths(options.projectRoot)
   const issues: Issue[] = []
+  const actions: string[] = []
 
   if (!(await pathExists(paths.agentsConfig))) {
     issues.push({ level: 'error', message: 'Missing .agents/agents.json (run agents start)' })
@@ -119,9 +128,11 @@ export async function runDoctor(options: DoctorOptions): Promise<void> {
   }
 
   const codexEnabled = config.integrations.enabled.includes('codex')
+  let codexTrustNeedsFix = false
   if (codexEnabled) {
     const codexTrust = await getCodexTrustState(options.projectRoot)
-    if (codexTrust !== 'trusted' && !options.fix) {
+    codexTrustNeedsFix = codexTrust !== 'trusted'
+    if (codexTrustNeedsFix && !applyFixes && !previewFixes) {
       issues.push({
         level: 'warning',
         message: 'Codex project trust is not set; project .codex/config.toml may be ignored.'
@@ -146,7 +157,7 @@ export async function runDoctor(options: DoctorOptions): Promise<void> {
   for (const candidate of trackedChecks) {
     if (!isGitTracked(options.projectRoot, candidate)) continue
     trackedByGit.push(candidate)
-    if (!options.fix) {
+    if (!applyFixes && !previewFixes) {
       issues.push({
         level: 'warning',
         message: `"${candidate}" is tracked by git. Ignore rules do not affect tracked files; use "git rm --cached ${candidate}" if needed.`
@@ -154,25 +165,39 @@ export async function runDoctor(options: DoctorOptions): Promise<void> {
     }
   }
 
-  if (options.fix) {
+  if (previewFixes) {
+    if (trackedByGit.length > 0) {
+      actions.push(`Would untrack git paths: ${trackedByGit.join(', ')}`)
+    }
+    if (codexEnabled && codexTrustNeedsFix) {
+      actions.push('Would set Codex project trust for this repo.')
+    }
+    actions.push('Would run agents sync after fixes.')
+  }
+
+  if (applyFixes) {
     for (const trackedPath of trackedByGit) {
       const removed = untrackGitPath(options.projectRoot, trackedPath)
       if (!removed) {
         issues.push({ level: 'warning', message: `Failed to untrack "${trackedPath}" automatically.` })
+      } else {
+        actions.push(`Untracked "${trackedPath}" from git index.`)
       }
     }
-    if (codexEnabled) {
+    if (codexEnabled && codexTrustNeedsFix) {
       try {
         await ensureCodexProjectTrusted(options.projectRoot)
+        actions.push('Set Codex project trust.')
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
         issues.push({ level: 'warning', message: `Failed to set Codex trust automatically: ${message}` })
       }
     }
     await performSync({ projectRoot: options.projectRoot, check: false, verbose: false })
+    actions.push('Ran agents sync.')
   }
 
-  if (config.integrations.enabled.includes('antigravity') && !(await pathExists(paths.antigravityProjectMcp)) && !options.fix) {
+  if (config.integrations.enabled.includes('antigravity') && !(await pathExists(paths.antigravityProjectMcp)) && !applyFixes) {
     issues.push({
       level: 'warning',
       message: 'Antigravity project MCP file missing: .antigravity/mcp.json (run agents sync).'
@@ -180,6 +205,8 @@ export async function runDoctor(options: DoctorOptions): Promise<void> {
   }
 
   report(issues)
+  reportActions(actions, previewFixes, applyFixes)
+  reportNextSteps(issues, previewFixes, applyFixes)
 
   const hasErrors = issues.some((issue) => issue.level === 'error')
   if (hasErrors) {
@@ -196,6 +223,46 @@ function report(issues: Issue[]): void {
   process.stdout.write('Doctor report:\n')
   for (const issue of issues) {
     process.stdout.write(`- [${issue.level}] ${issue.message}\n`)
+  }
+}
+
+function reportActions(actions: string[], previewFixes: boolean, applyFixes: boolean): void {
+  if (actions.length === 0) return
+
+  if (previewFixes) {
+    process.stdout.write('Doctor fix dry-run:\n')
+  } else if (applyFixes) {
+    process.stdout.write('Doctor applied fixes:\n')
+  } else {
+    return
+  }
+
+  for (const action of actions) {
+    process.stdout.write(`- ${action}\n`)
+  }
+}
+
+function reportNextSteps(issues: Issue[], previewFixes: boolean, applyFixes: boolean): void {
+  const hasErrors = issues.some((issue) => issue.level === 'error')
+  const hasWarnings = issues.some((issue) => issue.level === 'warning')
+
+  if (hasErrors) {
+    process.stdout.write('Next: resolve errors and rerun "agents doctor".\n')
+    return
+  }
+
+  if (applyFixes) {
+    process.stdout.write('Next: run "agents status --verbose" to verify runtime state.\n')
+    return
+  }
+
+  if (previewFixes) {
+    process.stdout.write('Next: run "agents doctor --fix" to apply these changes.\n')
+    return
+  }
+
+  if (hasWarnings) {
+    process.stdout.write('Next: run "agents doctor --fix-dry-run" to preview automatic fixes.\n')
   }
 }
 

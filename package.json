@@ -1,17 +1,27 @@
 {
   "name": "agents-cli-dev",
-  "version": "0.7.6",
+  "version": "0.7.7",
   "description": "Onboarding-first CLI for AGENTS.md, MCP, and skills across LLM tools",
   "main": "dist/cli.js",
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "dev": "tsx src/cli.ts",
     "lint": "eslint .",
-    "test": "vitest run"
+    "test": "vitest run",
+    "prepack": "npm run build"
   },
   "bin": {
     "agents": "bin/agents"
   },
+  "files": [
+    "bin/",
+    "dist/",
+    "templates/",
+    "docs/",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
   "keywords": [
     "agents",
     "mcp",

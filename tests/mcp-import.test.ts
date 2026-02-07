@@ -208,6 +208,42 @@ describe('parseImportedServers', () => {
     expect(parsed[0]?.server.transport).toBe('http')
   })
 
+  it('retries transient fetch errors when reading import payload from URL', async () => {
+    const fetchMock = vi.fn(async () => {
+      throw new Error('fetch failed')
+    })
+
+    fetchMock.mockImplementationOnce(async () => {
+      throw new Error('fetch failed')
+    })
+    fetchMock.mockImplementationOnce(async () =>
+      new Response(
+        JSON.stringify({
+          mcpServers: {
+            docs: {
+              url: 'https://example.com/mcp'
+            }
+          }
+        }),
+        {
+          status: 200,
+          headers: {
+            'content-type': 'application/json'
+          }
+        },
+      ),
+    )
+
+    vi.stubGlobal('fetch', fetchMock)
+
+    const raw = await readImportInput({
+      url: 'https://mcpservers.org/servers/upstash/context7-mcp'
+    })
+    const parsed = parseImportedServers(raw)
+    expect(parsed[0]?.name).toBe('docs')
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
   it('falls back to GitHub README extraction for mcpservers pages without JSON snippet', async () => {
     vi.stubGlobal(
       'fetch',

@@ -62,8 +62,8 @@ agents connect [--path <dir>] [--llm codex,claude,gemini,copilot_vscode,cursor,a
 agents disconnect [--path <dir>] [--llm codex,claude,gemini,copilot_vscode,cursor,antigravity] [--interactive]
 agents sync [--path <dir>] [--check] [--verbose]
 agents watch [--path <dir>] [--interval <ms>] [--once] [--quiet]
-agents status [--path <dir>] [--json] [--verbose]
-agents doctor [--path <dir>] [--fix]
+agents status [--path <dir>] [--json] [--verbose] [--fast]
+agents doctor [--path <dir>] [--fix] [--fix-dry-run]
 agents reset [--path <dir>] [--local-only] [--hard]
 agents mcp list [--path <dir>] [--json]
 agents mcp add [name] [--path <dir>] [--transport stdio|http|sse] [--command <cmd>] [--arg <value>] [--url <url>] [--env KEY=VALUE] [--header KEY=VALUE] [--secret-env KEY=VALUE] [--secret-header KEY=VALUE] [--secret-arg index=value] [--target <integration>] [--replace]
@@ -73,7 +73,7 @@ agents mcp test [name] [--path <dir>] [--json] [--runtime] [--runtime-timeout-ms
 agents mcp doctor [name] [--path <dir>] [--json] [--runtime] [--runtime-timeout-ms <ms>]
 ```
 
-## MCP toolkit (0.7.6)
+## MCP toolkit (0.7.7)
 - `agents mcp add`: add one server via flags or interactive prompts; if `[name]` is an `http(s)` URL, it auto-runs import flow.
 - `agents mcp import`: import strict JSON/JSONC snippets (`--file`, `--json`, `--url`, or stdin).
 - Interactive import now prompts for template secret values (tokens/keys) and lets you skip with Enter; skipped values can be added later in `.agents/local.json`.
@@ -106,6 +106,8 @@ agents status --verbose
 ## Output UX
 - `agents status` prints a compact summary by default.
 - `agents status --verbose` prints full files/probes details.
+- `agents status --fast` skips external CLI probes for faster local checks.
+- `agents doctor --fix-dry-run` previews automatic fixes without mutating files.
 
 ## Project layout
 ```text

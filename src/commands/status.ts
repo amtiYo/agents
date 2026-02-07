@@ -14,6 +14,7 @@ export interface StatusOptions {
   projectRoot: string
   json: boolean
   verbose: boolean
+  fast: boolean
 }
 
 interface StatusOutput {
@@ -35,6 +36,7 @@ interface StatusOutput {
   }
   files: Record<string, boolean>
   probes: Record<string, string>
+  probesSkipped: boolean
 }
 
 export async function runStatus(options: StatusOptions): Promise<void> {
@@ -69,17 +71,19 @@ export async function runStatus(options: StatusOptions): Promise<void> {
   }
 
   const probes: Record<string, string> = {}
-  if (config.integrations.enabled.includes('codex')) probes.codex = probeCodex(options.projectRoot, expectedCodexServers)
-  if (config.integrations.enabled.includes('codex')) probes.codex_trust = await probeCodexTrust(options.projectRoot)
-  if (config.integrations.enabled.includes('claude')) probes.claude = probeClaude(options.projectRoot)
-  if (config.integrations.enabled.includes('gemini')) probes.gemini = probeGemini(options.projectRoot)
-  if (config.integrations.enabled.includes('copilot_vscode')) probes.copilot_vscode = await probeCopilot(paths.vscodeMcp)
-  if (config.integrations.enabled.includes('cursor')) probes.cursor = probeCursor(options.projectRoot, expectedCursorServers)
-  if (config.integrations.enabled.includes('antigravity')) {
-    probes.antigravity = await probeAntigravity(paths.antigravityProjectMcp)
+  if (!options.fast) {
+    if (config.integrations.enabled.includes('codex')) probes.codex = probeCodex(options.projectRoot, expectedCodexServers)
+    if (config.integrations.enabled.includes('codex')) probes.codex_trust = await probeCodexTrust(options.projectRoot)
+    if (config.integrations.enabled.includes('claude')) probes.claude = probeClaude(options.projectRoot)
+    if (config.integrations.enabled.includes('gemini')) probes.gemini = probeGemini(options.projectRoot)
+    if (config.integrations.enabled.includes('copilot_vscode')) probes.copilot_vscode = await probeCopilot(paths.vscodeMcp)
+    if (config.integrations.enabled.includes('cursor')) probes.cursor = probeCursor(options.projectRoot, expectedCursorServers)
+    if (config.integrations.enabled.includes('antigravity')) {
+      probes.antigravity = await probeAntigravity(paths.antigravityProjectMcp)
+    }
+    probes.skills = await probeSkills(paths.agentsSkillsDir)
+    probes.vscode_hidden = await probeVscodeHidden(paths.vscodeSettings)
   }
-  probes.skills = await probeSkills(paths.agentsSkillsDir)
-  probes.vscode_hidden = await probeVscodeHidden(paths.vscodeSettings)
 
   if (resolved.missingRequiredEnv.length > 0) {
     probes.env = `missing required env: ${resolved.missingRequiredEnv.join('; ')}`
@@ -103,7 +107,8 @@ export async function runStatus(options: StatusOptions): Promise<void> {
       hiddenPaths: config.workspace.vscode.hiddenPaths
     },
     files,
-    probes
+    probes,
+    probesSkipped: options.fast
   }
 
   if (options.json) {
@@ -122,7 +127,9 @@ export async function runStatus(options: StatusOptions): Promise<void> {
     const compactProbes = compactProbeOrder
       .filter((name) => Boolean(output.probes[name]))
       .map((name) => `${name}: ${output.probes[name]}`)
-    if (compactProbes.length > 0) {
+    if (output.probesSkipped) {
+      process.stdout.write('Probes: skipped (--fast)\n')
+    } else if (compactProbes.length > 0) {
       process.stdout.write(`Probes: ${compactProbes.join(' | ')}\n`)
     }
     process.stdout.write('Hint: run "agents status --verbose" for files/probes breakdown.\n')
@@ -143,8 +150,12 @@ export async function runStatus(options: StatusOptions): Promise<void> {
     process.stdout.write(`- ${file}: ${exists ? 'ok' : 'missing'}\n`)
   }
   process.stdout.write('Probes:\n')
-  for (const [name, result] of Object.entries(output.probes)) {
-    process.stdout.write(`- ${name}: ${result}\n`)
+  if (output.probesSkipped) {
+    process.stdout.write('- skipped (--fast)\n')
+  } else {
+    for (const [name, result] of Object.entries(output.probes)) {
+      process.stdout.write(`- ${name}: ${result}\n`)
+    }
   }
 }
 

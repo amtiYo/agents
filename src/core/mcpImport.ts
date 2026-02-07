@@ -8,6 +8,9 @@ interface ImportedServer {
   server: McpServerDefinition
 }
 
+const IMPORT_FETCH_TIMEOUT_MS = 12_000
+const IMPORT_FETCH_RETRIES = 1
+
 const SERVER_FIELD_HINTS = new Set([
   'transport',
   'type',
@@ -287,7 +290,7 @@ async function readImportInputFromUrl(url: string): Promise<string> {
     throw new Error(`Invalid URL: ${url}`)
   }
 
-  const response = await fetch(parsedUrl, {
+  const response = await fetchWithRetry(parsedUrl, {
     headers: {
       Accept: 'application/json,text/html,application/xhtml+xml'
     }
@@ -465,13 +468,67 @@ function extractGithubReposFromHtml(url: URL, html: string): Array<{ owner: stri
 
 async function fetchGithubReadme(repo: { owner: string; repo: string }): Promise<string | null> {
   const apiUrl = `https://api.github.com/repos/${repo.owner}/${repo.repo}/readme`
-  const response = await fetch(apiUrl, {
+  const response = await fetchWithRetry(apiUrl, {
     headers: {
       Accept: 'application/vnd.github.raw+json'
     }
   })
   if (!response.ok) return null
   return response.text()
+}
+
+async function fetchWithRetry(input: URL | string, init: RequestInit): Promise<Response> {
+  const maxAttempts = IMPORT_FETCH_RETRIES + 1
+  let lastError: unknown = null
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      const response = await fetch(input, {
+        ...init,
+        signal: AbortSignal.timeout(IMPORT_FETCH_TIMEOUT_MS)
+      })
+
+      if (response.ok) {
+        return response
+      }
+      if (!shouldRetryStatus(response.status) || attempt === maxAttempts) {
+        return response
+      }
+    } catch (error) {
+      lastError = error
+      if (!isRetryableFetchError(error) || attempt === maxAttempts) {
+        throw formatFetchError(input, error)
+      }
+    }
+  }
+
+  throw formatFetchError(input, lastError)
+}
+
+function shouldRetryStatus(status: number): boolean {
+  return status === 408 || status === 425 || status === 429 || status >= 500
+}
+
+function isRetryableFetchError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase()
+  const name = error instanceof Error ? error.name.toLowerCase() : ''
+  return (
+    name.includes('abort')
+    || name.includes('timeout')
+    || message.includes('timed out')
+    || message.includes('timeout')
+    || message.includes('network')
+    || message.includes('fetch failed')
+  )
+}
+
+function formatFetchError(input: URL | string, error: unknown): Error {
+  const raw = error instanceof Error ? error.message : String(error)
+  const hint = `Request timed out or failed for ${String(input)} (timeout ${String(IMPORT_FETCH_TIMEOUT_MS)}ms).`
+  if (!raw) {
+    return new Error(hint)
+  }
+  return new Error(`${hint} ${raw}`)
 }
 
 function isMcpServersUrl(url: URL): boolean {

@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.7] - 2026-02-07
+
+### Added
+
+- `agents status --fast` to skip external CLI probes for quicker status checks.
+- `agents doctor --fix-dry-run` to preview automatic fixes without mutating project files.
+- Sync lock handling for `.agents/generated/sync.lock` to guard against concurrent sync runs.
+- New shell-style argument tokenizer for interactive `agents mcp add` argument input.
+- New test suites:
+  - `tests/status.command.test.ts`
+  - `tests/sync-lock.integration.test.ts`
+  - `tests/shell-words.test.ts`
+
+### Changed
+
+- npm package publishing is now stricter and reproducible via:
+  - `prepack` build hook
+  - explicit `files` whitelist in `package.json`
+- CI matrix now validates Node.js `20` and `22` across Linux, macOS, and Windows.
+- Interactive `agents mcp add` now parses quoted/escaped args reliably instead of naive whitespace splitting.
+- README command reference updated for `status --fast` and `doctor --fix-dry-run`.
+- CLI version bumped to `0.7.7`.
+
+### Fixed
+
+- Reduced sync race conditions by introducing project-local sync lock acquisition before writes.
+- URL-based MCP import now uses timeout + retry behavior, improving resilience to transient network failures.
+
 ## [0.7.6] - 2026-02-05
 
 ### Added

@@ -19,6 +19,7 @@ export interface ProjectPaths {
   generatedCursorState: string
   generatedSkillsState: string
   generatedVscodeSettingsState: string
+  generatedSyncLock: string
   codexConfig: string
   geminiSettings: string
   vscodeMcp: string
@@ -60,6 +61,7 @@ export function getProjectPaths(projectRoot: string): ProjectPaths {
     generatedCursorState: path.join(generatedDir, 'cursor.state.json'),
     generatedSkillsState: path.join(generatedDir, 'skills.state.json'),
     generatedVscodeSettingsState: path.join(generatedDir, 'vscode.settings.state.json'),
+    generatedSyncLock: path.join(generatedDir, 'sync.lock'),
     codexConfig: path.join(root, '.codex', 'config.toml'),
     geminiSettings: path.join(root, '.gemini', 'settings.json'),
     vscodeMcp: path.join(root, '.vscode', 'mcp.json'),
