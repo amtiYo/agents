@@ -86,7 +86,7 @@ Then open a PR on GitHub.
 ## PR Guidelines
 
 ### Title
-Clear and concise (e.g., "Add Windsurf integration")
+Clear and concise (e.g., "Add Cursor integration")
 
 ### Description
 Explain:
@@ -123,7 +123,7 @@ Update docs if needed:
 npm test
 
 # Specific file
-npm test tests/mcp-commands.test.ts
+npm test tests/mcp-commands.integration.test.ts
 
 # Watch mode
 npm test -- --watch

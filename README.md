@@ -72,7 +72,7 @@ Boom. All your tools are updated.
 
 | Command | Description |
 |:--------|:------------|
-| `agents start` | ** Start here!** Interactive setup wizard. |
+| `agents start` | **Start here!** Interactive setup wizard. |
 | `agents sync` | Syncs your `.agents` config to all tools. |
 | `agents mcp add <url>` | Adds a new MCP server (e.g., from a URL). |
 | `agents mcp list` | Lists all configured MCP servers. |
