@@ -317,6 +317,20 @@ async function readImportInputFromUrl(url: string): Promise<string> {
     return markdownFallback
   }
 
+  // Check if it's a GitHub repo URL
+  const isGitHub = parsedUrl.hostname === 'github.com'
+
+  if (isGitHub) {
+    throw new Error(
+      `Cannot import MCP config directly from GitHub repository.\n\n` +
+      `To add this MCP server, check the repository README for installation instructions, then use:\n` +
+      `  agents mcp add <name> --transport stdio --command <cmd> --arg <arg>\n\n` +
+      `Example:\n` +
+      `  agents mcp add figma-mcp --command npx --arg "@figma/mcp-server"\n\n` +
+      `Or try finding it on https://mcpservers.org/`,
+    )
+  }
+
   throw new Error(
     'Could not extract MCP JSON payload from URL. Use "agents mcp import --url <url>" for JSON pages, or --json/--file with an explicit snippet.',
   )
