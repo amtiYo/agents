@@ -1,312 +1,164 @@
-# Contributing to agents-standard
+# Contributing
 
-Thank you for your interest in contributing! This document provides guidelines for contributing to the project.
+Thanks for your interest! Here's how to help.
 
-## 🤝 Ways to Contribute
+## Ways to Contribute
 
-### 1. Report Issues
+| Type | Action |
+|:-----|:-------|
+| 🐛 **Bug** | [Open an issue](https://github.com/amtiYo/agents/issues) with steps to reproduce |
+| 💡 **Feature** | [Start a discussion](https://github.com/amtiYo/agents/discussions) to propose it |
+| 📖 **Docs** | Fix typos or add examples via PR |
+| 💻 **Code** | Follow the workflow below |
 
-Found a bug or have a feature request?
-
-- Search [existing issues](https://github.com/amtiYo/agents/issues) first
-- If none exist, [create a new issue](https://github.com/amtiYo/agents/issues/new)
-- Use descriptive titles
-- Include steps to reproduce (for bugs)
-- Include your environment (Node version, OS, tool versions)
-
-**Bug Report Template:**
-
-```markdown
-**Describe the bug**
-A clear description of what the bug is.
-
-**To Reproduce**
-Steps to reproduce:
-1. Run `agents start`
-2. Add MCP server with `agents mcp add ...`
-3. See error
-
-**Expected behavior**
-What you expected to happen.
-
-**Environment:**
-- OS: [e.g., macOS 14.0]
-- Node.js: [e.g., v20.10.0]
-- agents version: [e.g., 0.7.7]
-- Affected tools: [e.g., Cursor, Claude Code]
-
-**Additional context**
-Any other relevant information.
-```
-
-### 2. Suggest Features
-
-Have an idea for improvement?
-
-- Check [existing discussions](https://github.com/amtiYo/agents/discussions)
-- Start a new discussion in "Ideas" category
-- Explain the use case
-- Describe the proposed solution
-- Consider backward compatibility
-
-### 3. Improve Documentation
-
-Documentation contributions are highly valued!
-
-- Fix typos or unclear explanations
-- Add examples or use cases
-- Improve code comments
-- Translate to other languages (future)
-
-### 4. Submit Code
-
-Ready to code? Great!
-
-#### Development Setup
+## Development Setup
 
 ```bash
-# Fork and clone the repo
+# Fork and clone
 git clone https://github.com/YOUR_USERNAME/agents.git
 cd agents
 
-# Install dependencies
+# Install
 npm install
 
 # Build
 npm run build
 
-# Run tests
+# Test
 npm test
 
 # Lint
 npm run lint
 
-# Link for local testing
+# Link locally
 npm link
 ```
 
-#### Development Workflow
+## Pull Request Workflow
 
-1. **Create a branch:**
-   ```bash
-   git checkout -b feature/your-feature-name
-   # or
-   git checkout -b fix/your-bug-fix
-   ```
+### 1. Create a branch
 
-2. **Make your changes:**
-   - Write code
-   - Add tests (required for new features)
-   - Update documentation if needed
+```bash
+git checkout -b feature/your-feature-name
+# or
+git checkout -b fix/your-bug-fix
+```
 
-3. **Test your changes:**
-   ```bash
-   npm run build
-   npm test
-   npm run lint
-   ```
+### 2. Make changes
 
-4. **Commit your changes:**
-   ```bash
-   git add .
-   git commit -m "feat: add new feature"
-   # or
-   git commit -m "fix: resolve bug"
-   ```
+- Write code
+- Add tests (required for new features)
+- Update docs if needed
 
-   **Commit Message Format:**
-   - `feat:` — New feature
-   - `fix:` — Bug fix
-   - `docs:` — Documentation changes
-   - `test:` — Test changes
-   - `refactor:` — Code refactoring
-   - `chore:` — Maintenance tasks
+### 3. Test
 
-5. **Push and create a pull request:**
-   ```bash
-   git push origin feature/your-feature-name
-   ```
+```bash
+npm run build
+npm test
+npm run lint
+```
 
-   Then open a PR on GitHub.
+All must pass.
 
-#### Pull Request Guidelines
+### 4. Commit
 
-- **Title:** Clear, concise description (e.g., "Add Windsurf integration")
-- **Description:** Explain what and why
-  - What problem does it solve?
-  - How does it work?
-  - Breaking changes (if any)?
-  - Related issues?
+```bash
+git add .
+git commit -m "feat: add new feature"
+```
 
-- **Tests:** All PRs must include tests
-  - Unit tests for new functions
-  - Integration tests for commands
-  - Update existing tests if behavior changes
+**Commit types:**
+- `feat:` — New feature
+- `fix:` — Bug fix
+- `docs:` — Documentation
+- `test:` — Tests
+- `refactor:` — Code refactoring
+- `chore:` — Maintenance
 
-- **Documentation:** Update docs if needed
-  - README for user-facing changes
-  - Code comments for complex logic
-  - CHANGELOG.md for releases (maintainers will handle)
+### 5. Push and create PR
 
-- **Code Style:** Follow existing patterns
-  - TypeScript strict mode
-  - ESLint rules
-  - Clear variable names
-  - Add comments for non-obvious code
+```bash
+git push origin feature/your-feature-name
+```
 
-#### Code Review Process
+Then open a PR on GitHub.
 
-1. Automated checks run (tests, lint)
-2. Maintainer reviews code
-3. Address feedback (if any)
-4. Approval and merge
+## PR Guidelines
 
-We aim to review PRs within 48 hours.
+### Title
+Clear and concise (e.g., "Add Windsurf integration")
 
-## 🎯 Priority Areas
+### Description
+Explain:
+- What problem does it solve?
+- How does it work?
+- Any breaking changes?
 
-We're especially interested in contributions for:
+### Tests
+All PRs must include tests:
+- Unit tests for new functions
+- Integration tests for commands
+- Update existing tests if behavior changes
 
-### High Priority
+### Documentation
+Update docs if needed:
+- README for user-facing changes
+- Code comments for complex logic
+- CHANGELOG.md (maintainers will handle)
 
-- **Bug fixes** — Always welcome
-- **Test coverage** — Improve existing tests
-- **Performance** — Optimize slow operations
-- **Documentation** — Examples, guides, tutorials
+## Code Style
 
-### Medium Priority
+- TypeScript strict mode
+- Follow existing patterns
+- ESLint rules
+- Clear variable names
+- Comments for non-obvious code
 
-- **New tool integrations** — Add support for more AI coding tools
-- **MCP enhancements** — Improve MCP server management
-- **UX improvements** — Better CLI output, error messages
+## Testing
 
-### Future/Nice to Have
-
-- **VSCode extension** — GUI for config management
-- **Team features** — Shared configs, remote sync
-- **Enterprise features** — SSO, audit logs
-
-## 📋 Testing Guidelines
-
-### Running Tests
+### Run tests
 
 ```bash
 # All tests
 npm test
 
-# Specific test file
+# Specific file
 npm test tests/mcp-commands.test.ts
 
 # Watch mode
 npm test -- --watch
-
-# Coverage (future)
-npm run test:coverage
 ```
 
-### Writing Tests
-
-We use [Vitest](https://vitest.dev/).
-
-**Example unit test:**
+### Write tests
 
 ```typescript
 import { describe, it, expect } from 'vitest'
-import { yourFunction } from '../src/core/yourModule'
 
 describe('yourFunction', () => {
   it('should do something', () => {
     const result = yourFunction('input')
     expect(result).toBe('expected')
   })
-
-  it('should handle edge cases', () => {
-    expect(() => yourFunction('')).toThrow()
-  })
 })
 ```
 
-**Example integration test:**
+## Priority Areas
 
-```typescript
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { runCommand } from '../src/commands/yourCommand'
-import { mkdtemp, rm } from 'node:fs/promises'
-import { join } from 'node:path'
-import { tmpdir } from 'node:os'
+| Priority | Area |
+|:---------|:-----|
+| 🔴 High | Bug fixes, test coverage, performance, documentation |
+| 🟡 Medium | New tool integrations, MCP enhancements, UX improvements |
+| 🟢 Nice-to-have | VSCode extension, team features, enterprise features |
 
-describe('command integration', () => {
-  let tempDir: string
+## Security
 
-  beforeEach(async () => {
-    tempDir = await mkdtemp(join(tmpdir(), 'test-'))
-  })
+Found a vulnerability? **Email us instead of opening a public issue.**
 
-  afterEach(async () => {
-    await rm(tempDir, { recursive: true, force: true })
-  })
+## Getting Help
 
-  it('should run command successfully', async () => {
-    await runCommand({ projectRoot: tempDir })
-    // assertions
-  })
-})
-```
+- 💬 [GitHub Discussions](https://github.com/amtiYo/agents/discussions)
+- 🐛 [GitHub Issues](https://github.com/amtiYo/agents/issues)
 
-## 🛡️ Security
+## License
 
-Found a security vulnerability?
-
-**DO NOT** open a public issue.
-
-Instead, email: [your-email@example.com]
-
-We'll respond within 48 hours.
-
-## 📜 Code of Conduct
-
-### Our Pledge
-
-We're committed to providing a welcoming and inclusive environment.
-
-### Our Standards
-
-**Positive behavior:**
-- Being respectful and empathetic
-- Giving and accepting constructive feedback
-- Focusing on what's best for the community
-
-**Unacceptable behavior:**
-- Harassment, discrimination, or personal attacks
-- Trolling or inflammatory comments
-- Publishing others' private information
-
-### Enforcement
-
-Violations may result in:
-1. Warning
-2. Temporary ban
-3. Permanent ban
-
-Report issues to: [your-email@example.com]
-
-## 📞 Getting Help
-
-Stuck? We're here to help!
-
-- **Questions:** [GitHub Discussions](https://github.com/amtiYo/agents/discussions)
-- **Bugs:** [GitHub Issues](https://github.com/amtiYo/agents/issues)
-- **Chat:** [Discord](https://discord.gg/your-invite) (future)
-
-## 🎉 Recognition
-
-Contributors are recognized in:
-- GitHub contributors list
-- Release notes (for significant contributions)
-- README acknowledgments (for major features)
-
-Thank you for making `agents-standard` better! 🙏
-
----
-
-**License:** By contributing, you agree your contributions are licensed under the MIT License.
+By contributing, you agree your contributions are licensed under the MIT License.

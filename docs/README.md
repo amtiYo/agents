@@ -1,69 +1,26 @@
 # Documentation
 
-Welcome to the `agents-standard` documentation!
+## Available Docs
 
-## 📚 Table of Contents
+| Document | Description |
+|:---------|:------------|
+| [Usage Examples](EXAMPLES.md) | Real-world scenarios |
+| [System Design](agents-system.md) | Technical architecture |
 
-### Getting Started
+## External Resources
 
-- **[Quick Start Guide](QUICK_START.md)** — Get up and running in 5 minutes
-  - Installation
-  - First-time setup
-  - Common first tasks
-  - Troubleshooting
+### Standards
+- [AGENTS.md](https://agents.md)
+- [Model Context Protocol](https://modelcontextprotocol.io)
 
-### Usage
+### Tools
+- [Codex](https://developers.openai.com/codex) | [Claude Code](https://code.claude.com/docs) | [Gemini CLI](https://geminicli.com/docs)
+- [Cursor](https://cursor.com/docs) | [Copilot](https://github.com/features/copilot) | [Antigravity](https://antigravity.google/docs)
 
-- **[Usage Examples](EXAMPLES.md)** — Real-world scenarios and workflows
-  - Solo developer setup
-  - Team onboarding
-  - Multiple projects
-  - CI/CD integration
-  - Monorepo setup
-  - Advanced MCP management
+## Contributing
 
-### Architecture
-
-- **[System Design](agents-system.md)** — Technical blueprint
-  - Architecture overview
-  - Integration patterns
-  - File structure
-  - Design decisions
-
-## 🔗 Quick Links
-
-- [Main README](../README.md)
-- [Changelog](../CHANGELOG.md)
-- [Contributing Guidelines](../CONTRIBUTING.md)
-- [License](../LICENSE)
-
-## 🤝 Contributing to Docs
-
-Found a typo or want to improve the documentation?
-
-1. Fork the repository
-2. Edit the relevant `.md` file
-3. Submit a pull request
-
-We appreciate all contributions, big and small!
-
-## 📖 External Resources
-
-### Official Standards
-
-- [AGENTS.md](https://agents.md) — Instructions standard
-- [Model Context Protocol](https://modelcontextprotocol.io) — MCP specification
-- [Agent Skills](https://agentskills.io) — Skills registry
-
-### Tool Documentation
-
-- [Codex Documentation](https://developers.openai.com/codex)
-- [Claude Code Documentation](https://code.claude.com/docs)
-- [Gemini CLI Documentation](https://geminicli.com/docs)
-- [Cursor Documentation](https://cursor.com/docs)
-- [Copilot Documentation](https://github.com/features/copilot)
-- [Antigravity Documentation](https://antigravity.google/docs)
+See [CONTRIBUTING.md](../CONTRIBUTING.md)
 
 ---
 
-**Questions?** Open an [issue](https://github.com/amtiYo/agents/issues) or start a [discussion](https://github.com/amtiYo/agents/discussions)!
+**Questions?** [Issues](https://github.com/amtiYo/agents/issues) | [Discussions](https://github.com/amtiYo/agents/discussions)
