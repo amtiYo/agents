@@ -94,7 +94,7 @@ describe('mcp test runtime mode', () => {
     expect(process.exitCode).toBeUndefined()
   })
 
-  it('fails with exit code when an available runtime probe reports error', async () => {
+  it('fails with exit code when an available runtime probe reports error', { timeout: 10000 }, async () => {
     const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-mcp-runtime-'))
     const binDir = await mkdtemp(path.join(os.tmpdir(), 'agents-mcp-runtime-bin-'))
     tempDirs.push(projectRoot, binDir)

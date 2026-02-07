@@ -1,7 +1,7 @@
 {
-  "name": "agents-cli-dev",
+  "name": "agents-standard",
   "version": "0.7.7",
-  "description": "Onboarding-first CLI for AGENTS.md, MCP, and skills across LLM tools",
+  "description": "One config to rule them all — Practical standard layer for multi-LLM development. Sync MCP servers, skills, and AGENTS.md across Codex, Claude Code, Gemini CLI, Cursor, Copilot, and Antigravity.",
   "main": "dist/cli.js",
   "scripts": {
     "build": "tsc -p tsconfig.json",
@@ -25,11 +25,30 @@
   "keywords": [
     "agents",
     "mcp",
+    "model-context-protocol",
+    "agents-md",
     "codex",
-    "claude",
-    "gemini"
+    "claude-code",
+    "gemini-cli",
+    "cursor",
+    "copilot",
+    "antigravity",
+    "ai-coding",
+    "llm-tools",
+    "config-sync",
+    "multi-llm",
+    "agentic-ai",
+    "cli"
   ],
-  "author": "",
+  "author": "amtiYo",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/amtiYo/agents.git"
+  },
+  "bugs": {
+    "url": "https://github.com/amtiYo/agents/issues"
+  },
+  "homepage": "https://github.com/amtiYo/agents#readme",
   "license": "MIT",
   "type": "module",
   "engines": {
