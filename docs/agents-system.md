@@ -1,81 +1,178 @@
-# Agents System Blueprint
+# System Architecture
+
+Technical blueprint for advanced users.
 
 ## Problem
-LLM toolchains have diverged into incompatible setup models:
-- different instruction file expectations,
-- different MCP config shapes,
-- different skill packaging patterns.
 
-This increases setup cost and causes drift across teams.
+| Issue | Impact |
+|:------|:-------|
+| Different instruction formats | `.cursorrules`, `CLAUDE.md`, `AGENTS.md` |
+| Different MCP configs | TOML, JSON, different schemas |
+| Different skill packaging | Incompatible formats |
 
-## Standard proposed by `agents`
-`agents` defines a thin, repo-centric standard that aligns tools around:
-1. AGENTS.md (instructions)
-2. MCP servers (tooling)
-3. Skills (reusable workflows)
+**Result:** Setup cost ↑, drift across teams ↑
 
-## Core principles
-- One source-of-truth in `.agents`
-- Root `AGENTS.md` is canonical for all integrations
-- One onboarding entrypoint (`agents start`)
-- Deterministic sync into client-specific configs
-- Source-only git strategy by default
+## Solution
 
-## Canonical files
-- `AGENTS.md`
-- `.agents/agents.json`
-- `.agents/local.json` (local/private)
-- `.agents/skills/*/SKILL.md`
+`agents` provides **one source of truth**:
 
-## Runtime flow
-1. `agents start`
-   - includes trust/approval confirmations for Codex and Cursor
-   - asks whether to hide tool directories in VS Code
-2. `agents status`
-3. `agents doctor`
-4. `agents sync --check`
-5. Optional auto-sync loop: `agents watch`
-6. MCP lifecycle via `agents mcp add|import|list|remove|test`
-   - `agents mcp add <https://...>` auto-detects URL input and switches to import flow
-   - `agents mcp doctor` is an alias for quick MCP validation
-   - `agents mcp test --runtime` runs best-effort live checks for Claude/Gemini/Cursor
+| Component | Purpose |
+|:----------|:--------|
+| `AGENTS.md` | Instructions (all tools) |
+| `.agents/agents.json` | MCP servers (shared) |
+| `.agents/local.json` | Secrets (gitignored) |
+| `.agents/skills/` | Reusable workflows |
 
-## Integration materialization
-- Codex -> `.codex/config.toml`
-- Claude -> `claude mcp add/remove -s local`
-- Gemini -> `.gemini/settings.json`
-- Copilot VS Code -> `.vscode/mcp.json`
-- Cursor -> `.cursor/mcp.json` + `cursor-agent mcp enable/disable`
-- Antigravity -> `.antigravity/mcp.json` (writes both `servers` and `mcpServers` keys for compatibility)
+## Core Principles
 
-## VS Code visibility
-- `agents sync` can manage `.vscode/settings.json` using JSONC merge.
-- Managed keys:
-  - `files.exclude`
-  - `search.exclude`
-- Default hidden paths:
-  - `**/.codex`
-  - `**/.claude`
-  - `**/.gemini`
-  - `**/.cursor`
-  - `**/.antigravity`
-  - `**/.agents/generated`
-- Managed state file: `.agents/generated/vscode.settings.state.json`
+- ✅ Single source of truth in `.agents/`
+- ✅ Root `AGENTS.md` is canonical
+- ✅ One command setup: `agents start`
+- ✅ Deterministic sync to tool configs
+- ✅ Source-only git strategy (default)
 
-## Reset model
-- `agents reset` (safe): removes generated/materialized integration files, keeps `.agents` source files and `AGENTS.md`.
-- `agents reset --local-only`: removes only materialized tool configs.
-- `agents reset --hard`: removes full agents-managed setup and managed `.gitignore` entries.
+## File Structure
 
-## Skills model
-- Canonical project skills in `.agents/skills`.
-- Codex consumes these directly.
-- Claude bridge at `.claude/skills` (symlink, copy fallback on restricted systems).
-- Cursor bridge at `.cursor/skills` (symlink, copy fallback on restricted systems).
-- Gemini bridge at `.gemini/skills` (symlink, copy fallback on restricted systems).
-- `agents doctor` validates `SKILL.md` frontmatter (`name`, `description`) and naming conventions.
+```
+project/
+├── AGENTS.md                    # Instructions
+├── .agents/
+│   ├── agents.json             # MCP servers (committed)
+│   ├── local.json              # Secrets (gitignored)
+│   ├── skills/                 # Workflows
+│   └── generated/              # Auto-generated (gitignored)
+├── .codex/                     # Materialized (gitignored)
+├── .claude/                    # Materialized (gitignored)
+├── .cursor/                    # Materialized (gitignored)
+└── ...
+```
 
-## Security model
-- No secrets in committed source files.
-- Secrets and machine specifics go into `.agents/local.json` and environment variables.
-- MCP env/header keys are validated strictly during add/import/sync (fail-fast).
+## Command Flow
+
+| Command | What It Does |
+|:--------|:-------------|
+| `agents start` | Interactive setup + trust/approval confirmations |
+| `agents status` | Check connection status |
+| `agents doctor` | Validate configs |
+| `agents sync` | Generate tool-specific configs |
+| `agents watch` | Auto-sync on changes |
+| `agents mcp add <url>` | Add MCP server |
+| `agents mcp test --runtime` | Live connectivity check |
+
+## Integration Mapping
+
+| Tool | Generated Config |
+|:-----|:-----------------|
+| **Codex** | `.codex/config.toml` |
+| **Claude** | `claude mcp add -s local` (CLI) |
+| **Gemini** | `.gemini/settings.json` |
+| **Cursor** | `.cursor/mcp.json` + CLI enable |
+| **Copilot** | `.vscode/mcp.json` |
+| **Antigravity** | `.antigravity/mcp.json` |
+
+## VS Code Integration
+
+**Managed in `.vscode/settings.json`:**
+```json
+{
+  "files.exclude": {
+    "**/.codex": true,
+    "**/.claude": true,
+    "**/.cursor": true,
+    "**/.gemini": true,
+    "**/.antigravity": true,
+    "**/.agents/generated": true
+  }
+}
+```
+
+**State tracking:** `.agents/generated/vscode.settings.state.json`
+
+## Skills Sync
+
+| Tool | Location |
+|:-----|:---------|
+| **Source** | `.agents/skills/*/SKILL.md` |
+| **Codex** | Reads `.agents/skills/` directly |
+| **Claude** | Symlink to `.claude/skills/` |
+| **Cursor** | Symlink to `.cursor/skills/` |
+| **Gemini** | Symlink to `.gemini/skills/` |
+
+**Validation:** `agents doctor` checks frontmatter (`name`, `description`)
+
+## Reset Options
+
+| Command | Effect |
+|:--------|:-------|
+| `agents reset` | Remove generated files, keep `.agents/` |
+| `agents reset --local-only` | Remove tool configs only |
+| `agents reset --hard` | Remove everything (`.agents/`, `AGENTS.md`, gitignore entries) |
+
+## Security Model
+
+| Type | Storage |
+|:-----|:--------|
+| **Shared config** | `.agents/agents.json` (committed) |
+| **Secrets** | `.agents/local.json` (gitignored) |
+| **Validation** | Fail-fast on invalid env/header keys |
+
+**Rules:**
+- ❌ No secrets in git
+- ✅ Secrets in `.agents/local.json`
+- ✅ Strict key validation (shell-safe for env, HTTP token for headers)
+
+## Sync Process
+
+```
+1. Read .agents/agents.json
+2. Merge with .agents/local.json
+3. Generate tool-specific configs
+4. Write atomically (temp + rename)
+5. Acquire lock (prevent race conditions)
+```
+
+## MCP Server Format
+
+**stdio transport:**
+```json
+{
+  "transport": "stdio",
+  "command": "npx",
+  "args": ["@modelcontextprotocol/server-filesystem", "/path"]
+}
+```
+
+**http/sse transport:**
+```json
+{
+  "transport": "http",
+  "url": "https://api.example.com/mcp"
+}
+```
+
+**With secrets:**
+```json
+{
+  "transport": "http",
+  "url": "https://api.example.com/mcp",
+  "env": {
+    "API_KEY": "{{API_KEY}}"  // Prompt for value
+  }
+}
+```
+
+## Git Strategy
+
+**Committed:**
+- ✅ `.agents/agents.json`
+- ✅ `.agents/skills/`
+- ✅ `AGENTS.md`
+
+**Gitignored:**
+- ❌ `.agents/local.json`
+- ❌ `.agents/generated/`
+- ❌ `.codex/`, `.claude/`, `.cursor/`, `.gemini/`, `.antigravity/`
+
+---
+
+**Deep dive?** See [AGENTS.md](../AGENTS.md) for implementation details.

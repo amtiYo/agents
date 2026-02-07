@@ -1,188 +1,117 @@
 # agents
 
-`agents` is a practical standard layer for multi-LLM development.
+[![npm version](https://img.shields.io/npm/v/@agents-dev/cli.svg)](https://www.npmjs.com/package/@agents-dev/cli)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Tests](https://img.shields.io/badge/tests-77%20passing-brightgreen.svg)](https://github.com/amtiYo/agents)
 
-Different vendors push different config formats for instructions, MCP, and skills.
-That fragmentation creates noise, duplicated setup, and broken onboarding.
+> **One config to rule them all.**
+> The practical standard layer for multi-LLM development.
 
-`agents` solves this by giving one project standard that can drive multiple LLM tools.
-It **extends AGENTS.md**, not replaces it:
-- AGENTS.md for instructions
-- MCP servers for tools
-- SKILLS for reusable workflows
+---
 
-## What it standardizes
-- One project source-of-truth under `.agents/`
-- One guided setup command: `agents start`
-- One sync command to materialize client configs: `agents sync`
+## ⚡️ The Problem
 
-## Supported tools (current)
-- Codex
-- Claude Code
-- Gemini CLI
-- Copilot VS Code (workspace MCP file)
-- Cursor
-- Antigravity
+You're using **Codex**, **Claude**, **Cursor**, and **Gemini**. You have 6 different config files. You add an MCP server to one, and the others break. Your team's onboarding doc is a wiki page that's always out of date.
 
-Kimi is intentionally out of scope for now until a stable project-local contract is available.
+## ✨ The Solution
 
-## Install (local development)
-```bash
-npm install
-npm run build
-npm link
+`agents` gives you **one source of truth**.
+
+Define your configuration once in `.agents/`, and let the CLI handle the rest. We sync your MCP servers, skills, and instructions to **every tool automatically**.
+
+```text
+.agents/
+  ├── agents.json      → All your MCP servers
+  ├── local.json       → Your secrets (gitignored)
+  └── skills/          → Reusable team workflows
 ```
 
-## Main workflow
+## 🚀 Quick Start
+
+### 1. Install
+
+```bash
+npm install -g @agents-dev/cli
+```
+
+### 2. Initialize
+
+Go to your project folder and run:
+
 ```bash
 agents start
-agents status
-agents doctor
-agents sync --check
 ```
 
-`agents start` includes setup confirmations for trust/approval-sensitive integrations:
-- Codex project trust
-- Cursor MCP auto-approval
-- Antigravity project-local MCP materialization is automatic
+The interactive wizard will guide you through:
+- ✅ Creating the `.agents` folder
+- ✅ Detecting your installed AI tools
+- ✅ Setting up your first MCP server
 
-By default, the wizard preselects only one integration (Codex when available) to keep setup compact.
+### 3. Sync
 
-## `agent` vs `agents`
-- `agents` is this project CLI.
-- `agent` is a separate third-party CLI from the Cursor/Antigravity ecosystem.
-- `antigravity` is the Antigravity CLI binary name in this project probes.
-- If `agent status` prints account info, that is expected and unrelated to `agents status`.
+Whenever you change your config, just run:
 
-## Commands
 ```bash
-agents start [--path <dir>] [--non-interactive] [--yes]
-agents init [--path <dir>] [--force]
-agents connect [--path <dir>] [--llm codex,claude,gemini,copilot_vscode,cursor,antigravity] [--interactive]
-agents disconnect [--path <dir>] [--llm codex,claude,gemini,copilot_vscode,cursor,antigravity] [--interactive]
-agents sync [--path <dir>] [--check] [--verbose]
-agents watch [--path <dir>] [--interval <ms>] [--once] [--quiet]
-agents status [--path <dir>] [--json] [--verbose] [--fast]
-agents doctor [--path <dir>] [--fix] [--fix-dry-run]
-agents reset [--path <dir>] [--local-only] [--hard]
-agents mcp list [--path <dir>] [--json]
-agents mcp add [name] [--path <dir>] [--transport stdio|http|sse] [--command <cmd>] [--arg <value>] [--url <url>] [--env KEY=VALUE] [--header KEY=VALUE] [--secret-env KEY=VALUE] [--secret-header KEY=VALUE] [--secret-arg index=value] [--target <integration>] [--replace]
-agents mcp import [--path <dir>] [--file <json>] [--json <text>] [--url <url>] [--name <name>] [--target <integration>] [--replace]
-agents mcp remove <name> [--path <dir>] [--ignore-missing]
-agents mcp test [name] [--path <dir>] [--json] [--runtime] [--runtime-timeout-ms <ms>]
-agents mcp doctor [name] [--path <dir>] [--json] [--runtime] [--runtime-timeout-ms <ms>]
-```
-
-## MCP toolkit (0.7.7)
-- `agents mcp add`: add one server via flags or interactive prompts; if `[name]` is an `http(s)` URL, it auto-runs import flow.
-- `agents mcp import`: import strict JSON/JSONC snippets (`--file`, `--json`, `--url`, or stdin).
-- Interactive import now prompts for template secret values (tokens/keys) and lets you skip with Enter; skipped values can be added later in `.agents/local.json`.
-- Fail-fast validation now blocks invalid env/header keys during add/import.
-- `agents mcp remove`: delete a server from `.agents/agents.json` + `.agents/local.json`.
-- `agents mcp list`: inspect configured servers and local overrides.
-- `agents mcp test`: validates transport/command/url/required env consistency; optional `--runtime` mode checks live connectivity via Claude/Gemini/Cursor CLIs.
-- `agents mcp doctor`: alias for `agents mcp test`.
-- Secret values entered during import are now passed through safely to CLI integrations without over-restrictive character blocking.
-- Import parser now also accepts plain code blocks without `language-json` class and plain map payloads like `{ "appcontext": { "url": "...", "type": "sse" } }`.
-- Claude sync now reconciles against actual `claude mcp list` managed entries (`agents__*`) and removes stale leftovers from previous runs.
-- Codex generated config now includes URL-based MCP servers (`http`/legacy `sse`) in addition to stdio servers.
-
-## Migration notes
-- If `agents mcp add/import` now fails with an invalid key error, rename env keys to shell-safe format (`[A-Za-z_][A-Za-z0-9_]*`) and header keys to HTTP token format.
-- If `agents sync` fails after upgrade, run `agents doctor` and fix reported invalid env/header keys in `.agents/agents.json` or `.agents/local.json`.
-
-## Release checklist (smoke)
-```bash
-agents start --non-interactive --yes
-agents connect --llm codex,claude,gemini,copilot_vscode,cursor,antigravity
-agents mcp add https://mcpservers.org/servers/upstash/context7-mcp --non-interactive
-agents mcp add https://mcpservers.org/servers/microsoft/playwright-mcp --non-interactive
-agents mcp test --runtime --json
 agents sync
-agents sync --check
-agents status --verbose
 ```
 
-## Output UX
-- `agents status` prints a compact summary by default.
-- `agents status --verbose` prints full files/probes details.
-- `agents status --fast` skips external CLI probes for faster local checks.
-- `agents doctor --fix-dry-run` previews automatic fixes without mutating files.
+Boom. All your tools are updated.
 
-## Project layout
-```text
-<project>/
-  AGENTS.md
-  .agents/
-    README.md
-    agents.json
-    local.json
-    skills/
-      README.md
-      skill-guide/SKILL.md
-      <other-skills>/SKILL.md
-    generated/
-      vscode.settings.state.json
-```
+## 🛠️ Supported Tools
 
-## Reset semantics
-- `agents reset` (safe): removes generated/materialized integration files, keeps `.agents` source files.
-- `agents reset --local-only`: removes only materialized tool configs.
-- `agents reset --hard`: removes full agents-managed setup (`.agents`, root `AGENTS.md`, managed gitignore entries).
+| Tool | MCP Integration | Skills | Instructions |
+|:-----|:---------------:|:------:|:------------:|
+| **Codex** | ✅ | ✅ | ✅ |
+| **Claude Code** | ✅ | ✅ | ✅ |
+| **Gemini CLI** | ✅ | ✅ | ✅ |
+| **Cursor** | ✅ | ✅ | ✅ |
+| **Copilot** | ✅ | ⏳ | ✅ |
+| **Antigravity** | ✅ | ✅ | ✅ |
 
-## Git strategy (default)
-Default is `source-only`:
-- keep `.agents/*` in git,
-- ignore generated/local files (`.agents/generated`, `.agents/local.json`, `.codex`, `.gemini`, `.vscode/mcp.json`, `.claude/skills`, `.cursor`).
+## 🎮 Command Cheat Sheet
 
-Optional Codex config path override (useful for tests):
-```bash
-export AGENTS_CODEX_CONFIG_PATH=/custom/path/codex.toml
-```
+| Command | Description |
+|:--------|:------------|
+| `agents start` | **Start here!** Interactive setup wizard. |
+| `agents sync` | Syncs your `.agents` config to all tools. |
+| `agents mcp add <url>` | Adds a new MCP server (e.g., from a URL). |
+| `agents mcp list` | Lists all configured MCP servers. |
+| `agents doctor` | Checks for configuration issues. |
+| `agents status` | Shows connection status of all tools. |
+| `agents watch` | Auto-syncs changes in real-time. |
 
-Antigravity uses project-local materialization:
-- `.antigravity/mcp.json`
+## 📚 How It Works
 
-## Codex visibility note
-`codex mcp list` can differ from project-selected MCP in `.agents/agents.json`.
-`agents status` shows both:
-- project trust state (`codex_trust`)
-- codex CLI list output
+1.  **You edit** `.agents/agents.json` (or use the CLI).
+2.  **`agents` reads** your standard configuration.
+3.  **`agents` generates** the specific config files for each tool (e.g., `.cursor/mcp.json`, `.claude/mcp.json`).
+4.  **You focus** on coding, not configuring.
 
-Use this command for the CLI-side view:
-```bash
-codex mcp list --json
-```
+## ❓ FAQ
 
-## Why this exists
-LLM tooling ecosystem is moving fast, but standards are fragmented.
-`agents` gives teams a stable, repo-centric baseline that works across tools while staying compatible with AGENTS.md.
+<details>
+<summary><b>Does this replace AGENTS.md?</b></summary>
+**No.** It *extends* it. `AGENTS.md` is for human-readable instructions. `agents` is for machine-readable configuration (MCP servers, skills). We support both.
+</details>
 
-See `docs/agents-system.md` for the blueprint.
+<details>
+<summary><b>Can I use this with just one tool?</b></summary>
+**Yes!** It's still better than managing raw config files because it gives you a clean git strategy (commit `.agents`, ignore generated files) and easy MCP management commands.
+</details>
 
-## Roadmap note
-Planned next step: modular project memory under `.agents/` so agents can selectively load only the context they need for the current task.
+<details>
+<summary><b>Where are my API keys stored?</b></summary>
+In `.agents/local.json`. This file is **gitignored** by default, so your secrets stay safe on your machine.
+</details>
 
-## Skills interoperability
-`agents` keeps skills in `.agents/skills` and validates basic `SKILL.md` frontmatter (`name`, `description`) in `agents doctor`.
-This follows the direction of shared skill ecosystems (for example, Agent Skills registry conventions) while staying project-local.
-Reference: https://agentskills.io/home
+## 🤝 Community & Support
 
-## Contributing
-Huge request: if this project helps you, please contribute ideas, issue reports, and pull requests.
-Community feedback is the fastest way to turn this into a practical cross-tool standard.
+- 🐛 **Found a bug?** [Open an issue](https://github.com/amtiYo/agents/issues)
+- 💡 **Have an idea?** [Start a discussion](https://github.com/amtiYo/agents/discussions)
+- ⭐ **Love it?** Star us on GitHub!
 
-## References
-- https://agents.md
-- https://agentskills.io/home
-- https://cursor.com/docs/context/mcp
-- https://cursor.com/docs/context/skills
-- https://antigravity.google/docs/mcp
-- https://antigravity.google/docs/skills
-- https://developers.openai.com/codex/guides/agents-md
-- https://developers.openai.com/codex/mcp
-- https://developers.openai.com/codex/skills
-- https://geminicli.com/docs/cli/skills/
-- https://geminicli.com/docs/tools/mcp-server/
-- https://code.claude.com/docs/en/mcp
-- https://code.claude.com/docs/en/skills
+---
+
+<p align="center">
+  <sub>Built with ❤️ for the AI coding community</sub>
+</p>
