@@ -17,6 +17,7 @@ import { syncVscodeSettings } from './vscodeSettings.js'
 import { listCursorMcpStatuses } from './cursorCli.js'
 import { listClaudeManagedServerNames } from './claudeCli.js'
 import { validateEnvKey, validateEnvValueForShell, validateHeaderKey, validateServerName } from './mcpValidation.js'
+import { acquireSyncLock } from './syncLock.js'
 import type { IntegrationName, ResolvedMcpServer, SyncOptions, SyncResult } from '../types.js'
 
 interface ClaudeState {
@@ -30,106 +31,111 @@ interface CursorState {
 export async function performSync(options: SyncOptions): Promise<SyncResult> {
   const { projectRoot, check, verbose } = options
   const paths = getProjectPaths(projectRoot)
-  const config = await loadAgentsConfig(projectRoot)
+  const releaseLock = await acquireSyncLock(paths.generatedSyncLock)
+  try {
+    const config = await loadAgentsConfig(projectRoot)
 
-  const resolved = await loadResolvedRegistry(projectRoot)
-  const warnings = [...resolved.warnings]
-  if (resolved.missingRequiredEnv.length > 0) {
-    warnings.push(`Skipped servers because required env vars are missing: ${resolved.missingRequiredEnv.join('; ')}`)
-  }
-  validateResolvedServers(resolved.serversByTarget)
-
-  const changed: string[] = []
-
-  if (!check) {
-    const gitignoreChanged = await ensureProjectGitignore(projectRoot, config.syncMode)
-    if (gitignoreChanged) {
-      changed.push('.gitignore')
+    const resolved = await loadResolvedRegistry(projectRoot)
+    const warnings = [...resolved.warnings]
+    if (resolved.missingRequiredEnv.length > 0) {
+      warnings.push(`Skipped servers because required env vars are missing: ${resolved.missingRequiredEnv.join('; ')}`)
     }
-  }
+    validateResolvedServers(resolved.serversByTarget)
 
-  await ensureDir(paths.generatedDir)
+    const changed: string[] = []
 
-  await syncGeneratedFiles({
-    projectRoot,
-    check,
-    changed,
-    warnings,
-    resolvedByTarget: resolved.serversByTarget
-  })
-
-  const enabled = new Set(config.integrations.enabled)
-
-  if (enabled.has('codex')) {
-    await materializeCodex(paths.generatedCodex, paths.codexConfig, check, changed)
-  }
-  if (enabled.has('gemini')) {
-    await materializeGemini(paths.generatedGemini, paths.geminiSettings, check, changed)
-  }
-  if (enabled.has('copilot_vscode')) {
-    await materializeCopilot(paths.generatedCopilot, paths.vscodeMcp, check, changed)
-  }
-  if (enabled.has('cursor')) {
-    await materializeCursor(paths.generatedCursor, paths.cursorMcp, check, changed)
-  }
-  if (enabled.has('antigravity')) {
-    await materializeAntigravityProject(paths.generatedAntigravity, paths.antigravityProjectMcp, check, changed)
-  }
-
-  await syncClaude({
-    enabled: enabled.has('claude'),
-    check,
-    projectRoot,
-    servers: resolved.serversByTarget.claude,
-    statePath: paths.generatedClaudeState,
-    changed,
-    warnings
-  })
-
-  await syncCursor({
-    enabled: enabled.has('cursor'),
-    autoApprove: config.integrations.options.cursorAutoApprove,
-    check,
-    projectRoot,
-    servers: resolved.serversByTarget.cursor,
-    statePath: paths.generatedCursorState,
-    changed,
-    warnings
-  })
-
-  await syncSkills({
-    projectRoot,
-    enabledIntegrations: config.integrations.enabled,
-    check,
-    changed,
-    warnings
-  })
-
-  await syncVscodeSettings({
-    settingsPath: paths.vscodeSettings,
-    statePath: paths.generatedVscodeSettingsState,
-    hiddenPaths: config.workspace.vscode.hiddenPaths,
-    hideGenerated: config.workspace.vscode.hideGenerated,
-    check,
-    changed,
-    warnings,
-    projectRoot
-  })
-
-  if (!check) {
-    config.lastSync = new Date().toISOString()
-    await saveAgentsConfig(projectRoot, config)
-  }
-
-  if (verbose && changed.length > 0) {
-    for (const entry of changed) {
-      process.stdout.write(`updated: ${entry}\n`)
+    if (!check) {
+      const gitignoreChanged = await ensureProjectGitignore(projectRoot, config.syncMode)
+      if (gitignoreChanged) {
+        changed.push('.gitignore')
+      }
     }
-  }
 
-  return {
-    changed: uniqueSorted(changed),
-    warnings: uniqueSorted(warnings)
+    await ensureDir(paths.generatedDir)
+
+    await syncGeneratedFiles({
+      projectRoot,
+      check,
+      changed,
+      warnings,
+      resolvedByTarget: resolved.serversByTarget
+    })
+
+    const enabled = new Set(config.integrations.enabled)
+
+    if (enabled.has('codex')) {
+      await materializeCodex(paths.generatedCodex, paths.codexConfig, check, changed)
+    }
+    if (enabled.has('gemini')) {
+      await materializeGemini(paths.generatedGemini, paths.geminiSettings, check, changed)
+    }
+    if (enabled.has('copilot_vscode')) {
+      await materializeCopilot(paths.generatedCopilot, paths.vscodeMcp, check, changed)
+    }
+    if (enabled.has('cursor')) {
+      await materializeCursor(paths.generatedCursor, paths.cursorMcp, check, changed)
+    }
+    if (enabled.has('antigravity')) {
+      await materializeAntigravityProject(paths.generatedAntigravity, paths.antigravityProjectMcp, check, changed)
+    }
+
+    await syncClaude({
+      enabled: enabled.has('claude'),
+      check,
+      projectRoot,
+      servers: resolved.serversByTarget.claude,
+      statePath: paths.generatedClaudeState,
+      changed,
+      warnings
+    })
+
+    await syncCursor({
+      enabled: enabled.has('cursor'),
+      autoApprove: config.integrations.options.cursorAutoApprove,
+      check,
+      projectRoot,
+      servers: resolved.serversByTarget.cursor,
+      statePath: paths.generatedCursorState,
+      changed,
+      warnings
+    })
+
+    await syncSkills({
+      projectRoot,
+      enabledIntegrations: config.integrations.enabled,
+      check,
+      changed,
+      warnings
+    })
+
+    await syncVscodeSettings({
+      settingsPath: paths.vscodeSettings,
+      statePath: paths.generatedVscodeSettingsState,
+      hiddenPaths: config.workspace.vscode.hiddenPaths,
+      hideGenerated: config.workspace.vscode.hideGenerated,
+      check,
+      changed,
+      warnings,
+      projectRoot
+    })
+
+    if (!check) {
+      config.lastSync = new Date().toISOString()
+      await saveAgentsConfig(projectRoot, config)
+    }
+
+    if (verbose && changed.length > 0) {
+      for (const entry of changed) {
+        process.stdout.write(`updated: ${entry}\n`)
+      }
+    }
+
+    return {
+      changed: uniqueSorted(changed),
+      warnings: uniqueSorted(warnings)
+    }
+  } finally {
+    await releaseLock()
   }
 }
 

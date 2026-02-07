@@ -25,7 +25,7 @@ async function main(): Promise<void> {
   program
     .name('agents')
     .description('Onboarding-first CLI for AGENTS.md + MCP + skills across LLM coding tools')
-    .version('0.7.6')
+    .version('0.7.7')
 
   program
     .command('start')
@@ -121,11 +121,13 @@ async function main(): Promise<void> {
     .option('--path <dir>', 'Target project directory', process.cwd())
     .option('--json', 'Output machine-readable JSON', false)
     .option('--verbose', 'Show full files/probes breakdown', false)
-    .action(async (opts: { path: string; json: boolean; verbose: boolean }) => {
+    .option('--fast', 'Skip external CLI probes for quicker output', false)
+    .action(async (opts: { path: string; json: boolean; verbose: boolean; fast: boolean }) => {
       await runStatus({
         projectRoot: resolvePath(opts.path),
         json: Boolean(opts.json),
-        verbose: Boolean(opts.verbose)
+        verbose: Boolean(opts.verbose),
+        fast: Boolean(opts.fast)
       })
     })
 
@@ -134,10 +136,12 @@ async function main(): Promise<void> {
     .description('Validate setup and detect configuration problems')
     .option('--path <dir>', 'Target project directory', process.cwd())
     .option('--fix', 'Apply safe automatic fixes', false)
-    .action(async (opts: { path: string; fix: boolean }) => {
+    .option('--fix-dry-run', 'Preview what --fix would change without applying it', false)
+    .action(async (opts: { path: string; fix: boolean; fixDryRun: boolean }) => {
       await runDoctor({
         projectRoot: resolvePath(opts.path),
-        fix: Boolean(opts.fix)
+        fix: Boolean(opts.fix),
+        fixDryRun: Boolean(opts.fixDryRun)
       })
     })
 

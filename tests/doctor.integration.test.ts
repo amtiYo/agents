@@ -64,6 +64,21 @@ describe('doctor command', () => {
     expect(output).toContain('[error] MCP server "invalid" has invalid header key "Bad Header"')
     expect(process.exitCode).toBe(1)
   }, 15000)
+
+  it('supports fix dry-run without mutating files', async () => {
+    const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-doctor-'))
+    tempDirs.push(projectRoot)
+
+    await runInit({ projectRoot, force: true })
+
+    const output = await captureStdout(async () => {
+      await runDoctor({ projectRoot, fix: false, fixDryRun: true })
+    })
+
+    expect(output).toContain('Doctor fix dry-run:')
+    expect(output).toContain('Would run agents sync after fixes.')
+    expect(output).toContain('Next: run "agents doctor --fix" to apply these changes.')
+  }, 15000)
 })
 
 async function captureStdout(fn: () => Promise<void>): Promise<string> {

@@ -17,6 +17,7 @@ import {
 } from '../core/mcpValidation.js'
 import { performSync } from '../core/sync.js'
 import { formatWarnings } from '../core/warnings.js'
+import { parseShellWords } from '../core/shellWords.js'
 
 export interface McpAddOptions {
   projectRoot: string
@@ -95,9 +96,7 @@ export async function runMcpAdd(options: McpAddOptions): Promise<void> {
     }
     if (transport === 'stdio' && args.length === 0) {
       const raw = await promptOptionalText('Args (space-separated, optional)')
-      if (raw.trim().length > 0) {
-        args = raw.split(/\s+/).filter(Boolean)
-      }
+      args = parseShellWords(raw)
     }
   }
 
