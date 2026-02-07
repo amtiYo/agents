@@ -22,24 +22,6 @@ Welcome to the `agents-standard` documentation!
   - Monorepo setup
   - Advanced MCP management
 
-### Development
-
-- **[Publishing Guide](PUBLISHING.md)** — For maintainers
-  - Pre-publish checklist
-  - npm publishing steps
-  - Post-publish tasks
-  - Versioning strategy
-  - Troubleshooting
-
-### Marketing
-
-- **[Show HN Guide](SHOW_HN.md)** — Launch templates and social media
-  - Hacker News post template
-  - Twitter/X thread
-  - Reddit posts
-  - Discord/Slack messages
-  - FAQ responses
-
 ### Architecture
 
 - **[System Design](agents-system.md)** — Technical blueprint

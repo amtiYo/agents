@@ -19,7 +19,9 @@
     "templates/",
     "docs/",
     "README.md",
+    "AGENTS.md",
     "CHANGELOG.md",
+    "CONTRIBUTING.md",
     "LICENSE"
   ],
   "keywords": [

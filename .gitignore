@@ -13,3 +13,6 @@ coverage/
 .claude/skills
 .cursor/
 .antigravity/
+
+# Internal documentation (maintainer only)
+.docs-internal/
