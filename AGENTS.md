@@ -34,6 +34,7 @@ agents/
 │   │   ├── mcp.ts               # MCP management
 │   │   ├── renderers.ts         # Tool-specific config generators
 │   │   ├── trust.ts             # Codex trust management
+│   │   ├── ui.ts                # CLI output helpers (colors, spinners)
 │   │   └── ...
 │   ├── integrations/             # Tool integrations
 │   │   ├── codex.ts
@@ -213,6 +214,40 @@ if (result.status !== 0) {
   // Handle error
 }
 ```
+
+### CLI Output (UI Module)
+
+Use `src/core/ui.ts` for all user-facing output:
+
+```typescript
+import { ui } from './core/ui.js'
+
+// Status messages
+ui.success('Config synced')
+ui.error('Failed to connect')
+ui.warning('Server not responding')
+ui.info('Checking configuration...')
+
+// Formatted output
+ui.keyValue('Status', 'connected')
+ui.list(['item1', 'item2'])
+ui.section('MCP Servers')
+ui.hint('Run `agents sync` to apply changes')
+
+// Spinners for async operations
+const result = await ui.spin('Syncing...', async () => {
+  return await doAsyncWork()
+})
+
+// Context-aware (respects --json, --quiet, NO_COLOR)
+ui.json(data)  // Only outputs if --json flag is set
+```
+
+**Rules:**
+- Never use raw `console.log()` for user-facing output
+- Use `ui.spin()` for any operation > 500ms
+- Colors are minimal: green (success), red (error), yellow (warning), cyan (info)
+- Unicode symbols have ASCII fallbacks for non-Unicode terminals
 
 ### Temp Directories in Tests
 
@@ -394,6 +429,7 @@ git push origin feature/my-feature
 - **Types:** `src/types.ts`
 - **File I/O:** `src/core/fs.ts`
 - **Paths:** `src/core/paths.ts`
+- **UI helpers:** `src/core/ui.ts`
 
 ---
 
