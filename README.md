@@ -7,6 +7,10 @@
 > **One config to rule them all.**
 > The practical standard layer for multi-LLM development.
 
+<p align="center">
+  <img src="docs/screenshot.jpg" alt="agents start" width="600">
+</p>
+
 ---
 
 ## ⚡️ The Problem
