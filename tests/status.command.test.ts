@@ -38,7 +38,7 @@ describe('status command', () => {
       })
     })
 
-    expect(output).toContain('Probes: skipped (--fast)')
+    expect(output).toContain('skipped (--fast)')
     expect(runCommandSpy).not.toHaveBeenCalled()
     expect(commandExistsSpy).not.toHaveBeenCalled()
   })

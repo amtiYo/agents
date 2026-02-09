@@ -4,6 +4,7 @@ import { performSync } from '../core/sync.js'
 import { getProjectPaths } from '../core/paths.js'
 import { pathExists } from '../core/fs.js'
 import { formatWarnings } from '../core/warnings.js'
+import * as ui from '../core/ui.js'
 
 export interface WatchOptions {
   projectRoot: string
@@ -13,6 +14,8 @@ export interface WatchOptions {
 }
 
 export async function runWatch(options: WatchOptions): Promise<void> {
+  ui.setContext({ quiet: options.quiet })
+
   const projectRoot = path.resolve(options.projectRoot)
   const intervalMs = normalizeInterval(options.intervalMs)
 
@@ -21,8 +24,9 @@ export async function runWatch(options: WatchOptions): Promise<void> {
     return
   }
 
-  process.stdout.write(`Watching .agents files in ${projectRoot} (interval ${intervalMs}ms)\n`)
-  process.stdout.write('Press Ctrl+C to stop.\n')
+  ui.info(`Watching .agents files in ${projectRoot}`)
+  ui.dim(`Interval: ${intervalMs}ms. Press Ctrl+C to stop.`)
+  ui.blank()
 
   let lastSignature = await snapshotSignature(projectRoot)
   let stopped = false
@@ -43,7 +47,8 @@ export async function runWatch(options: WatchOptions): Promise<void> {
     await runSingleSync(projectRoot, options.quiet)
   }
 
-  process.stdout.write('Watch stopped.\n')
+  ui.blank()
+  ui.info('Watch stopped')
 }
 
 async function runSingleSync(projectRoot: string, quiet: boolean): Promise<void> {
@@ -59,20 +64,26 @@ async function runSingleSync(projectRoot: string, quiet: boolean): Promise<void>
       return
     }
 
-    process.stdout.write(`[${startedAt}] sync\n`)
+    ui.dim(`[${startedAt}] sync`)
+
     if (result.changed.length === 0) {
-      process.stdout.write('No changes.\n')
+      ui.writeln('  No changes.')
     } else {
-      process.stdout.write(`Updated ${result.changed.length} item(s):\n- ${result.changed.join('\n- ')}\n`)
+      ui.success(`Updated ${result.changed.length} item(s):`)
+      ui.arrowList(result.changed, 4)
     }
 
     const warningBlock = formatWarnings(result.warnings, 5)
     if (warningBlock) {
-      process.stdout.write(warningBlock)
+      for (const line of warningBlock.split('\n').filter(Boolean)) {
+        if (line.startsWith('- ')) {
+          ui.warning(line.slice(2))
+        }
+      }
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
-    process.stdout.write(`[${startedAt}] sync failed: ${message}\n`)
+    ui.error(`[${startedAt}] sync failed: ${message}`)
   }
 }
 

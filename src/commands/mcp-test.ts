@@ -3,6 +3,7 @@ import { listMcpEntries, loadMcpState, type McpServerEntry } from '../core/mcpCr
 import { commandExists, runCommand } from '../core/shell.js'
 import { listCursorMcpStatuses, type CursorServerState } from '../core/cursorCli.js'
 import { toManagedClaudeName } from '../integrations/claude.js'
+import * as ui from '../core/ui.js'
 import type { IntegrationName, McpServerDefinition } from '../types.js'
 
 const ALL_INTEGRATIONS: IntegrationName[] = [
@@ -59,6 +60,8 @@ type ClaudeRuntimeStatus = 'ok' | 'error' | 'unknown'
 type GeminiRuntimeStatus = 'ok' | 'error' | 'unknown'
 
 export async function runMcpTest(options: McpTestOptions): Promise<void> {
+  ui.setContext({ json: options.json })
+
   const state = await loadMcpState(options.projectRoot)
   const entries = listMcpEntries(state)
   const filtered = options.name
@@ -71,9 +74,19 @@ export async function runMcpTest(options: McpTestOptions): Promise<void> {
 
   const runtimeEnabled = options.runtime === true
   const runtimeTimeoutMs = options.runtimeTimeoutMs ?? DEFAULT_RUNTIME_TIMEOUT_MS
+
+  const spin = ui.spinner()
+  if (runtimeEnabled) {
+    spin.start('Running runtime checks...')
+  }
+
   const runtime = runtimeEnabled
     ? runRuntimeChecks(filtered, options.projectRoot, runtimeTimeoutMs)
     : null
+
+  if (runtimeEnabled) {
+    spin.stop('Runtime checks complete')
+  }
 
   const results: ServerTestResult[] = filtered.map((entry) => {
     const tested = testServer(entry.name, entry.mergedServer)
@@ -110,30 +123,58 @@ export async function runMcpTest(options: McpTestOptions): Promise<void> {
   }
 
   if (options.json) {
-    process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`)
-  } else if (results.length === 0) {
-    process.stdout.write('No MCP servers configured.\n')
-  } else {
-    process.stdout.write(`MCP test results (${String(results.length)}):\n`)
-    for (const result of results) {
-      process.stdout.write(`- ${result.name}: ${result.status}\n`)
-      for (const message of result.messages) {
-        process.stdout.write(`  - ${message}\n`)
-      }
-      if (runtimeEnabled && result.runtime) {
-        for (const integration of Object.keys(result.runtime).sort()) {
-          const typed = integration as IntegrationName
-          const runtimeResult = result.runtime[typed]
-          if (!runtimeResult) continue
-          process.stdout.write(`  - runtime/${typed}: ${runtimeResult.status} (${runtimeResult.message})\n`)
-        }
+    ui.json(payload)
+    if (totalErrors > 0) {
+      process.exitCode = 1
+    }
+    return
+  }
+
+  if (results.length === 0) {
+    ui.dim('No MCP servers configured.')
+    return
+  }
+
+  ui.writeln(`MCP test results (${results.length}):`)
+  ui.blank()
+
+  for (const result of results) {
+    // Status icon and name
+    if (result.status === 'ok') {
+      ui.success(result.name)
+    } else {
+      ui.error(result.name)
+    }
+
+    // Messages
+    for (const message of result.messages) {
+      if (message === 'ok') continue
+      ui.writeln(`    ${ui.color.dim(message)}`)
+    }
+
+    // Runtime results
+    if (runtimeEnabled && result.runtime) {
+      for (const integration of Object.keys(result.runtime).sort()) {
+        const typed = integration as IntegrationName
+        const runtimeResult = result.runtime[typed]
+        if (!runtimeResult) continue
+
+        const statusIcon = runtimeResult.status === 'ok'
+          ? ui.color.green(ui.symbols.success)
+          : runtimeResult.status === 'error'
+            ? ui.color.red(ui.symbols.error)
+            : ui.color.dim(ui.symbols.info)
+
+        ui.writeln(`    ${statusIcon} ${typed}: ${ui.color.dim(runtimeResult.message)}`)
       }
     }
-    if (runtimeEnabled && payload.runtime) {
-      process.stdout.write(
-        `Runtime summary: ${payload.runtime.availableIntegrations.length} integration(s) available, ${payload.runtime.errors} error(s).\n`,
-      )
-    }
+  }
+
+  if (runtimeEnabled && payload.runtime) {
+    ui.blank()
+    ui.info(
+      `Runtime: ${payload.runtime.availableIntegrations.length} integration(s) available, ${payload.runtime.errors} error(s)`
+    )
   }
 
   if (totalErrors > 0) {
@@ -417,11 +458,11 @@ function parseClaudeRuntimeStatuses(output: string): Record<string, ClaudeRuntim
     if (!match?.[1] || !match[2]) continue
     const name = match[1]
     const detail = match[2].toLowerCase()
-    if (detail.includes('✗') || detail.includes('failed') || detail.includes('disconnected') || detail.includes('error')) {
+    if (detail.includes('\u2717') || detail.includes('failed') || detail.includes('disconnected') || detail.includes('error')) {
       statuses[name] = 'error'
       continue
     }
-    if (detail.includes('✓') || detail.includes('connected')) {
+    if (detail.includes('\u2713') || detail.includes('connected')) {
       statuses[name] = 'ok'
       continue
     }
@@ -439,15 +480,15 @@ function parseGeminiRuntimeStatuses(output: string): Record<string, GeminiRuntim
     .filter(Boolean)
 
   for (const line of lines) {
-    const match = line.match(/^(?:[✓✗]\s*)?([a-zA-Z0-9._:-]+):\s*(.+)$/)
+    const match = line.match(/^(?:[\u2713\u2717]\s*)?([a-zA-Z0-9._:-]+):\s*(.+)$/)
     if (!match?.[1] || !match[2]) continue
     const name = match[1]
     const detail = match[2].toLowerCase()
-    if (line.includes('✗') || detail.includes('disconnected') || detail.includes('failed') || detail.includes('error')) {
+    if (line.includes('\u2717') || detail.includes('disconnected') || detail.includes('failed') || detail.includes('error')) {
       statuses[name] = 'error'
       continue
     }
-    if (line.includes('✓') || detail.includes('connected')) {
+    if (line.includes('\u2713') || detail.includes('connected')) {
       statuses[name] = 'ok'
       continue
     }

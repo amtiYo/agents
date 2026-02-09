@@ -13,6 +13,7 @@ import { INTEGRATIONS } from '../integrations/registry.js'
 import { listMcpEntries, loadMcpState } from '../core/mcpCrud.js'
 import { isPlaceholderValue, isSecretLikeKey } from '../core/mcpSecrets.js'
 import { validateEnvKey, validateHeaderKey } from '../core/mcpValidation.js'
+import * as ui from '../core/ui.js'
 import type { IntegrationName } from '../types.js'
 
 export interface DoctorOptions {
@@ -38,7 +39,11 @@ export async function runDoctor(options: DoctorOptions): Promise<void> {
   const issues: Issue[] = []
   const actions: string[] = []
 
+  const spin = ui.spinner()
+  spin.start('Running diagnostics...')
+
   if (!(await pathExists(paths.agentsConfig))) {
+    spin.stop('Diagnostics complete')
     issues.push({ level: 'error', message: 'Missing .agents/agents.json (run agents start)' })
     report(issues)
     process.exitCode = 1
@@ -57,6 +62,7 @@ export async function runDoctor(options: DoctorOptions): Promise<void> {
   try {
     config = await loadAgentsConfig(options.projectRoot)
   } catch (error) {
+    spin.stop('Diagnostics complete')
     issues.push({ level: 'error', message: error instanceof Error ? error.message : String(error) })
     report(issues)
     process.exitCode = 1
@@ -165,6 +171,8 @@ export async function runDoctor(options: DoctorOptions): Promise<void> {
     }
   }
 
+  spin.stop('Diagnostics complete')
+
   if (previewFixes) {
     if (trackedByGit.length > 0) {
       actions.push(`Would untrack git paths: ${trackedByGit.join(', ')}`)
@@ -176,6 +184,9 @@ export async function runDoctor(options: DoctorOptions): Promise<void> {
   }
 
   if (applyFixes) {
+    const fixSpin = ui.spinner()
+    fixSpin.start('Applying fixes...')
+
     for (const trackedPath of trackedByGit) {
       const removed = untrackGitPath(options.projectRoot, trackedPath)
       if (!removed) {
@@ -195,6 +206,8 @@ export async function runDoctor(options: DoctorOptions): Promise<void> {
     }
     await performSync({ projectRoot: options.projectRoot, check: false, verbose: false })
     actions.push('Ran agents sync.')
+
+    fixSpin.stop('Fixes applied')
   }
 
   if (config.integrations.enabled.includes('antigravity') && !(await pathExists(paths.antigravityProjectMcp)) && !applyFixes) {
@@ -216,30 +229,34 @@ export async function runDoctor(options: DoctorOptions): Promise<void> {
 
 function report(issues: Issue[]): void {
   if (issues.length === 0) {
-    process.stdout.write('Doctor: no issues found.\n')
+    ui.success('Doctor: no issues found')
     return
   }
 
-  process.stdout.write('Doctor report:\n')
+  ui.blank()
   for (const issue of issues) {
-    process.stdout.write(`- [${issue.level}] ${issue.message}\n`)
+    if (issue.level === 'error') {
+      ui.error(issue.message)
+    } else {
+      ui.warning(issue.message)
+    }
   }
+  ui.blank()
 }
 
 function reportActions(actions: string[], previewFixes: boolean, applyFixes: boolean): void {
   if (actions.length === 0) return
 
   if (previewFixes) {
-    process.stdout.write('Doctor fix dry-run:\n')
+    ui.writeln('Dry-run (would apply):')
   } else if (applyFixes) {
-    process.stdout.write('Doctor applied fixes:\n')
+    ui.writeln('Applied fixes:')
   } else {
     return
   }
 
-  for (const action of actions) {
-    process.stdout.write(`- ${action}\n`)
-  }
+  ui.arrowList(actions)
+  ui.blank()
 }
 
 function reportNextSteps(issues: Issue[], previewFixes: boolean, applyFixes: boolean): void {
@@ -247,22 +264,22 @@ function reportNextSteps(issues: Issue[], previewFixes: boolean, applyFixes: boo
   const hasWarnings = issues.some((issue) => issue.level === 'warning')
 
   if (hasErrors) {
-    process.stdout.write('Next: resolve errors and rerun "agents doctor".\n')
+    ui.nextSteps('resolve errors and rerun "agents doctor".')
     return
   }
 
   if (applyFixes) {
-    process.stdout.write('Next: run "agents status --verbose" to verify runtime state.\n')
+    ui.nextSteps('run "agents status --verbose" to verify runtime state.')
     return
   }
 
   if (previewFixes) {
-    process.stdout.write('Next: run "agents doctor --fix" to apply these changes.\n')
+    ui.nextSteps('run "agents doctor --fix" to apply these changes.')
     return
   }
 
   if (hasWarnings) {
-    process.stdout.write('Next: run "agents doctor --fix-dry-run" to preview automatic fixes.\n')
+    ui.nextSteps('run "agents doctor --fix-dry-run" to preview automatic fixes.')
   }
 }
 

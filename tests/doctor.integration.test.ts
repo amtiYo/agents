@@ -33,7 +33,7 @@ describe('doctor command', () => {
       await runDoctor({ projectRoot, fix: false })
     })
 
-    expect(output).toContain('[error] Invalid TOML in .codex/config.toml')
+    expect(output).toContain('Invalid TOML in .codex/config.toml')
     expect(process.exitCode).toBe(1)
   }, 15000)
 
@@ -60,8 +60,8 @@ describe('doctor command', () => {
       await runDoctor({ projectRoot, fix: false })
     })
 
-    expect(output).toContain('[error] MCP server "invalid" has invalid environment variable key "BAD KEY"')
-    expect(output).toContain('[error] MCP server "invalid" has invalid header key "Bad Header"')
+    expect(output).toContain('MCP server "invalid" has invalid environment variable key "BAD KEY"')
+    expect(output).toContain('MCP server "invalid" has invalid header key "Bad Header"')
     expect(process.exitCode).toBe(1)
   }, 15000)
 
@@ -75,7 +75,7 @@ describe('doctor command', () => {
       await runDoctor({ projectRoot, fix: false, fixDryRun: true })
     })
 
-    expect(output).toContain('Doctor fix dry-run:')
+    expect(output).toContain('Dry-run (would apply):')
     expect(output).toContain('Would run agents sync after fixes.')
     expect(output).toContain('Next: run "agents doctor --fix" to apply these changes.')
   }, 15000)

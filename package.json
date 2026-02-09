@@ -1,6 +1,6 @@
 {
   "name": "@agents-dev/cli",
-  "version": "0.7.7",
+  "version": "0.8.0",
   "description": "One config to rule them all — Practical standard layer for multi-LLM development. Sync MCP servers, skills, and AGENTS.md across Codex, Claude Code, Gemini CLI, Cursor, Copilot, and Antigravity.",
   "main": "dist/cli.js",
   "scripts": {
@@ -61,12 +61,10 @@
     "@iarna/toml": "^2.2.5",
     "commander": "^14.0.3",
     "jsonc-parser": "^3.3.1",
-    "picocolors": "^1.1.1",
-    "prompts": "^2.4.2"
+    "picocolors": "^1.1.1"
   },
   "devDependencies": {
     "@types/node": "^25.2.0",
-    "@types/prompts": "^2.4.9",
     "@typescript-eslint/eslint-plugin": "^8.54.0",
     "@typescript-eslint/parser": "^8.54.0",
     "eslint": "^9.39.2",

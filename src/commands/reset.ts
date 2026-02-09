@@ -3,6 +3,7 @@ import { cleanupManagedGitignore } from '../core/gitignore.js'
 import { getProjectPaths } from '../core/paths.js'
 import { pathExists, removeIfExists } from '../core/fs.js'
 import { cleanupVscodeSettingsIfManaged } from '../core/vscodeSettings.js'
+import * as ui from '../core/ui.js'
 
 export interface ResetOptions {
   projectRoot: string
@@ -14,6 +15,9 @@ export async function runReset(options: ResetOptions): Promise<void> {
   const projectRoot = path.resolve(options.projectRoot)
   const paths = getProjectPaths(projectRoot)
   const legacyAgentDir = path.join(projectRoot, '.agent')
+
+  const spin = ui.spinner()
+  spin.start('Cleaning up...')
 
   const removed: string[] = []
   if (options.hard) {
@@ -74,14 +78,19 @@ export async function runReset(options: ResetOptions): Promise<void> {
     }
   }
 
+  spin.stop('Cleanup complete')
+
   if (removed.length === 0) {
-    process.stdout.write('Reset: nothing to clean.\n')
+    ui.info('Reset: nothing to clean')
     return
   }
 
   const mode = options.hard ? 'hard' : options.localOnly ? 'local-only' : 'safe'
-  process.stdout.write(`Reset (${mode}) cleaned ${removed.length} path(s):\n- ${removed.join('\n- ')}\n`)
+  ui.success(`Reset (${mode}) cleaned ${removed.length} path(s):`)
+  ui.arrowList(removed)
+
   if (!options.hard && !options.localOnly) {
-    process.stdout.write('Safe reset keeps .agents source files, root AGENTS.md, and managed .gitignore entries. Use --hard to remove all agents-managed setup.\n')
+    ui.blank()
+    ui.hint('Safe reset keeps .agents source files, root AGENTS.md, and managed .gitignore entries. Use --hard to remove all agents-managed setup.')
   }
 }

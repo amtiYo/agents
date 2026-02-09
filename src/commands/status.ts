@@ -9,6 +9,7 @@ import { commandExists, runCommand } from '../core/shell.js'
 import { getCodexTrustState } from '../core/trust.js'
 import { listMcpEntries, loadMcpState } from '../core/mcpCrud.js'
 import { listCursorMcpStatuses, sanitizeTerminalOutput } from '../core/cursorCli.js'
+import * as ui from '../core/ui.js'
 
 export interface StatusOptions {
   projectRoot: string
@@ -40,6 +41,8 @@ interface StatusOutput {
 }
 
 export async function runStatus(options: StatusOptions): Promise<void> {
+  ui.setContext({ json: options.json })
+
   const config = await loadAgentsConfig(options.projectRoot)
   const resolved = await loadResolvedRegistry(options.projectRoot)
   const mcpState = await loadMcpState(options.projectRoot)
@@ -112,51 +115,64 @@ export async function runStatus(options: StatusOptions): Promise<void> {
   }
 
   if (options.json) {
-    process.stdout.write(`${JSON.stringify(output, null, 2)}\n`)
+    ui.json(output)
     return
   }
 
   if (!options.verbose) {
-    process.stdout.write(`Project: ${output.projectRoot}\n`)
-    process.stdout.write(`Integrations: ${output.enabledIntegrations.join(', ') || '(none)'}\n`)
-    process.stdout.write(`Sync mode: ${output.syncMode}\n`)
-    process.stdout.write(`MCP: ${String(output.mcp.configured)} configured, ${String(output.mcp.localOverrides)} local override(s)\n`)
-    process.stdout.write(`Selected MCP: ${output.selectedMcpServers.join(', ') || '(none)'}\n`)
+    ui.keyValue('Project', output.projectRoot)
+    ui.keyValue('Integrations', ui.formatList(output.enabledIntegrations))
+    ui.keyValue('Sync mode', output.syncMode)
+    ui.keyValue('MCP', `${output.mcp.configured} configured, ${output.mcp.localOverrides} local override(s)`)
+    ui.keyValue('Selected MCP', ui.formatList(output.selectedMcpServers))
 
     const compactProbeOrder = ['codex', 'claude', 'gemini', 'copilot_vscode', 'cursor', 'antigravity']
     const compactProbes = compactProbeOrder
       .filter((name) => Boolean(output.probes[name]))
       .map((name) => `${name}: ${output.probes[name]}`)
     if (output.probesSkipped) {
-      process.stdout.write('Probes: skipped (--fast)\n')
+      ui.keyValue('Probes', 'skipped (--fast)')
     } else if (compactProbes.length > 0) {
-      process.stdout.write(`Probes: ${compactProbes.join(' | ')}\n`)
+      ui.keyValue('Probes', compactProbes.join(' | '))
     }
-    process.stdout.write('Hint: run "agents status --verbose" for files/probes breakdown.\n')
+    ui.blank()
+    ui.hint('run "agents status --verbose" for files/probes breakdown.')
     return
   }
 
-  process.stdout.write(`Project: ${output.projectRoot}\n`)
-  process.stdout.write(`MCP source: ${output.mcpSource.config} + ${output.mcpSource.localOverride}\n`)
-  process.stdout.write(`Enabled integrations: ${output.enabledIntegrations.join(', ') || '(none)'}\n`)
-  process.stdout.write(`Sync mode: ${output.syncMode}\n`)
-  process.stdout.write(`Selected MCP: ${output.selectedMcpServers.join(', ') || '(none)'}\n`)
-  process.stdout.write(`MCP totals: ${String(output.mcp.configured)} configured, ${String(output.mcp.localOverrides)} with local overrides\n`)
-  process.stdout.write(
-    `VS Code hide generated: ${output.vscode.hideGenerated ? 'enabled' : 'disabled'} (${output.vscode.hiddenPaths.length} path(s))\n`,
+  // Verbose output
+  ui.keyValue('Project', output.projectRoot)
+  ui.keyValue('MCP source', `${output.mcpSource.config} + ${output.mcpSource.localOverride}`)
+  ui.keyValue('Integrations', ui.formatList(output.enabledIntegrations))
+  ui.keyValue('Sync mode', output.syncMode)
+  ui.keyValue('Selected MCP', ui.formatList(output.selectedMcpServers))
+  ui.keyValue('MCP totals', `${output.mcp.configured} configured, ${output.mcp.localOverrides} with local overrides`)
+  ui.keyValue(
+    'VS Code hide',
+    `${output.vscode.hideGenerated ? 'enabled' : 'disabled'} (${output.vscode.hiddenPaths.length} path(s))`
   )
-  process.stdout.write('Files:\n')
-  for (const [file, exists] of Object.entries(output.files)) {
-    process.stdout.write(`- ${file}: ${exists ? 'ok' : 'missing'}\n`)
-  }
-  process.stdout.write('Probes:\n')
-  if (output.probesSkipped) {
-    process.stdout.write('- skipped (--fast)\n')
-  } else {
-    for (const [name, result] of Object.entries(output.probes)) {
-      process.stdout.write(`- ${name}: ${result}\n`)
+
+  ui.blank()
+  ui.section('Files', () => {
+    ui.statusList(
+      Object.entries(output.files).map(([file, exists]) => ({
+        label: file,
+        ok: exists,
+        detail: exists ? undefined : 'missing'
+      }))
+    )
+  })
+
+  ui.blank()
+  ui.section('Probes', () => {
+    if (output.probesSkipped) {
+      ui.dim('  skipped (--fast)')
+    } else {
+      for (const [name, result] of Object.entries(output.probes)) {
+        ui.writeln(`  ${name}: ${result}`)
+      }
     }
-  }
+  })
 }
 
 function probeCodex(projectRoot: string, expectedServerNames: string[]): string {
@@ -185,7 +201,7 @@ function probeClaude(projectRoot: string): string {
     .map((line) => line.trim())
   const managedLines = lines.filter((line) => line.startsWith('agents__'))
   const managed = managedLines.length
-  const unhealthy = managedLines.filter((line) => line.includes('✗') || line.toLowerCase().includes('failed')).length
+  const unhealthy = managedLines.filter((line) => line.includes('\u2717') || line.toLowerCase().includes('failed')).length
   if (unhealthy > 0) {
     return `${managed} managed MCP server(s), ${unhealthy} unhealthy`
   }
@@ -202,7 +218,7 @@ function probeGemini(projectRoot: string): string {
     .split('\n')
     .map((line) => line.trim())
     .filter(Boolean)
-  const disconnected = lines.filter((line) => line.includes('✗') || line.toLowerCase().includes('disconnected'))
+  const disconnected = lines.filter((line) => line.includes('\u2717') || line.toLowerCase().includes('disconnected'))
   if (disconnected.length > 0) {
     return `gemini has ${disconnected.length} disconnected server(s)`
   }

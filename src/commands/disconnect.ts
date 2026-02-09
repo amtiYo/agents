@@ -1,7 +1,7 @@
-import prompts from 'prompts'
 import { loadAgentsConfig, saveAgentsConfig } from '../core/config.js'
 import { performSync } from '../core/sync.js'
 import { formatWarnings } from '../core/warnings.js'
+import * as ui from '../core/ui.js'
 import type { IntegrationName } from '../types.js'
 import { INTEGRATIONS, parseIntegrationList } from '../integrations/registry.js'
 
@@ -24,6 +24,9 @@ export async function runDisconnect(options: DisconnectOptions): Promise<void> {
       ? await promptSelection(config.integrations.enabled)
       : []
 
+  const spin = ui.spinner()
+  spin.start('Updating integrations...')
+
   for (const integration of toDisable) {
     enabled.delete(integration)
   }
@@ -37,27 +40,39 @@ export async function runDisconnect(options: DisconnectOptions): Promise<void> {
     verbose: options.verbose
   })
 
-  process.stdout.write(`Enabled integrations: ${config.integrations.enabled.join(', ') || '(none)'}\n`)
+  spin.stop('Integrations updated')
+
+  ui.keyValue('Integrations', ui.formatList(config.integrations.enabled))
+
   const warningBlock = formatWarnings(syncResult.warnings, 5)
   if (warningBlock) {
-    process.stdout.write(warningBlock)
+    ui.blank()
+    for (const line of warningBlock.split('\n').filter(Boolean)) {
+      if (line.startsWith('- ')) {
+        ui.warning(line.slice(2))
+      }
+    }
   }
-  process.stdout.write(`Updated ${syncResult.changed.length} item(s).\n`)
+
+  ui.success(`Updated ${syncResult.changed.length} item(s)`)
 }
 
 async function promptSelection(enabled: IntegrationName[]): Promise<IntegrationName[]> {
   if (enabled.length === 0) return []
 
-  const response = await prompts({
-    type: 'multiselect',
-    name: 'value',
+  const value = await ui.clack.multiselect({
     message: 'Select LLM integrations to disable',
-    choices: INTEGRATIONS.filter((integration) => enabled.includes(integration.id)).map((integration) => ({
-      title: integration.label,
-      value: integration.id
+    options: INTEGRATIONS.filter((integration) => enabled.includes(integration.id)).map((integration) => ({
+      value: integration.id,
+      label: integration.label
     })),
-    hint: '- Space to select. Enter to confirm.'
+    required: false
   })
 
-  return (response.value as IntegrationName[] | undefined) ?? []
+  if (ui.clack.isCancel(value)) {
+    ui.clack.cancel('Operation canceled.')
+    process.exit(1)
+  }
+
+  return (value as IntegrationName[]) ?? []
 }

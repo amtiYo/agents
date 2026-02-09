@@ -14,6 +14,7 @@ import { runStart } from './commands/start.js'
 import { runStatus } from './commands/status.js'
 import { runSync } from './commands/sync.js'
 import { runWatch } from './commands/watch.js'
+import * as ui from './core/ui.js'
 
 function resolvePath(input: string | undefined): string {
   return path.resolve(input ?? process.cwd())
@@ -25,7 +26,7 @@ async function main(): Promise<void> {
   program
     .name('agents')
     .description('Onboarding-first CLI for AGENTS.md + MCP + skills across LLM coding tools')
-    .version('0.7.7')
+    .version('0.8.0')
 
   program
     .command('start')
@@ -329,6 +330,7 @@ function collectOption(value: string, previous: string[]): string[] {
 
 main().catch((error: unknown) => {
   const message = error instanceof Error ? error.message : String(error)
-  process.stderr.write(`Error: ${message}\n`)
+  // Use ui.error for colored output, but write to stderr directly for errors
+  process.stderr.write(`${ui.color.red(ui.symbols.error)} ${message}\n`)
   process.exitCode = 1
 })

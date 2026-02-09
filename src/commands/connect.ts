@@ -1,7 +1,7 @@
-import prompts from 'prompts'
 import { loadAgentsConfig, saveAgentsConfig } from '../core/config.js'
 import { performSync } from '../core/sync.js'
 import { formatWarnings } from '../core/warnings.js'
+import * as ui from '../core/ui.js'
 import type { IntegrationName } from '../types.js'
 import { INTEGRATIONS, parseIntegrationList } from '../integrations/registry.js'
 
@@ -26,6 +26,9 @@ export async function runConnect(options: ConnectOptions): Promise<void> {
     throw new Error('No LLM selected. Use --llm or --interactive.')
   }
 
+  const spin = ui.spinner()
+  spin.start('Updating integrations...')
+
   config.integrations.enabled = selected
   await saveAgentsConfig(options.projectRoot, config)
 
@@ -35,27 +38,39 @@ export async function runConnect(options: ConnectOptions): Promise<void> {
     verbose: options.verbose
   })
 
-  process.stdout.write(`Enabled integrations: ${selected.join(', ') || '(none)'}\n`)
+  spin.stop('Integrations updated')
+
+  ui.keyValue('Integrations', ui.formatList(selected))
+
   const warningBlock = formatWarnings(syncResult.warnings, 5)
   if (warningBlock) {
-    process.stdout.write(warningBlock)
+    ui.blank()
+    for (const line of warningBlock.split('\n').filter(Boolean)) {
+      if (line.startsWith('- ')) {
+        ui.warning(line.slice(2))
+      }
+    }
   }
-  process.stdout.write(`Updated ${syncResult.changed.length} item(s).\n`)
+
+  ui.success(`Updated ${syncResult.changed.length} item(s)`)
 }
 
 async function promptSelection(current: IntegrationName[]): Promise<IntegrationName[]> {
-  const response = await prompts({
-    type: 'multiselect',
-    name: 'value',
+  const value = await ui.clack.multiselect({
     message: 'Select LLM integrations',
-    choices: INTEGRATIONS.map((integration) => ({
-      title: integration.label,
+    options: INTEGRATIONS.map((integration) => ({
       value: integration.id,
-      selected: current.includes(integration.id)
+      label: integration.label,
+      hint: integration.requiredBinary ?? 'built-in'
     })),
-    initial: current.length > 0 ? undefined : 0,
-    hint: '- Space to select. Enter to confirm.'
+    initialValues: current,
+    required: false
   })
 
-  return (response.value as IntegrationName[] | undefined) ?? []
+  if (ui.clack.isCancel(value)) {
+    ui.clack.cancel('Operation canceled.')
+    process.exit(1)
+  }
+
+  return (value as IntegrationName[]) ?? []
 }

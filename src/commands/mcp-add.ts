@@ -1,4 +1,3 @@
-import * as clack from '@clack/prompts'
 import type { Option } from '@clack/prompts'
 import type { IntegrationName, McpServerDefinition, McpTransportType } from '../types.js'
 import { loadAgentsConfig } from '../core/config.js'
@@ -18,6 +17,7 @@ import {
 import { performSync } from '../core/sync.js'
 import { formatWarnings } from '../core/warnings.js'
 import { parseShellWords } from '../core/shellWords.js'
+import * as ui from '../core/ui.js'
 
 export interface McpAddOptions {
   projectRoot: string
@@ -43,7 +43,7 @@ export async function runMcpAdd(options: McpAddOptions): Promise<void> {
   const nameInput = options.name?.trim()
   if (nameInput && isHttpUrl(nameInput)) {
     ensureNoInlineAddFlagsForUrl(options)
-    process.stdout.write(`Detected MCP source URL. Running import flow for ${nameInput}...\n`)
+    ui.info(`Detected MCP source URL. Running import flow for ${nameInput}...`)
     await runMcpImport({
       projectRoot: options.projectRoot,
       url: nameInput,
@@ -68,7 +68,7 @@ export async function runMcpAdd(options: McpAddOptions): Promise<void> {
       name = await promptText('MCP server name', 'context7')
       if (isHttpUrl(name)) {
         ensureNoInlineAddFlagsForUrl(options)
-        process.stdout.write(`Detected MCP source URL. Running import flow for ${name}...\n`)
+        ui.info(`Detected MCP source URL. Running import flow for ${name}...`)
         await runMcpImport({
           projectRoot: options.projectRoot,
           url: name,
@@ -159,6 +159,9 @@ export async function runMcpAdd(options: McpAddOptions): Promise<void> {
     secretArgs: mergedSecretArgs
   })
 
+  const spin = ui.spinner()
+  spin.start(`Adding MCP server "${name}"...`)
+
   const upserted = await upsertMcpServers({
     projectRoot: options.projectRoot,
     updates: [
@@ -185,14 +188,23 @@ export async function runMcpAdd(options: McpAddOptions): Promise<void> {
     warnings.push(...sync.warnings)
   }
 
-  const action = upserted.updated.includes(name) ? 'updated' : 'added'
-  process.stdout.write(`MCP server ${action}: ${name}\n`)
+  spin.stop('Done')
+
+  const action = upserted.updated.includes(name) ? 'Updated' : 'Added'
+  ui.success(`${action} MCP server: ${name}`)
+
   if (options.noSync) {
-    process.stdout.write('Skipped sync (--no-sync).\n')
+    ui.dim('Skipped sync (--no-sync)')
   }
+
   const warningBlock = formatWarnings(warnings, 4)
   if (warningBlock) {
-    process.stdout.write(warningBlock)
+    ui.blank()
+    for (const line of warningBlock.split('\n').filter(Boolean)) {
+      if (line.startsWith('- ')) {
+        ui.warning(line.slice(2))
+      }
+    }
   }
 }
 
@@ -254,24 +266,24 @@ function mergeSecretArgs(primary: Array<{ index: number; value: string }>, fallb
 }
 
 async function promptText(message: string, placeholder: string): Promise<string> {
-  const value = await clack.text({
+  const value = await ui.clack.text({
     message,
     placeholder
   })
-  if (clack.isCancel(value)) {
-    clack.cancel('Canceled.')
+  if (ui.clack.isCancel(value)) {
+    ui.clack.cancel('Canceled.')
     process.exit(1)
   }
   return String(value).trim()
 }
 
 async function promptOptionalText(message: string): Promise<string> {
-  const value = await clack.text({
+  const value = await ui.clack.text({
     message,
     placeholder: ''
   })
-  if (clack.isCancel(value)) {
-    clack.cancel('Canceled.')
+  if (ui.clack.isCancel(value)) {
+    ui.clack.cancel('Canceled.')
     process.exit(1)
   }
   return String(value)
@@ -285,12 +297,12 @@ async function promptSelect<T extends string>(
     label: entry.label,
     value: entry.value
   })) as unknown as Option<T>[]
-  const value = await clack.select<T>({
+  const value = await ui.clack.select<T>({
     message,
     options: promptOptions
   })
-  if (clack.isCancel(value)) {
-    clack.cancel('Canceled.')
+  if (ui.clack.isCancel(value)) {
+    ui.clack.cancel('Canceled.')
     process.exit(1)
   }
   return value as T

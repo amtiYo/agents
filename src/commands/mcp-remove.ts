@@ -2,6 +2,7 @@ import { validateServerName } from '../core/mcpValidation.js'
 import { removeMcpServer } from '../core/mcpCrud.js'
 import { performSync } from '../core/sync.js'
 import { formatWarnings } from '../core/warnings.js'
+import * as ui from '../core/ui.js'
 
 export interface McpRemoveOptions {
   projectRoot: string
@@ -12,6 +13,10 @@ export interface McpRemoveOptions {
 
 export async function runMcpRemove(options: McpRemoveOptions): Promise<void> {
   validateServerName(options.name)
+
+  const spin = ui.spinner()
+  spin.start(`Removing MCP server "${options.name}"...`)
+
   const removed = await removeMcpServer({
     projectRoot: options.projectRoot,
     name: options.name,
@@ -19,7 +24,8 @@ export async function runMcpRemove(options: McpRemoveOptions): Promise<void> {
   })
 
   if (!removed) {
-    process.stdout.write(`MCP server "${options.name}" not found (ignored).\n`)
+    spin.stop('Done')
+    ui.info(`MCP server "${options.name}" not found (ignored)`)
     return
   }
 
@@ -33,12 +39,21 @@ export async function runMcpRemove(options: McpRemoveOptions): Promise<void> {
     warnings.push(...sync.warnings)
   }
 
-  process.stdout.write(`Removed MCP server: ${options.name}\n`)
+  spin.stop('Done')
+
+  ui.success(`Removed MCP server: ${options.name}`)
+
   if (options.noSync) {
-    process.stdout.write('Skipped sync (--no-sync).\n')
+    ui.dim('Skipped sync (--no-sync)')
   }
+
   const warningBlock = formatWarnings(warnings, 4)
   if (warningBlock) {
-    process.stdout.write(warningBlock)
+    ui.blank()
+    for (const line of warningBlock.split('\n').filter(Boolean)) {
+      if (line.startsWith('- ')) {
+        ui.warning(line.slice(2))
+      }
+    }
   }
 }

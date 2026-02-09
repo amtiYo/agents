@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-02-09
+
+### Added
+
+- **New centralized UI module** (`src/core/ui.ts`) providing consistent formatting across all commands:
+  - Unicode symbols with ASCII fallback for maximum terminal compatibility (✓ ✗ ⚠ ○ → •)
+  - Minimalist color scheme (colors only for status indicators: success/error/warning/info)
+  - Context-aware output respecting `--json`, `--quiet`, and `NO_COLOR` environment variable
+  - Spinner wrapper for async operations using `@clack/prompts`
+  - Layout helpers: `keyValue()`, `list()`, `statusList()`, `arrowList()`, `section()`, `hint()`, `nextSteps()`
+
+- Spinners added to all commands with async operations:
+  - `agents doctor` — diagnostics and fix application
+  - `agents sync` — configuration syncing
+  - `agents init` — project initialization
+  - `agents reset` — cleanup operations
+  - `agents mcp add` — server addition
+  - `agents mcp remove` — server removal
+  - `agents mcp test --runtime` — runtime health checks
+  - `agents connect` / `agents disconnect` — integration updates
+
+### Changed
+
+- **Unified output formatting** across all 12 commands:
+  - Colored status indicators (green ✓ for success, red ✗ for errors, yellow ⚠ for warnings)
+  - Consistent key-value alignment in status output
+  - Arrow-prefixed lists for changed/updated items
+  - Improved visual hierarchy with proper spacing
+
+- **Migrated `connect` and `disconnect` commands** from `prompts` library to `@clack/prompts` for consistent interactive experience.
+
+- **Removed `prompts` dependency** — now using only `@clack/prompts` for all interactive prompts, reducing bundle size and ensuring consistent UX.
+
+- **Improved error output** in CLI entry point with colored error symbol.
+
+- CLI version bumped to `0.8.0`.
+
+### Fixed
+
+- `agents mcp test --json` now correctly sets `process.exitCode = 1` when validation fails.
+
 ## [0.7.7] - 2026-02-07
 
 ### Added

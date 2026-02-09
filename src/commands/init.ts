@@ -1,6 +1,7 @@
 import path from 'node:path'
 import { ensureProjectGitignore } from '../core/gitignore.js'
 import { initializeProjectSkeleton } from '../core/project.js'
+import * as ui from '../core/ui.js'
 
 export interface InitOptions {
   projectRoot: string
@@ -9,6 +10,9 @@ export interface InitOptions {
 
 export async function runInit(options: InitOptions): Promise<void> {
   const projectRoot = path.resolve(options.projectRoot)
+
+  const spin = ui.spinner()
+  spin.start('Initializing project scaffold...')
 
   const init = await initializeProjectSkeleton({
     projectRoot,
@@ -24,9 +28,16 @@ export async function runInit(options: InitOptions): Promise<void> {
 
   await ensureProjectGitignore(projectRoot, 'source-only')
 
-  process.stdout.write(`Initialized v3 project scaffold in ${projectRoot}\n`)
+  spin.stop('Project initialized')
+
+  ui.success(`Initialized v3 project scaffold in ${projectRoot}`)
+
   if (init.changed.length > 0) {
-    process.stdout.write(`Created/updated:\n- ${init.changed.join('\n- ')}\n`)
+    ui.blank()
+    ui.writeln('Created/updated:')
+    ui.arrowList(init.changed)
   }
-  process.stdout.write('Next: run "agents start" for guided setup.\n')
+
+  ui.blank()
+  ui.nextSteps('run "agents start" for guided setup.')
 }
