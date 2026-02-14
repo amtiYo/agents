@@ -12,7 +12,7 @@ export async function initializeProjectSkeleton(args: {
   integrationOptions: AgentsConfig['integrations']['options']
   syncMode: SyncMode
   hideGeneratedInVscode: boolean
-}): Promise<{ changed: string[] }> {
+}): Promise<{ changed: string[]; warnings: string[] }> {
   const { projectRoot, force, integrations, integrationOptions, syncMode, hideGeneratedInVscode } = args
 
   const paths = getProjectPaths(projectRoot)
@@ -21,7 +21,10 @@ export async function initializeProjectSkeleton(args: {
   await ensureDir(paths.agentsSkillsDir)
 
   const changed: string[] = []
-  changed.push(...(await scaffoldBaseTemplates(projectRoot, force)))
+  const warnings: string[] = []
+  const scaffold = await scaffoldBaseTemplates(projectRoot, force)
+  changed.push(...scaffold.changed)
+  warnings.push(...scaffold.warnings)
 
   const config = createDefaultAgentsConfig({
     enabledIntegrations: integrations,
@@ -35,7 +38,7 @@ export async function initializeProjectSkeleton(args: {
     changed.push(path.relative(projectRoot, paths.agentsConfig) || paths.agentsConfig)
   }
 
-  return { changed }
+  return { changed, warnings }
 }
 
 export async function updateProjectState(args: {

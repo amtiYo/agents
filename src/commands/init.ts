@@ -38,6 +38,13 @@ export async function runInit(options: InitOptions): Promise<void> {
     ui.arrowList(init.changed)
   }
 
+  if (init.warnings.length > 0) {
+    ui.blank()
+    for (const warning of init.warnings) {
+      ui.warning(warning)
+    }
+  }
+
   ui.blank()
   ui.nextSteps('run "agents start" for guided setup.')
 }

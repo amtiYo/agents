@@ -112,7 +112,7 @@ export async function runStart(options: StartOptions): Promise<void> {
     `Created/updated: ${init.changed.length}`
   ]
 
-  const normalizedWarnings = normalizeWarnings(sync.warnings)
+  const normalizedWarnings = normalizeWarnings([...init.warnings, ...sync.warnings])
   if (normalizedWarnings.length > 0) {
     summaryLines.push(`Warnings: ${normalizedWarnings.length}`)
   }

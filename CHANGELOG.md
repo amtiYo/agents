@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-02-14
+
+### Fixed
+
+- `agents start` no longer overwrites an existing root `AGENTS.md` during force scaffold refresh.
+- `agents init --force` no longer overwrites an existing root `AGENTS.md`.
+- Added safety handling for non-regular `AGENTS.md` paths (symlink/directory): scaffold skips overwrite and emits a warning.
+
+### Added
+
+- New integration tests for `AGENTS.md` overwrite protection:
+  - `tests/init.integration.test.ts`
+  - extended `tests/start-sync.integration.test.ts`
+
 ## [0.8.0] - 2026-02-09
 
 ### Added

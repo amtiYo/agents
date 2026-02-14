@@ -1,6 +1,6 @@
 import os from 'node:os'
 import path from 'node:path'
-import { lstat, mkdtemp, readFile, rm } from 'node:fs/promises'
+import { lstat, mkdtemp, readFile, readlink, rm, symlink, writeFile } from 'node:fs/promises'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { runStart } from '../src/commands/start.js'
 import { loadAgentsConfig, saveAgentsConfig } from '../src/core/config.js'
@@ -90,4 +90,67 @@ describe('start + sync flow', () => {
     const check = await performSync({ projectRoot, check: true, verbose: false })
     expect(check.changed).toHaveLength(0)
   })
+
+  it('preserves existing AGENTS.md during start even with force setup', async () => {
+    const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-start-preserve-'))
+    const codexDir = await mkdtemp(path.join(os.tmpdir(), 'agents-codex-'))
+    tempDirs.push(projectRoot, codexDir)
+
+    process.env.AGENTS_CODEX_CONFIG_PATH = path.join(codexDir, 'config.toml')
+    process.env.PATH = '/dev/null'
+
+    const originalContent = '# Team Instructions\n\nDo not overwrite me.\n'
+    await writeFile(path.join(projectRoot, 'AGENTS.md'), originalContent, 'utf8')
+
+    await runStart({
+      projectRoot,
+      nonInteractive: true,
+      yes: true
+    })
+
+    expect(await readFile(path.join(projectRoot, 'AGENTS.md'), 'utf8')).toBe(originalContent)
+  })
+
+  it('warns and skips overwrite when AGENTS.md is a symlink', async () => {
+    const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-start-symlink-'))
+    const codexDir = await mkdtemp(path.join(os.tmpdir(), 'agents-codex-'))
+    tempDirs.push(projectRoot, codexDir)
+
+    process.env.AGENTS_CODEX_CONFIG_PATH = path.join(codexDir, 'config.toml')
+    process.env.PATH = '/dev/null'
+
+    const targetPath = path.join(projectRoot, 'TEAM.md')
+    await writeFile(targetPath, '# Team Link Target\n', 'utf8')
+    await symlink('TEAM.md', path.join(projectRoot, 'AGENTS.md'))
+
+    const output = await captureStdout(async () => {
+      await runStart({
+        projectRoot,
+        nonInteractive: true,
+        yes: true
+      })
+    })
+
+    const info = await lstat(path.join(projectRoot, 'AGENTS.md'))
+    expect(info.isSymbolicLink()).toBe(true)
+    expect(await readlink(path.join(projectRoot, 'AGENTS.md'))).toBe('TEAM.md')
+    expect(output).toContain('AGENTS.md exists and is not a regular file (symlink/directory). Skipped overwrite.')
+  })
 })
+
+async function captureStdout(fn: () => Promise<void>): Promise<string> {
+  const chunks: string[] = []
+  const originalWrite = process.stdout.write.bind(process.stdout)
+  ;(process.stdout.write as unknown as (chunk: string) => boolean) = ((chunk: string) => {
+    chunks.push(chunk)
+    return true
+  }) as unknown as typeof process.stdout.write
+
+  try {
+    await fn()
+  } finally {
+    ;(process.stdout.write as unknown as typeof process.stdout.write) = originalWrite as unknown as typeof process.stdout.write
+  }
+
+  return chunks.join('')
+}
