@@ -68,7 +68,7 @@ project/
 | **Gemini** | `.gemini/settings.json` |
 | **Cursor** | `.cursor/mcp.json` + CLI enable |
 | **Copilot** | `.vscode/mcp.json` |
-| **Antigravity** | `.antigravity/mcp.json` |
+| **Antigravity** | Global user profile `mcp.json` (not project-local) |
 
 ## VS Code Integration
 
@@ -97,6 +97,7 @@ project/
 | **Claude** | Symlink to `.claude/skills/` |
 | **Cursor** | Symlink to `.cursor/skills/` |
 | **Gemini** | Symlink to `.gemini/skills/` |
+| **Antigravity** | Reuses `.gemini/skills/` bridge |
 
 **Validation:** `agents doctor` checks frontmatter (`name`, `description`)
 
@@ -171,7 +172,8 @@ project/
 **Gitignored:**
 - ❌ `.agents/local.json`
 - ❌ `.agents/generated/`
-- ❌ `.codex/`, `.claude/`, `.cursor/`, `.gemini/`, `.antigravity/`
+- ❌ `.codex/`, `.claude/`, `.cursor/`, `.gemini/`
+- ❌ legacy `.antigravity/` (if present from older versions)
 
 ---
 

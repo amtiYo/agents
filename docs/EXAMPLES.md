@@ -77,33 +77,6 @@ Each project has its own `.agents/` config. No conflicts.
 
 ---
 
-## CI/CD Integration
-
-**.github/workflows/validate-agents.yml:**
-```yaml
-name: Validate Agents Config
-
-on:
-  pull_request:
-    paths:
-      - '.agents/**'
-
-jobs:
-  validate:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-      - run: npm install -g @agents-dev/cli
-      - run: agents doctor
-      - run: agents mcp test --json
-      - run: agents sync --check
-```
-
----
-
 ## Monorepo
 
 **Root (company-wide servers):**
@@ -196,8 +169,8 @@ Add to `.bashrc`:
 ```bash
 agents_prompt() {
   if [ -d ".agents" ]; then
-    STATUS=$(agents status --fast --json 2>/dev/null | jq -r '.status')
-    [ "$STATUS" = "synced" ] && echo " 🟢" || echo " 🟡"
+    MCP_COUNT=$(agents status --fast --json 2>/dev/null | jq -r '.mcp.configured')
+    [ "${MCP_COUNT:-0}" -gt 0 ] && echo " 🟢" || echo " 🟡"
   fi
 }
 

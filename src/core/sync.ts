@@ -3,6 +3,7 @@ import { ensureDir, pathExists, readJson, readTextOrEmpty, writeJsonAtomic, writ
 import { loadAgentsConfig, saveAgentsConfig } from './config.js'
 import { loadResolvedRegistry } from './mcp.js'
 import { getProjectPaths } from './paths.js'
+import { getAntigravityGlobalMcpPath, normalizeAntigravityMcpPayload, readAntigravityMcp } from './antigravity.js'
 import { commandExists, runCommand } from './shell.js'
 import { buildCodexConfig } from '../integrations/codex.js'
 import { toManagedClaudeName } from '../integrations/claude.js'
@@ -76,7 +77,14 @@ export async function performSync(options: SyncOptions): Promise<SyncResult> {
       await materializeCursor(paths.generatedCursor, paths.cursorMcp, check, changed)
     }
     if (enabled.has('antigravity')) {
-      await materializeAntigravityProject(paths.generatedAntigravity, paths.antigravityProjectMcp, check, changed)
+      await materializeAntigravityGlobal({
+        generatedPath: paths.generatedAntigravity,
+        legacyProjectPath: paths.antigravityProjectMcp,
+        projectRoot,
+        check,
+        changed,
+        warnings
+      })
     }
 
     await syncClaude({
@@ -262,14 +270,56 @@ async function materializeCursor(generatedPath: string, targetPath: string, chec
   await writeManagedFile(targetPath, content, path.dirname(path.dirname(targetPath)), check, changed)
 }
 
-async function materializeAntigravityProject(
-  generatedPath: string,
-  targetPath: string,
-  check: boolean,
-  changed: string[],
-): Promise<void> {
+async function materializeAntigravityGlobal(args: {
+  generatedPath: string
+  legacyProjectPath: string
+  projectRoot: string
+  check: boolean
+  changed: string[]
+  warnings: string[]
+}): Promise<void> {
+  const { generatedPath, legacyProjectPath, projectRoot, check, changed, warnings } = args
   const content = await readTextOrEmpty(generatedPath)
-  await writeManagedFile(targetPath, content, path.dirname(path.dirname(targetPath)), check, changed)
+  const globalPath = getAntigravityGlobalMcpPath()
+
+  let normalized: Record<string, unknown> = {}
+  if (content.trim().length > 0) {
+    try {
+      normalized = normalizeAntigravityMcpPayload(JSON.parse(content) as Record<string, unknown>)
+    } catch (error) {
+      throw new Error(
+        `Failed to parse generated Antigravity config: ${error instanceof Error ? error.message : String(error)}`,
+      )
+    }
+  }
+
+  const legacyExists = await pathExists(legacyProjectPath)
+  const globalExists = await pathExists(globalPath)
+  if (legacyExists && !globalExists) {
+    warnings.push(`Found legacy .antigravity/mcp.json. Antigravity now uses global MCP at ${globalPath}.`)
+  }
+
+  if (legacyExists && globalExists) {
+    try {
+      const [legacy, global] = await Promise.all([
+        readAntigravityMcp(legacyProjectPath),
+        readAntigravityMcp(globalPath)
+      ])
+      if (legacy && global) {
+        const normalizedLegacy = JSON.stringify(normalizeAntigravityMcpPayload(legacy))
+        const normalizedGlobal = JSON.stringify(normalizeAntigravityMcpPayload(global))
+        if (normalizedLegacy !== normalizedGlobal) {
+          warnings.push(`Legacy .antigravity/mcp.json differs from global Antigravity MCP (${globalPath}); local file is ignored.`)
+        }
+      }
+    } catch (error) {
+      warnings.push(
+        `Could not compare legacy .antigravity/mcp.json with global Antigravity MCP: ${error instanceof Error ? error.message : String(error)}`,
+      )
+    }
+  }
+
+  await writeManagedFile(globalPath, `${JSON.stringify(normalized, null, 2)}\n`, projectRoot, check, changed)
 }
 
 async function syncClaude(args: {
@@ -297,7 +347,7 @@ async function syncClaude(args: {
   let currentNames = state.managedNames ?? []
   const hasClaudeCli = commandExists(command)
 
-  if (hasClaudeCli) {
+  if (enabled && hasClaudeCli) {
     const listed = listClaudeManagedServerNames(projectRoot)
     if (listed.ok) {
       currentNames = listed.names
@@ -517,11 +567,17 @@ async function writeManagedFile(
   const previous = await readTextOrEmpty(absolutePath)
   if (previous === content) return
 
-  const relative = path.relative(projectRoot, absolutePath) || absolutePath
-  changed.push(relative)
+  changed.push(toChangedEntry(projectRoot, absolutePath))
 
   if (check) return
   await writeTextAtomic(absolutePath, content)
+}
+
+function toChangedEntry(projectRoot: string, absolutePath: string): string {
+  const relative = path.relative(projectRoot, absolutePath)
+  if (relative.length === 0) return absolutePath
+  if (relative.startsWith('..') || path.isAbsolute(relative)) return absolutePath
+  return relative
 }
 
 function equalSets(a: Set<string>, b: Set<string>): boolean {

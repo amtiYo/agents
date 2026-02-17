@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.2] - 2026-02-17
+
+### Added
+
+- New `agents update` command:
+  - human-readable version check
+  - `--json` machine-readable output
+  - `--check` exit-code mode (`0` up-to-date, `10` outdated, `1` check failure)
+- New release workflow: `.github/workflows/release.yml` (manual publish + GitHub release notes from changelog).
+- New test suites:
+  - `tests/update-check.test.ts`
+  - `tests/update.command.test.ts`
+
+### Changed
+
+- CLI now performs update availability checks before commands and prints a hint when a newer version is available.
+- Added global `--no-update-check` flag and `AGENTS_NO_UPDATE_CHECK=1` escape hatch.
+- Project version bumped to `0.8.2`.
+- Shell command execution now has a default timeout to reduce hangs from external CLIs.
+
+### Fixed
+
+- `sync` no longer probes Claude CLI state when Claude integration is disabled.
+- Antigravity MCP sync/status/doctor now use the global Antigravity profile `mcp.json` instead of requiring project-local `.antigravity/mcp.json`.
+- `agents status` now reports integration-specific files only for integrations that are enabled.
+- Antigravity-enabled projects now keep skills bridged through `.gemini/skills` even when Gemini integration is disabled.
+- `tests/real-project-mcp.test.ts` now uses a timeout for Claude CLI probe to avoid hanging test runs.
+- Fixed stale docs example that referenced a non-existent `.status` field in `agents status --json` output.
+
+### Removed
+
+- Removed GitHub Actions CI workflow (`.github/workflows/ci.yml`) and CI badge from README.
+
 ## [0.8.1] - 2026-02-14
 
 ### Fixed

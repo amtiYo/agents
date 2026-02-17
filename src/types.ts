@@ -45,8 +45,18 @@ export interface McpServerDefinition {
   enabled?: boolean
 }
 
+export interface UpdateCheckMetadata {
+  lastCheckedAt?: string
+  lastSeenVersion?: string
+  lastNotifiedAt?: string
+  latestVersion?: string
+}
+
 export interface LocalOverridesFile {
   mcpServers: Record<string, Partial<McpServerDefinition>>
+  meta?: {
+    updateCheck?: UpdateCheckMetadata
+  }
 }
 
 export interface VscodeSettingsState {

@@ -17,7 +17,11 @@ export async function loadLocalOverrides(projectRoot: string): Promise<LocalOver
   if (!(await pathExists(paths.agentsLocal))) {
     return { mcpServers: {} }
   }
-  return readJson<LocalOverridesFile>(paths.agentsLocal)
+  const parsed = await readJson<LocalOverridesFile>(paths.agentsLocal)
+  return {
+    mcpServers: typeof parsed.mcpServers === 'object' && parsed.mcpServers !== null ? parsed.mcpServers : {},
+    meta: typeof parsed.meta === 'object' && parsed.meta !== null ? parsed.meta : undefined
+  }
 }
 
 export async function loadResolvedRegistry(projectRoot: string): Promise<ResolvedRegistry> {

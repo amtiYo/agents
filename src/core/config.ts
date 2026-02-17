@@ -69,7 +69,7 @@ export function createDefaultAgentsConfig(args?: {
       enabled: [...(args?.enabledIntegrations ?? [])],
       options: {
         cursorAutoApprove: args?.integrationOptions?.cursorAutoApprove !== false,
-        antigravityGlobalSync: args?.integrationOptions?.antigravityGlobalSync === true
+        antigravityGlobalSync: args?.integrationOptions?.antigravityGlobalSync !== false
       }
     },
     syncMode: args?.syncMode ?? 'source-only',
@@ -111,7 +111,7 @@ export async function loadAgentsConfig(projectRoot: string): Promise<AgentsConfi
       : [],
     options: {
       cursorAutoApprove: config.integrations?.options?.cursorAutoApprove !== false,
-      antigravityGlobalSync: config.integrations?.options?.antigravityGlobalSync === true
+      antigravityGlobalSync: config.integrations?.options?.antigravityGlobalSync !== false
     }
   }
 

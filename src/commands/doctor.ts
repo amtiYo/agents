@@ -4,6 +4,7 @@ import { pathExists, readJson, readTextOrEmpty } from '../core/fs.js'
 import { loadResolvedRegistry } from '../core/mcp.js'
 import { getProjectPaths } from '../core/paths.js'
 import type { ProjectPaths } from '../core/paths.js'
+import { getAntigravityGlobalMcpPath } from '../core/antigravity.js'
 import { commandExists, runCommand } from '../core/shell.js'
 import { performSync } from '../core/sync.js'
 import { ensureCodexProjectTrusted, getCodexTrustState } from '../core/trust.js'
@@ -36,6 +37,7 @@ export async function runDoctor(options: DoctorOptions): Promise<void> {
   const previewFixes = options.fixDryRun === true
 
   const paths = getProjectPaths(options.projectRoot)
+  const antigravityGlobalMcpPath = getAntigravityGlobalMcpPath()
   const issues: Issue[] = []
   const actions: string[] = []
 
@@ -105,7 +107,7 @@ export async function runDoctor(options: DoctorOptions): Promise<void> {
     })
   }
 
-  await validateManagedConfigSyntax(paths, config.integrations.enabled, issues)
+  await validateManagedConfigSyntax(paths, config.integrations.enabled, antigravityGlobalMcpPath, issues)
 
   const skillWarnings = await validateSkillsDirectory(paths.agentsSkillsDir)
   for (const warning of skillWarnings) {
@@ -146,16 +148,17 @@ export async function runDoctor(options: DoctorOptions): Promise<void> {
     }
   }
 
+  const enabled = new Set(config.integrations.enabled)
   const trackedChecks = config.syncMode === 'source-only'
     ? [
-        '.codex/config.toml',
-        '.gemini/settings.json',
-        '.vscode/mcp.json',
-        '.cursor/mcp.json',
-        '.antigravity/mcp.json',
-        '.claude/skills',
-        '.cursor/skills',
-        '.gemini/skills'
+        ...(enabled.has('codex') ? ['.codex/config.toml'] : []),
+        ...(enabled.has('gemini') ? ['.gemini/settings.json'] : []),
+        ...(enabled.has('copilot_vscode') ? ['.vscode/mcp.json'] : []),
+        ...(enabled.has('cursor') ? ['.cursor/mcp.json'] : []),
+        ...(enabled.has('claude') ? ['.claude/skills'] : []),
+        ...(enabled.has('cursor') ? ['.cursor/skills'] : []),
+        ...((enabled.has('gemini') || enabled.has('antigravity')) ? ['.gemini/skills'] : []),
+        ...(enabled.has('antigravity') ? ['.antigravity/mcp.json'] : [])
       ]
     : []
   trackedChecks.push('.agents/generated', '.agents/local.json')
@@ -210,10 +213,17 @@ export async function runDoctor(options: DoctorOptions): Promise<void> {
     fixSpin.stop('Fixes applied')
   }
 
-  if (config.integrations.enabled.includes('antigravity') && !(await pathExists(paths.antigravityProjectMcp)) && !applyFixes) {
+  if (enabled.has('antigravity') && !(await pathExists(antigravityGlobalMcpPath)) && !applyFixes) {
     issues.push({
       level: 'warning',
-      message: 'Antigravity project MCP file missing: .antigravity/mcp.json (run agents sync).'
+      message: `Antigravity global MCP file missing: ${antigravityGlobalMcpPath} (run agents sync).`
+    })
+  }
+
+  if (enabled.has('antigravity') && (await pathExists(paths.antigravityProjectMcp))) {
+    issues.push({
+      level: 'warning',
+      message: 'Legacy Antigravity project MCP file found at .antigravity/mcp.json. It is ignored; Antigravity MCP is global now.'
     })
   }
 
@@ -462,6 +472,7 @@ function collectInvalidKeyIssuesForSource(
 async function validateManagedConfigSyntax(
   paths: ProjectPaths,
   enabledIntegrations: IntegrationName[],
+  antigravityGlobalMcpPath: string,
   issues: Issue[],
 ): Promise<void> {
   await validateTomlIfExists(paths.generatedCodex, '.agents/generated/codex.config.toml', issues)
@@ -484,7 +495,11 @@ async function validateManagedConfigSyntax(
     await validateJsonIfExists(paths.cursorMcp, '.cursor/mcp.json', issues)
   }
   if (enabledIntegrations.includes('antigravity')) {
-    await validateJsonIfExists(paths.antigravityProjectMcp, '.antigravity/mcp.json', issues)
+    await validateJsonIfExists(
+      antigravityGlobalMcpPath,
+      `Antigravity global MCP (${antigravityGlobalMcpPath})`,
+      issues,
+    )
   }
 }
 

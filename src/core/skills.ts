@@ -43,7 +43,7 @@ export async function syncSkills(args: {
   })
 
   await syncToolSkillsBridge({
-    enabled: enabledIntegrations.includes('gemini') && hasSkills,
+    enabled: (enabledIntegrations.includes('gemini') || enabledIntegrations.includes('antigravity')) && hasSkills,
     projectRoot,
     parentDir: paths.geminiDir,
     bridgePath: paths.geminiSkillsBridge,

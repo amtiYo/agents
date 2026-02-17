@@ -20,7 +20,7 @@ export async function runInit(options: InitOptions): Promise<void> {
     integrations: [],
     integrationOptions: {
       cursorAutoApprove: true,
-      antigravityGlobalSync: false
+      antigravityGlobalSync: true
     },
     syncMode: 'source-only',
     hideGeneratedInVscode: true

@@ -161,7 +161,7 @@ async function resolveIntegrationAccess(args: {
 
   const integrationOptions = {
     cursorAutoApprove: true,
-    antigravityGlobalSync: false
+    antigravityGlobalSync: true
   }
 
   if (selectedIntegrations.includes('codex')) {
@@ -213,8 +213,8 @@ async function resolveIntegrationAccess(args: {
   }
 
   if (selectedIntegrations.includes('antigravity')) {
-    integrationOptions.antigravityGlobalSync = false
-    summaries.antigravity = 'project-local'
+    integrationOptions.antigravityGlobalSync = true
+    summaries.antigravity = 'global user profile'
   }
 
   return {

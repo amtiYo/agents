@@ -5,22 +5,29 @@ export interface ShellResult {
   code: number
   stdout: string
   stderr: string
+  timedOut: boolean
 }
 
-export function runCommand(cmd: string, args: string[], cwd: string, timeoutMs?: number): ShellResult {
+const DEFAULT_RUN_COMMAND_TIMEOUT_MS = 15_000
+
+export function runCommand(cmd: string, args: string[], cwd: string, timeoutMs = DEFAULT_RUN_COMMAND_TIMEOUT_MS): ShellResult {
+  const effectiveTimeout = timeoutMs > 0 ? timeoutMs : undefined
   const result = spawnSync(cmd, args, {
     cwd,
     encoding: 'utf8',
-    ...(timeoutMs !== undefined ? { timeout: timeoutMs } : {})
+    ...(effectiveTimeout !== undefined ? { timeout: effectiveTimeout } : {})
   })
 
-  const stderr = result.stderr ?? (result.error ? String(result.error.message ?? result.error) : '')
+  const timedOut = isTimeoutError(result.error)
+  const fallbackError = result.error ? String(result.error.message ?? result.error) : ''
+  const stderr = result.stderr ?? (timedOut ? 'command timed out' : fallbackError)
 
   return {
     ok: (result.status ?? 1) === 0,
     code: result.status ?? 1,
     stdout: result.stdout ?? '',
-    stderr
+    stderr,
+    timedOut
   }
 }
 
@@ -28,4 +35,11 @@ export function commandExists(command: string): boolean {
   const probe = process.platform === 'win32' ? 'where' : 'which'
   const result = spawnSync(probe, [command], { stdio: 'ignore' })
   return (result.status ?? 1) === 0
+}
+
+function isTimeoutError(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) return false
+  if (!('code' in error)) return false
+  const code = (error as { code?: unknown }).code
+  return code === 'ETIMEDOUT'
 }

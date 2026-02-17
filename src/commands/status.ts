@@ -1,3 +1,4 @@
+import os from 'node:os'
 import path from 'node:path'
 import { readFile } from 'node:fs/promises'
 import { parse, type ParseError } from 'jsonc-parser'
@@ -5,6 +6,7 @@ import { loadAgentsConfig } from '../core/config.js'
 import { listDirNames, pathExists, readJson } from '../core/fs.js'
 import { loadResolvedRegistry } from '../core/mcp.js'
 import { getProjectPaths } from '../core/paths.js'
+import { getAntigravityGlobalMcpPath } from '../core/antigravity.js'
 import { commandExists, runCommand } from '../core/shell.js'
 import { getCodexTrustState } from '../core/trust.js'
 import { listMcpEntries, loadMcpState } from '../core/mcpCrud.js'
@@ -48,6 +50,9 @@ export async function runStatus(options: StatusOptions): Promise<void> {
   const mcpState = await loadMcpState(options.projectRoot)
   const mcpEntries = listMcpEntries(mcpState)
   const paths = getProjectPaths(options.projectRoot)
+  const enabled = new Set(config.integrations.enabled)
+  const antigravityGlobalPath = getAntigravityGlobalMcpPath()
+  const antigravityGlobalLabel = toHomeRelativePath(antigravityGlobalPath)
   const expectedCodexServers = resolved.serversByTarget.codex.map((server) => server.name)
   const expectedCursorServers = resolved.serversByTarget.cursor.map((server) => server.name)
 
@@ -56,33 +61,43 @@ export async function runStatus(options: StatusOptions): Promise<void> {
     '.agents/local.json': await pathExists(paths.agentsLocal),
     '.agents/skills/': await pathExists(paths.agentsSkillsDir),
     'AGENTS.md': await pathExists(paths.rootAgentsMd),
-    '.codex/config.toml': await pathExists(paths.codexConfig),
-    '.gemini/settings.json': await pathExists(paths.geminiSettings),
-    '.vscode/mcp.json': await pathExists(paths.vscodeMcp),
-    '.vscode/settings.json': await pathExists(paths.vscodeSettings),
-    '.cursor/mcp.json': await pathExists(paths.cursorMcp),
-    '.antigravity/mcp.json': await pathExists(paths.antigravityProjectMcp)
+    '.vscode/settings.json': await pathExists(paths.vscodeSettings)
   }
-  if (config.integrations.enabled.includes('claude')) {
+  if (enabled.has('codex')) {
+    files['.codex/config.toml'] = await pathExists(paths.codexConfig)
+  }
+  if (enabled.has('gemini')) {
+    files['.gemini/settings.json'] = await pathExists(paths.geminiSettings)
+  }
+  if (enabled.has('copilot_vscode')) {
+    files['.vscode/mcp.json'] = await pathExists(paths.vscodeMcp)
+  }
+  if (enabled.has('cursor')) {
+    files['.cursor/mcp.json'] = await pathExists(paths.cursorMcp)
+  }
+  if (enabled.has('antigravity')) {
+    files[antigravityGlobalLabel] = await pathExists(antigravityGlobalPath)
+  }
+  if (enabled.has('claude')) {
     files['.claude/skills'] = await pathExists(paths.claudeSkillsBridge)
   }
-  if (config.integrations.enabled.includes('cursor')) {
+  if (enabled.has('cursor')) {
     files['.cursor/skills'] = await pathExists(paths.cursorSkillsBridge)
   }
-  if (config.integrations.enabled.includes('gemini')) {
+  if (enabled.has('gemini') || enabled.has('antigravity')) {
     files['.gemini/skills'] = await pathExists(paths.geminiSkillsBridge)
   }
 
   const probes: Record<string, string> = {}
   if (!options.fast) {
-    if (config.integrations.enabled.includes('codex')) probes.codex = probeCodex(options.projectRoot, expectedCodexServers)
-    if (config.integrations.enabled.includes('codex')) probes.codex_trust = await probeCodexTrust(options.projectRoot)
-    if (config.integrations.enabled.includes('claude')) probes.claude = probeClaude(options.projectRoot)
-    if (config.integrations.enabled.includes('gemini')) probes.gemini = probeGemini(options.projectRoot)
-    if (config.integrations.enabled.includes('copilot_vscode')) probes.copilot_vscode = await probeCopilot(paths.vscodeMcp)
-    if (config.integrations.enabled.includes('cursor')) probes.cursor = probeCursor(options.projectRoot, expectedCursorServers)
-    if (config.integrations.enabled.includes('antigravity')) {
-      probes.antigravity = await probeAntigravity(paths.antigravityProjectMcp)
+    if (enabled.has('codex')) probes.codex = probeCodex(options.projectRoot, expectedCodexServers)
+    if (enabled.has('codex')) probes.codex_trust = await probeCodexTrust(options.projectRoot)
+    if (enabled.has('claude')) probes.claude = probeClaude(options.projectRoot)
+    if (enabled.has('gemini')) probes.gemini = probeGemini(options.projectRoot)
+    if (enabled.has('copilot_vscode')) probes.copilot_vscode = await probeCopilot(paths.vscodeMcp)
+    if (enabled.has('cursor')) probes.cursor = probeCursor(options.projectRoot, expectedCursorServers)
+    if (enabled.has('antigravity')) {
+      probes.antigravity = await probeAntigravity(antigravityGlobalPath, antigravityGlobalLabel)
     }
     probes.skills = await probeSkills(paths.agentsSkillsDir)
     probes.vscode_hidden = await probeVscodeHidden(paths.vscodeSettings)
@@ -256,15 +271,15 @@ function probeCursor(projectRoot: string, expectedServerNames: string[]): string
   return parts.join(', ')
 }
 
-async function probeAntigravity(projectPath: string): Promise<string> {
-  if (!(await pathExists(projectPath))) return 'missing .antigravity/mcp.json'
+async function probeAntigravity(globalPath: string, label: string): Promise<string> {
+  if (!(await pathExists(globalPath))) return `missing ${label}`
 
   try {
-    const parsed = await readJson<{ servers?: Record<string, unknown>; mcpServers?: Record<string, unknown> }>(projectPath)
+    const parsed = await readJson<{ servers?: Record<string, unknown>; mcpServers?: Record<string, unknown> }>(globalPath)
     const count = Object.keys(parsed.servers ?? parsed.mcpServers ?? {}).length
     return `${count} server(s) configured (runtime state visible only in Antigravity UI)`
   } catch {
-    return 'invalid .antigravity/mcp.json'
+    return `invalid ${label}`
   }
 }
 
@@ -316,4 +331,12 @@ function extractCodexServerNames(entries: Array<Record<string, unknown>>): strin
     }
   }
   return [...new Set(names)].sort((a, b) => a.localeCompare(b))
+}
+
+function toHomeRelativePath(filePath: string): string {
+  const home = os.homedir()
+  const relative = path.relative(home, filePath)
+  if (relative.length === 0) return '~'
+  if (relative.startsWith('..') || path.isAbsolute(relative)) return filePath
+  return path.join('~', relative)
 }

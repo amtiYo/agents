@@ -13,7 +13,10 @@ import { runReset } from './commands/reset.js'
 import { runStart } from './commands/start.js'
 import { runStatus } from './commands/status.js'
 import { runSync } from './commands/sync.js'
+import { runUpdate } from './commands/update.js'
 import { runWatch } from './commands/watch.js'
+import { maybeNotifyAboutUpdate } from './core/updateCheck.js'
+import { CLI_VERSION } from './core/version.js'
 import * as ui from './core/ui.js'
 
 function resolvePath(input: string | undefined): string {
@@ -26,7 +29,23 @@ async function main(): Promise<void> {
   program
     .name('agents')
     .description('Onboarding-first CLI for AGENTS.md + MCP + skills across LLM coding tools')
-    .version('0.8.1')
+    .version(CLI_VERSION)
+    .option('--no-update-check', 'Disable update availability checks')
+
+  program.hook('preAction', async (_thisCommand, actionCommand) => {
+    const opts = actionCommand.optsWithGlobals() as { updateCheck?: boolean; path?: string }
+    if (opts.updateCheck === false) return
+    if (process.argv.includes('--no-update-check')) return
+    if (process.env.AGENTS_NO_UPDATE_CHECK === '1') return
+    if (process.argv.includes('--json') || process.argv.includes('--quiet')) return
+    if (actionCommand.name() === 'update') return
+
+    const projectRoot = resolvePath(typeof opts.path === 'string' ? opts.path : process.cwd())
+    await maybeNotifyAboutUpdate({
+      currentVersion: CLI_VERSION,
+      projectRoot
+    })
+  })
 
   program
     .command('start')
@@ -143,6 +162,20 @@ async function main(): Promise<void> {
         projectRoot: resolvePath(opts.path),
         fix: Boolean(opts.fix),
         fixDryRun: Boolean(opts.fixDryRun)
+      })
+    })
+
+  program
+    .command('update')
+    .description('Check for a newer CLI version')
+    .option('--path <dir>', 'Project directory used for local update-check cache', process.cwd())
+    .option('--json', 'Output machine-readable JSON', false)
+    .option('--check', 'Set exit code only (0 up-to-date, 10 outdated, 1 check failure)', false)
+    .action(async (opts: { path: string; json: boolean; check: boolean }) => {
+      await runUpdate({
+        projectRoot: resolvePath(opts.path),
+        json: Boolean(opts.json),
+        check: Boolean(opts.check)
       })
     })
 

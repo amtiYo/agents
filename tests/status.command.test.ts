@@ -42,6 +42,31 @@ describe('status command', () => {
     expect(runCommandSpy).not.toHaveBeenCalled()
     expect(commandExistsSpy).not.toHaveBeenCalled()
   })
+
+  it('reports files only for enabled integrations', async () => {
+    const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-status-'))
+    tempDirs.push(projectRoot)
+
+    await runInit({ projectRoot, force: true })
+    const config = await loadAgentsConfig(projectRoot)
+    config.integrations.enabled = ['codex']
+    await saveAgentsConfig(projectRoot, config)
+
+    const output = await captureStdout(async () => {
+      await runStatus({
+        projectRoot,
+        json: true,
+        verbose: false,
+        fast: true
+      })
+    })
+
+    const parsed = JSON.parse(output) as { files: Record<string, boolean> }
+    expect(parsed.files['.codex/config.toml']).toBeDefined()
+    expect(parsed.files['.gemini/settings.json']).toBeUndefined()
+    expect(parsed.files['.cursor/mcp.json']).toBeUndefined()
+    expect(Object.keys(parsed.files).some((key) => key.toLowerCase().includes('antigravity'))).toBe(false)
+  })
 })
 
 async function captureStdout(fn: () => Promise<void>): Promise<string> {

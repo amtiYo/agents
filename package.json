@@ -1,6 +1,6 @@
 {
   "name": "@agents-dev/cli",
-  "version": "0.8.1",
+  "version": "0.8.2",
   "description": "One config to rule them all — Practical standard layer for multi-LLM development. Sync MCP servers, skills, and AGENTS.md across Codex, Claude Code, Gemini CLI, Cursor, Copilot, and Antigravity.",
   "main": "dist/cli.js",
   "scripts": {
@@ -8,6 +8,8 @@
     "dev": "tsx src/cli.ts",
     "lint": "eslint .",
     "test": "vitest run",
+    "test:fast": "vitest run --exclude \"tests/**/*.integration.test.ts\"",
+    "test:integration": "vitest run integration.test.ts",
     "prepack": "npm run build"
   },
   "bin": {

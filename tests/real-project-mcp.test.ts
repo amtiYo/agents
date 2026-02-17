@@ -33,7 +33,14 @@ describe('Real project MCP configuration (dogfooding)', () => {
     const result = spawnSync('claude', ['mcp', 'list'], {
       encoding: 'utf8',
       cwd: projectRoot,
+      timeout: 5000
     })
+
+    if ((result.error as { code?: string } | undefined)?.code === 'ETIMEDOUT') {
+      console.log('ℹ Claude CLI probe timed out, skipping real MCP check')
+      expect(true).toBe(true)
+      return
+    }
 
     if (result.status === 0) {
       console.log('✓ Claude CLI is available')

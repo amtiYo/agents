@@ -34,7 +34,8 @@ export async function loadMcpState(projectRoot: string): Promise<McpState> {
   return {
     config,
     local: {
-      mcpServers: typeof local.mcpServers === 'object' && local.mcpServers !== null ? local.mcpServers : {}
+      mcpServers: typeof local.mcpServers === 'object' && local.mcpServers !== null ? local.mcpServers : {},
+      meta: typeof local.meta === 'object' && local.meta !== null ? local.meta : undefined
     }
   }
 }
