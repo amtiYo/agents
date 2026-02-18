@@ -1,10 +1,10 @@
 {
   "name": "@agents-dev/cli",
-  "version": "0.8.2",
-  "description": "One config to rule them all — Practical standard layer for multi-LLM development. Sync MCP servers, skills, and AGENTS.md across Codex, Claude Code, Gemini CLI, Cursor, Copilot, and Antigravity.",
+  "version": "0.8.3",
+  "description": "One config to rule them all — Practical standard layer for multi-LLM development. Sync MCP servers, skills, and AGENTS.md across Codex, Claude Code, Gemini CLI, Cursor, Copilot, Antigravity, Windsurf, and OpenCode.",
   "main": "dist/cli.js",
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "node -e \"const fs=require('node:fs'); fs.rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.json",
     "dev": "tsx src/cli.ts",
     "lint": "eslint .",
     "test": "vitest run",
@@ -37,6 +37,8 @@
     "cursor",
     "copilot",
     "antigravity",
+    "windsurf",
+    "opencode",
     "ai-coding",
     "llm-tools",
     "config-sync",

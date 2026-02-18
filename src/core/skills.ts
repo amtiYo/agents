@@ -54,6 +54,18 @@ export async function syncSkills(args: {
     warnings
   })
 
+  await syncToolSkillsBridge({
+    enabled: enabledIntegrations.includes('windsurf') && hasSkills,
+    projectRoot,
+    parentDir: paths.windsurfDir,
+    bridgePath: paths.windsurfSkillsBridge,
+    sourcePath: paths.agentsSkillsDir,
+    label: '.windsurf/skills',
+    check,
+    changed,
+    warnings
+  })
+
   await cleanupLegacyAntigravityBridge({
     projectRoot,
     check,

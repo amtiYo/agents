@@ -4,6 +4,8 @@ import { loadAgentsConfig, saveAgentsConfig } from './config.js'
 import { loadResolvedRegistry } from './mcp.js'
 import { getProjectPaths } from './paths.js'
 import { getAntigravityGlobalMcpPath, normalizeAntigravityMcpPayload, readAntigravityMcp } from './antigravity.js'
+import { getWindsurfGlobalMcpPath, normalizeWindsurfMcpPayload } from './windsurf.js'
+import { normalizeOpencodeConfig } from './opencode.js'
 import { commandExists, runCommand } from './shell.js'
 import { buildCodexConfig } from '../integrations/codex.js'
 import { toManagedClaudeName } from '../integrations/claude.js'
@@ -11,6 +13,8 @@ import { buildGeminiPayload } from '../integrations/gemini.js'
 import { buildVscodeMcpPayload } from '../integrations/copilotVscode.js'
 import { buildCursorPayload } from '../integrations/cursor.js'
 import { buildAntigravityPayload } from '../integrations/antigravity.js'
+import { buildWindsurfPayload } from '../integrations/windsurf.js'
+import { buildOpencodePayload } from '../integrations/opencode.js'
 import { renderVscodeMcp } from './renderers.js'
 import { ensureProjectGitignore } from './gitignore.js'
 import { syncSkills } from './skills.js'
@@ -80,6 +84,24 @@ export async function performSync(options: SyncOptions): Promise<SyncResult> {
       await materializeAntigravityGlobal({
         generatedPath: paths.generatedAntigravity,
         legacyProjectPath: paths.antigravityProjectMcp,
+        projectRoot,
+        check,
+        changed,
+        warnings
+      })
+    }
+    if (enabled.has('windsurf')) {
+      await materializeWindsurfGlobal({
+        generatedPath: paths.generatedWindsurf,
+        projectRoot,
+        check,
+        changed
+      })
+    }
+    if (enabled.has('opencode')) {
+      await materializeOpencode({
+        generatedPath: paths.generatedOpencode,
+        targetPath: paths.opencodeConfig,
         projectRoot,
         check,
         changed,
@@ -196,6 +218,26 @@ async function syncGeneratedFiles(args: {
   await writeManagedFile(
     paths.generatedAntigravity,
     `${JSON.stringify(antigravity.payload, null, 2)}\n`,
+    projectRoot,
+    check,
+    changed,
+  )
+
+  const windsurf = buildWindsurfPayload(resolvedByTarget.windsurf)
+  warnings.push(...windsurf.warnings)
+  await writeManagedFile(
+    paths.generatedWindsurf,
+    `${JSON.stringify(windsurf.payload, null, 2)}\n`,
+    projectRoot,
+    check,
+    changed,
+  )
+
+  const opencode = buildOpencodePayload(resolvedByTarget.opencode)
+  warnings.push(...opencode.warnings)
+  await writeManagedFile(
+    paths.generatedOpencode,
+    `${JSON.stringify(opencode.payload, null, 2)}\n`,
     projectRoot,
     check,
     changed,
@@ -320,6 +362,79 @@ async function materializeAntigravityGlobal(args: {
   }
 
   await writeManagedFile(globalPath, `${JSON.stringify(normalized, null, 2)}\n`, projectRoot, check, changed)
+}
+
+async function materializeWindsurfGlobal(args: {
+  generatedPath: string
+  projectRoot: string
+  check: boolean
+  changed: string[]
+}): Promise<void> {
+  const { generatedPath, projectRoot, check, changed } = args
+  const content = await readTextOrEmpty(generatedPath)
+  const globalPath = getWindsurfGlobalMcpPath()
+
+  let normalized: Record<string, unknown> = {}
+  if (content.trim().length > 0) {
+    try {
+      normalized = normalizeWindsurfMcpPayload(JSON.parse(content) as Record<string, unknown>)
+    } catch (error) {
+      throw new Error(
+        `Failed to parse generated Windsurf config: ${error instanceof Error ? error.message : String(error)}`,
+      )
+    }
+  }
+
+  await writeManagedFile(globalPath, `${JSON.stringify(normalized, null, 2)}\n`, projectRoot, check, changed)
+}
+
+async function materializeOpencode(args: {
+  generatedPath: string
+  targetPath: string
+  projectRoot: string
+  check: boolean
+  changed: string[]
+  warnings: string[]
+}): Promise<void> {
+  const { generatedPath, targetPath, projectRoot, check, changed, warnings } = args
+  const rawGenerated = await readTextOrEmpty(generatedPath)
+  let generated: Record<string, unknown> = {}
+  if (rawGenerated.trim()) {
+    try {
+      generated = JSON.parse(rawGenerated) as Record<string, unknown>
+    } catch (error) {
+      throw new Error(`Failed to parse generated OpenCode config: ${error instanceof Error ? error.message : String(error)}`)
+    }
+  }
+
+  let existing: Record<string, unknown> = {}
+  if (await pathExists(targetPath)) {
+    try {
+      existing = await readJson<Record<string, unknown>>(targetPath)
+    } catch (error) {
+      warnings.push(
+        `Failed to read existing OpenCode config at ${targetPath}; starting fresh. ${error instanceof Error ? error.message : String(error)}`,
+      )
+      existing = {}
+    }
+  }
+
+  const generatedMcp = typeof generated.mcp === 'object' && generated.mcp !== null && !Array.isArray(generated.mcp)
+    ? generated.mcp as Record<string, unknown>
+    : {}
+
+  const merged = normalizeOpencodeConfig({
+    ...existing,
+    mcp: generatedMcp
+  })
+
+  await writeManagedFile(
+    targetPath,
+    `${JSON.stringify(merged, null, 2)}\n`,
+    projectRoot,
+    check,
+    changed,
+  )
 }
 
 async function syncClaude(args: {

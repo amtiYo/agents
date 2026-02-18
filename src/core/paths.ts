@@ -14,6 +14,8 @@ export interface ProjectPaths {
   generatedCopilot: string
   generatedCursor: string
   generatedAntigravity: string
+  generatedWindsurf: string
+  generatedOpencode: string
   generatedClaude: string
   generatedClaudeState: string
   generatedCursorState: string
@@ -26,15 +28,19 @@ export interface ProjectPaths {
   vscodeSettings: string
   cursorMcp: string
   antigravityProjectMcp: string
+  opencodeConfig: string
   codexDir: string
   geminiDir: string
   vscodeDir: string
   cursorDir: string
   antigravityDir: string
+  windsurfDir: string
+  opencodeDir: string
   claudeDir: string
   geminiSkillsBridge: string
   claudeSkillsBridge: string
   cursorSkillsBridge: string
+  windsurfSkillsBridge: string
 }
 
 export function getProjectPaths(projectRoot: string): ProjectPaths {
@@ -56,6 +62,8 @@ export function getProjectPaths(projectRoot: string): ProjectPaths {
     generatedCopilot: path.join(generatedDir, 'copilot.vscode.mcp.json'),
     generatedCursor: path.join(generatedDir, 'cursor.mcp.json'),
     generatedAntigravity: path.join(generatedDir, 'antigravity.mcp.json'),
+    generatedWindsurf: path.join(generatedDir, 'windsurf.mcp.json'),
+    generatedOpencode: path.join(generatedDir, 'opencode.json'),
     generatedClaude: path.join(generatedDir, 'claude.mcp.json'),
     generatedClaudeState: path.join(generatedDir, 'claude.state.json'),
     generatedCursorState: path.join(generatedDir, 'cursor.state.json'),
@@ -68,14 +76,18 @@ export function getProjectPaths(projectRoot: string): ProjectPaths {
     vscodeSettings: path.join(root, '.vscode', 'settings.json'),
     cursorMcp: path.join(root, '.cursor', 'mcp.json'),
     antigravityProjectMcp: path.join(root, '.antigravity', 'mcp.json'),
+    opencodeConfig: path.join(root, 'opencode.json'),
     codexDir: path.join(root, '.codex'),
     geminiDir: path.join(root, '.gemini'),
     vscodeDir: path.join(root, '.vscode'),
     cursorDir: path.join(root, '.cursor'),
     antigravityDir: path.join(root, '.antigravity'),
+    windsurfDir: path.join(root, '.windsurf'),
+    opencodeDir: path.join(root, '.opencode'),
     claudeDir: path.join(root, '.claude'),
     geminiSkillsBridge: path.join(root, '.gemini', 'skills'),
     claudeSkillsBridge: path.join(root, '.claude', 'skills'),
-    cursorSkillsBridge: path.join(root, '.cursor', 'skills')
+    cursorSkillsBridge: path.join(root, '.cursor', 'skills'),
+    windsurfSkillsBridge: path.join(root, '.windsurf', 'skills')
   }
 }

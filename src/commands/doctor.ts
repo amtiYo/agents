@@ -5,6 +5,7 @@ import { loadResolvedRegistry } from '../core/mcp.js'
 import { getProjectPaths } from '../core/paths.js'
 import type { ProjectPaths } from '../core/paths.js'
 import { getAntigravityGlobalMcpPath } from '../core/antigravity.js'
+import { getWindsurfGlobalMcpPath } from '../core/windsurf.js'
 import { commandExists, runCommand } from '../core/shell.js'
 import { performSync } from '../core/sync.js'
 import { ensureCodexProjectTrusted, getCodexTrustState } from '../core/trust.js'
@@ -38,6 +39,7 @@ export async function runDoctor(options: DoctorOptions): Promise<void> {
 
   const paths = getProjectPaths(options.projectRoot)
   const antigravityGlobalMcpPath = getAntigravityGlobalMcpPath()
+  const windsurfGlobalMcpPath = getWindsurfGlobalMcpPath()
   const issues: Issue[] = []
   const actions: string[] = []
 
@@ -107,7 +109,13 @@ export async function runDoctor(options: DoctorOptions): Promise<void> {
     })
   }
 
-  await validateManagedConfigSyntax(paths, config.integrations.enabled, antigravityGlobalMcpPath, issues)
+  await validateManagedConfigSyntax(
+    paths,
+    config.integrations.enabled,
+    antigravityGlobalMcpPath,
+    windsurfGlobalMcpPath,
+    issues,
+  )
 
   const skillWarnings = await validateSkillsDirectory(paths.agentsSkillsDir)
   for (const warning of skillWarnings) {
@@ -157,8 +165,10 @@ export async function runDoctor(options: DoctorOptions): Promise<void> {
         ...(enabled.has('cursor') ? ['.cursor/mcp.json'] : []),
         ...(enabled.has('claude') ? ['.claude/skills'] : []),
         ...(enabled.has('cursor') ? ['.cursor/skills'] : []),
+        ...(enabled.has('windsurf') ? ['.windsurf/skills'] : []),
         ...((enabled.has('gemini') || enabled.has('antigravity')) ? ['.gemini/skills'] : []),
-        ...(enabled.has('antigravity') ? ['.antigravity/mcp.json'] : [])
+        ...(enabled.has('antigravity') ? ['.antigravity/mcp.json'] : []),
+        ...(enabled.has('opencode') ? ['opencode.json'] : [])
       ]
     : []
   trackedChecks.push('.agents/generated', '.agents/local.json')
@@ -217,6 +227,20 @@ export async function runDoctor(options: DoctorOptions): Promise<void> {
     issues.push({
       level: 'warning',
       message: `Antigravity global MCP file missing: ${antigravityGlobalMcpPath} (run agents sync).`
+    })
+  }
+
+  if (enabled.has('windsurf') && !(await pathExists(windsurfGlobalMcpPath)) && !applyFixes) {
+    issues.push({
+      level: 'warning',
+      message: `Windsurf global MCP file missing: ${windsurfGlobalMcpPath} (run agents sync).`
+    })
+  }
+
+  if (enabled.has('opencode') && !(await pathExists(paths.opencodeConfig)) && !applyFixes) {
+    issues.push({
+      level: 'warning',
+      message: 'OpenCode config missing: opencode.json (run agents sync).'
     })
   }
 
@@ -473,6 +497,7 @@ async function validateManagedConfigSyntax(
   paths: ProjectPaths,
   enabledIntegrations: IntegrationName[],
   antigravityGlobalMcpPath: string,
+  windsurfGlobalMcpPath: string,
   issues: Issue[],
 ): Promise<void> {
   await validateTomlIfExists(paths.generatedCodex, '.agents/generated/codex.config.toml', issues)
@@ -480,6 +505,8 @@ async function validateManagedConfigSyntax(
   await validateJsonIfExists(paths.generatedCopilot, '.agents/generated/copilot.vscode.mcp.json', issues)
   await validateJsonIfExists(paths.generatedCursor, '.agents/generated/cursor.mcp.json', issues)
   await validateJsonIfExists(paths.generatedAntigravity, '.agents/generated/antigravity.mcp.json', issues)
+  await validateJsonIfExists(paths.generatedWindsurf, '.agents/generated/windsurf.mcp.json', issues)
+  await validateJsonIfExists(paths.generatedOpencode, '.agents/generated/opencode.json', issues)
   await validateJsonIfExists(paths.generatedClaude, '.agents/generated/claude.mcp.json', issues)
 
   if (enabledIntegrations.includes('codex')) {
@@ -500,6 +527,16 @@ async function validateManagedConfigSyntax(
       `Antigravity global MCP (${antigravityGlobalMcpPath})`,
       issues,
     )
+  }
+  if (enabledIntegrations.includes('windsurf')) {
+    await validateJsonIfExists(
+      windsurfGlobalMcpPath,
+      `Windsurf global MCP (${windsurfGlobalMcpPath})`,
+      issues,
+    )
+  }
+  if (enabledIntegrations.includes('opencode')) {
+    await validateJsonIfExists(paths.opencodeConfig, 'opencode.json', issues)
   }
 }
 

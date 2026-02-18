@@ -109,6 +109,8 @@ export async function runStart(options: StartOptions): Promise<void> {
     `Codex trust: ${access.summaries.codex}`,
     `Cursor approval: ${access.summaries.cursor}`,
     `Antigravity sync: ${access.summaries.antigravity}`,
+    `Windsurf sync: ${access.summaries.windsurf}`,
+    `OpenCode sync: ${access.summaries.opencode}`,
     `Created/updated: ${init.changed.length}`
   ]
 
@@ -149,14 +151,16 @@ async function resolveIntegrationAccess(args: {
   autoApprove: boolean
 }): Promise<{
   integrationOptions: { cursorAutoApprove: boolean; antigravityGlobalSync: boolean }
-  summaries: { codex: string; cursor: string; antigravity: string }
+  summaries: { codex: string; cursor: string; antigravity: string; windsurf: string; opencode: string }
 }> {
   const { projectRoot, selectedIntegrations, interactive, autoApprove } = args
 
-  const summaries: { codex: string; cursor: string; antigravity: string } = {
+  const summaries: { codex: string; cursor: string; antigravity: string; windsurf: string; opencode: string } = {
     codex: 'not required',
     cursor: 'not required',
-    antigravity: 'not required'
+    antigravity: 'not required',
+    windsurf: 'not required',
+    opencode: 'not required'
   }
 
   const integrationOptions = {
@@ -217,6 +221,14 @@ async function resolveIntegrationAccess(args: {
     summaries.antigravity = 'global user profile'
   }
 
+  if (selectedIntegrations.includes('windsurf')) {
+    summaries.windsurf = 'global MCP + workspace skills bridge'
+  }
+
+  if (selectedIntegrations.includes('opencode')) {
+    summaries.opencode = 'project opencode.json'
+  }
+
   return {
     integrationOptions,
     summaries
@@ -252,11 +264,15 @@ async function shouldOfferCleanup(projectRoot: string): Promise<boolean> {
     paths.geminiDir,
     paths.cursorDir,
     paths.antigravityDir,
+    paths.windsurfDir,
+    paths.opencodeDir,
+    paths.opencodeConfig,
     legacyAgentDir,
     paths.vscodeMcp,
     paths.claudeSkillsBridge,
     paths.cursorSkillsBridge,
-    paths.geminiSkillsBridge
+    paths.geminiSkillsBridge,
+    paths.windsurfSkillsBridge
   ]
   for (const candidate of candidates) {
     if (await pathExists(candidate)) return true
@@ -270,7 +286,7 @@ function getDefaults(): {
   hideGeneratedInVscode: boolean
 } {
   const available = INTEGRATIONS.filter((integration) => {
-    if (!integration.requiredBinary) return true
+    if (!integration.requiredBinary) return false
     return commandExists(integration.requiredBinary)
   }).map((integration) => integration.id)
 

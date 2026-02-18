@@ -12,7 +12,9 @@ export const INTEGRATIONS: IntegrationDefinition[] = [
   { id: 'gemini', label: 'Gemini CLI', requiredBinary: 'gemini' },
   { id: 'copilot_vscode', label: 'Copilot VS Code', requiredBinary: 'code' },
   { id: 'cursor', label: 'Cursor', requiredBinary: 'cursor-agent' },
-  { id: 'antigravity', label: 'Antigravity', requiredBinary: 'antigravity' }
+  { id: 'antigravity', label: 'Antigravity', requiredBinary: 'antigravity' },
+  { id: 'windsurf', label: 'Windsurf' },
+  { id: 'opencode', label: 'OpenCode' }
 ]
 
 export const INTEGRATION_IDS: IntegrationName[] = INTEGRATIONS.map((item) => item.id)

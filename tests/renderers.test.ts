@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import TOML from '@iarna/toml'
-import { renderCodexToml, renderGeminiServers, renderVscodeMcp } from '../src/core/renderers.js'
+import {
+  renderCodexToml,
+  renderGeminiServers,
+  renderOpencodeMcp,
+  renderVscodeMcp,
+  renderWindsurfMcp
+} from '../src/core/renderers.js'
 import type { ResolvedMcpServer } from '../src/types.js'
 
 const servers: ResolvedMcpServer[] = [
@@ -69,6 +75,42 @@ describe('renderers', () => {
       },
       'sse-tools': {
         type: 'sse',
+        url: 'https://example.com/sse'
+      }
+    })
+  })
+
+  it('renders windsurf mcp payload', () => {
+    const rendered = renderWindsurfMcp(servers)
+    expect(rendered.mcpServers).toMatchObject({
+      filesystem: {
+        command: 'npx'
+      },
+      'http-tools': {
+        serverUrl: 'https://example.com/mcp'
+      },
+      'sse-tools': {
+        serverUrl: 'https://example.com/sse'
+      }
+    })
+  })
+
+  it('renders opencode mcp payload', () => {
+    const rendered = renderOpencodeMcp(servers)
+    expect(rendered.mcp).toMatchObject({
+      filesystem: {
+        type: 'local',
+        enabled: true,
+        command: ['npx', '-y', '@modelcontextprotocol/server-filesystem', '/tmp/project']
+      },
+      'http-tools': {
+        type: 'remote',
+        enabled: true,
+        url: 'https://example.com/mcp'
+      },
+      'sse-tools': {
+        type: 'remote',
+        enabled: true,
         url: 'https://example.com/sse'
       }
     })

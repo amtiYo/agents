@@ -7,6 +7,7 @@ import { listDirNames, pathExists, readJson } from '../core/fs.js'
 import { loadResolvedRegistry } from '../core/mcp.js'
 import { getProjectPaths } from '../core/paths.js'
 import { getAntigravityGlobalMcpPath } from '../core/antigravity.js'
+import { getWindsurfGlobalMcpPath } from '../core/windsurf.js'
 import { commandExists, runCommand } from '../core/shell.js'
 import { getCodexTrustState } from '../core/trust.js'
 import { listMcpEntries, loadMcpState } from '../core/mcpCrud.js'
@@ -53,8 +54,12 @@ export async function runStatus(options: StatusOptions): Promise<void> {
   const enabled = new Set(config.integrations.enabled)
   const antigravityGlobalPath = getAntigravityGlobalMcpPath()
   const antigravityGlobalLabel = toHomeRelativePath(antigravityGlobalPath)
+  const windsurfGlobalPath = getWindsurfGlobalMcpPath()
+  const windsurfGlobalLabel = toHomeRelativePath(windsurfGlobalPath)
   const expectedCodexServers = resolved.serversByTarget.codex.map((server) => server.name)
   const expectedCursorServers = resolved.serversByTarget.cursor.map((server) => server.name)
+  const expectedWindsurfServers = resolved.serversByTarget.windsurf.map((server) => server.name)
+  const expectedOpencodeServers = resolved.serversByTarget.opencode.map((server) => server.name)
 
   const files: Record<string, boolean> = {
     '.agents/agents.json': await pathExists(paths.agentsConfig),
@@ -78,11 +83,20 @@ export async function runStatus(options: StatusOptions): Promise<void> {
   if (enabled.has('antigravity')) {
     files[antigravityGlobalLabel] = await pathExists(antigravityGlobalPath)
   }
+  if (enabled.has('windsurf')) {
+    files[windsurfGlobalLabel] = await pathExists(windsurfGlobalPath)
+  }
+  if (enabled.has('opencode')) {
+    files['opencode.json'] = await pathExists(paths.opencodeConfig)
+  }
   if (enabled.has('claude')) {
     files['.claude/skills'] = await pathExists(paths.claudeSkillsBridge)
   }
   if (enabled.has('cursor')) {
     files['.cursor/skills'] = await pathExists(paths.cursorSkillsBridge)
+  }
+  if (enabled.has('windsurf')) {
+    files['.windsurf/skills'] = await pathExists(paths.windsurfSkillsBridge)
   }
   if (enabled.has('gemini') || enabled.has('antigravity')) {
     files['.gemini/skills'] = await pathExists(paths.geminiSkillsBridge)
@@ -98,6 +112,12 @@ export async function runStatus(options: StatusOptions): Promise<void> {
     if (enabled.has('cursor')) probes.cursor = probeCursor(options.projectRoot, expectedCursorServers)
     if (enabled.has('antigravity')) {
       probes.antigravity = await probeAntigravity(antigravityGlobalPath, antigravityGlobalLabel)
+    }
+    if (enabled.has('windsurf')) {
+      probes.windsurf = await probeWindsurf(windsurfGlobalPath, windsurfGlobalLabel, expectedWindsurfServers)
+    }
+    if (enabled.has('opencode')) {
+      probes.opencode = await probeOpencode(paths.opencodeConfig, expectedOpencodeServers)
     }
     probes.skills = await probeSkills(paths.agentsSkillsDir)
     probes.vscode_hidden = await probeVscodeHidden(paths.vscodeSettings)
@@ -141,7 +161,7 @@ export async function runStatus(options: StatusOptions): Promise<void> {
     ui.keyValue('MCP', `${output.mcp.configured} configured, ${output.mcp.localOverrides} local override(s)`)
     ui.keyValue('Selected MCP', ui.formatList(output.selectedMcpServers))
 
-    const compactProbeOrder = ['codex', 'claude', 'gemini', 'copilot_vscode', 'cursor', 'antigravity']
+    const compactProbeOrder = ['codex', 'claude', 'gemini', 'copilot_vscode', 'cursor', 'antigravity', 'windsurf', 'opencode']
     const compactProbes = compactProbeOrder
       .filter((name) => Boolean(output.probes[name]))
       .map((name) => `${name}: ${output.probes[name]}`)
@@ -280,6 +300,37 @@ async function probeAntigravity(globalPath: string, label: string): Promise<stri
     return `${count} server(s) configured (runtime state visible only in Antigravity UI)`
   } catch {
     return `invalid ${label}`
+  }
+}
+
+async function probeWindsurf(globalPath: string, label: string, expectedServerNames: string[]): Promise<string> {
+  if (!(await pathExists(globalPath))) return `missing ${label}`
+
+  try {
+    const parsed = await readJson<{ mcpServers?: Record<string, unknown> }>(globalPath)
+    const names = Object.keys(parsed.mcpServers ?? {})
+    const missing = expectedServerNames.filter((name) => !names.includes(name))
+    if (missing.length > 0) {
+      return `${names.length} server(s) configured (${names.join(', ') || 'none'}); missing expected: ${missing.join(', ')}`
+    }
+    return `${names.length} server(s) configured`
+  } catch {
+    return `invalid ${label}`
+  }
+}
+
+async function probeOpencode(configPath: string, expectedServerNames: string[]): Promise<string> {
+  if (!(await pathExists(configPath))) return 'missing opencode.json'
+  try {
+    const parsed = await readJson<{ mcp?: Record<string, unknown> }>(configPath)
+    const names = Object.keys(parsed.mcp ?? {})
+    const missing = expectedServerNames.filter((name) => !names.includes(name))
+    if (missing.length > 0) {
+      return `${names.length} server(s) configured (${names.join(', ') || 'none'}); missing expected: ${missing.join(', ')}`
+    }
+    return `${names.length} server(s) configured`
+  } catch {
+    return 'invalid opencode.json'
   }
 }
 

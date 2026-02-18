@@ -22,4 +22,7 @@ Project-local standard for AGENTS.md + MCP + SKILLS.
 - `.vscode/mcp.json`
 - `.vscode/settings.json`
 - `.cursor/mcp.json`
-- `.antigravity/mcp.json`
+- `opencode.json`
+- `.windsurf/skills/`
+- `~/.codeium/windsurf/mcp_config.json` (global)
+- `Antigravity User/mcp.json` (global)

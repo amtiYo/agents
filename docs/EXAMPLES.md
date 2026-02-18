@@ -182,3 +182,19 @@ PS1='$(agents_prompt) '"$PS1"
 ## More Examples?
 
 [Open a discussion](https://github.com/amtiYo/agents/discussions) and share your workflow!
+
+---
+
+## Windsurf + OpenCode
+
+```bash
+cd ~/my-project
+agents init
+agents connect --llm windsurf,opencode
+agents sync
+```
+
+**Result:**
+- Windsurf MCP is written to `~/.codeium/windsurf/mcp_config.json`
+- OpenCode MCP is written to project `opencode.json`
+- Skills are available from `.agents/skills` (Windsurf also gets `.windsurf/skills`)

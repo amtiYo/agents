@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { validateEnvKey, validateEnvValueForShell, validateHeaderKey } from '../src/core/mcpValidation.js'
+import { parseTargetOptions, validateEnvKey, validateEnvValueForShell, validateHeaderKey } from '../src/core/mcpValidation.js'
 
 describe('mcp validation', () => {
   it('validates environment variable keys', () => {
@@ -31,5 +31,10 @@ describe('mcp validation', () => {
     expect(() => validateEnvValueForShell('Authorization', 'Bearer \u0000abc', 'header')).toThrow(
       /contains control characters/,
     )
+  })
+
+  it('parses target options including windsurf and opencode', () => {
+    const targets = parseTargetOptions(['windsurf,opencode'])
+    expect(targets).toEqual(['windsurf', 'opencode'])
   })
 })

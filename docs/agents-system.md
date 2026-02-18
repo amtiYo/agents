@@ -69,6 +69,8 @@ project/
 | **Cursor** | `.cursor/mcp.json` + CLI enable |
 | **Copilot** | `.vscode/mcp.json` |
 | **Antigravity** | Global user profile `mcp.json` (not project-local) |
+| **Windsurf** | Global user profile `~/.codeium/windsurf/mcp_config.json` |
+| **OpenCode** | `opencode.json` (`mcp` block) |
 
 ## VS Code Integration
 
@@ -81,6 +83,9 @@ project/
     "**/.cursor": true,
     "**/.gemini": true,
     "**/.antigravity": true,
+    "**/.windsurf": true,
+    "**/.opencode": true,
+    "**/opencode.json": true,
     "**/.agents/generated": true
   }
 }
@@ -98,6 +103,8 @@ project/
 | **Cursor** | Symlink to `.cursor/skills/` |
 | **Gemini** | Symlink to `.gemini/skills/` |
 | **Antigravity** | Reuses `.gemini/skills/` bridge |
+| **Windsurf** | Symlink to `.windsurf/skills/` |
+| **OpenCode** | Reads `.agents/skills/` directly |
 
 **Validation:** `agents doctor` checks frontmatter (`name`, `description`)
 
@@ -173,6 +180,7 @@ project/
 - ❌ `.agents/local.json`
 - ❌ `.agents/generated/`
 - ❌ `.codex/`, `.claude/`, `.cursor/`, `.gemini/`
+- ❌ `.windsurf/`, `.opencode/`, `opencode.json`
 - ❌ legacy `.antigravity/` (if present from older versions)
 
 ---

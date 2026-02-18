@@ -9,8 +9,20 @@ import { loadAgentsConfig } from './config.js'
 import { pathExists, readJson } from './fs.js'
 import { getProjectPaths } from './paths.js'
 
-const ALL_INTEGRATIONS: IntegrationName[] = ['codex', 'claude', 'gemini', 'copilot_vscode', 'cursor', 'antigravity']
-const LEGACY_INTEGRATIONS: IntegrationName[] = ['codex', 'claude', 'gemini', 'copilot_vscode']
+const ALL_INTEGRATIONS: IntegrationName[] = [
+  'codex',
+  'claude',
+  'gemini',
+  'copilot_vscode',
+  'cursor',
+  'antigravity',
+  'windsurf',
+  'opencode'
+]
+const LEGACY_EXPAND_SETS: IntegrationName[][] = [
+  ['codex', 'claude', 'gemini', 'copilot_vscode'],
+  ['codex', 'claude', 'gemini', 'copilot_vscode', 'cursor', 'antigravity']
+]
 
 export async function loadLocalOverrides(projectRoot: string): Promise<LocalOverridesFile> {
   const paths = getProjectPaths(projectRoot)
@@ -51,7 +63,9 @@ export function resolveFromConfigAndLocal(input: {
     gemini: [],
     copilot_vscode: [],
     cursor: [],
-    antigravity: []
+    antigravity: [],
+    windsurf: [],
+    opencode: []
   }
 
   const selectedServerNames: string[] = []
@@ -106,7 +120,7 @@ function normalizeTargets(targets: IntegrationName[] | undefined): IntegrationNa
   }
 
   const unique = [...new Set(targets)]
-  const hasLegacySet = LEGACY_INTEGRATIONS.every((id) => unique.includes(id))
+  const hasLegacySet = LEGACY_EXPAND_SETS.some((set) => set.every((id) => unique.includes(id)))
   if (!hasLegacySet) {
     return unique
   }

@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.3] - 2026-02-18
+
+### Added
+
+- New integrations:
+  - **Windsurf** MCP sync to global `~/.codeium/windsurf/mcp_config.json`
+  - **OpenCode** MCP sync to project `opencode.json`
+- Windsurf skills bridge support via `.windsurf/skills` (linked from `.agents/skills`).
+- New renderer support for:
+  - Windsurf `mcpServers` payload format
+  - OpenCode top-level `mcp` payload with `local`/`remote` server modes
+- New tests:
+  - `tests/windsurf-opencode.integration.test.ts`
+  - expanded renderer, MCP routing, target parsing, status, and reset coverage for new integrations
+
+### Changed
+
+- `agents connect/disconnect --llm` now accepts `windsurf` and `opencode`.
+- Default MCP target expansion now includes Windsurf and OpenCode for legacy full target sets.
+- Source-only gitignore and VS Code hidden-path defaults now include Windsurf/OpenCode outputs.
+- `agents status`, `agents doctor`, `agents reset`, and `agents mcp test --runtime` now recognize Windsurf/OpenCode states.
+- Project version bumped to `0.8.3`.
+
 ## [0.8.2] - 2026-02-17
 
 ### Added

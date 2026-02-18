@@ -16,6 +16,7 @@
 ### Tools
 - [Codex](https://developers.openai.com/codex) | [Claude Code](https://code.claude.com/docs) | [Gemini CLI](https://geminicli.com/docs)
 - [Cursor](https://cursor.com/docs) | [Copilot](https://github.com/features/copilot) | [Antigravity](https://antigravity.google/docs)
+- [Windsurf](https://docs.windsurf.com/windsurf/cascade) | [OpenCode](https://opencode.ai/docs/)
 
 ## Contributing
 

@@ -140,3 +140,74 @@ export function renderVscodeMcp(servers: ResolvedMcpServer[]): {
 
   return { servers: out, warnings }
 }
+
+export function renderWindsurfMcp(servers: ResolvedMcpServer[]): {
+  mcpServers: Record<string, unknown>
+  warnings: string[]
+} {
+  const warnings: string[] = []
+  const out: Record<string, unknown> = {}
+
+  for (const server of servers) {
+    if (server.transport === 'stdio') {
+      if (!server.command) {
+        warnings.push(`Server "${server.name}" has no command; skipped in Windsurf output.`)
+        continue
+      }
+      out[server.name] = {
+        command: server.command,
+        args: server.args ?? [],
+        ...(server.env ? { env: server.env } : {})
+      }
+      continue
+    }
+
+    if (!server.url) {
+      warnings.push(`Server "${server.name}" has no url; skipped in Windsurf output.`)
+      continue
+    }
+    out[server.name] = {
+      serverUrl: server.url,
+      ...(server.headers ? { headers: server.headers } : {})
+    }
+  }
+
+  return { mcpServers: out, warnings }
+}
+
+export function renderOpencodeMcp(servers: ResolvedMcpServer[]): {
+  mcp: Record<string, unknown>
+  warnings: string[]
+} {
+  const warnings: string[] = []
+  const out: Record<string, unknown> = {}
+
+  for (const server of servers) {
+    if (server.transport === 'stdio') {
+      if (!server.command) {
+        warnings.push(`Server "${server.name}" has no command; skipped in OpenCode output.`)
+        continue
+      }
+      out[server.name] = {
+        type: 'local',
+        enabled: true,
+        command: [server.command, ...(server.args ?? [])],
+        ...(server.env ? { environment: server.env } : {})
+      }
+      continue
+    }
+
+    if (!server.url) {
+      warnings.push(`Server "${server.name}" has no url; skipped in OpenCode output.`)
+      continue
+    }
+    out[server.name] = {
+      type: 'remote',
+      enabled: true,
+      url: server.url,
+      ...(server.headers ? { headers: server.headers } : {})
+    }
+  }
+
+  return { mcp: out, warnings }
+}

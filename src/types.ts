@@ -1,6 +1,14 @@
 export const AGENTS_SCHEMA_VERSION = 3
 
-export type IntegrationName = 'codex' | 'claude' | 'gemini' | 'copilot_vscode' | 'cursor' | 'antigravity'
+export type IntegrationName =
+  | 'codex'
+  | 'claude'
+  | 'gemini'
+  | 'copilot_vscode'
+  | 'cursor'
+  | 'antigravity'
+  | 'windsurf'
+  | 'opencode'
 export type SyncMode = 'source-only' | 'commit-generated'
 
 export type McpTransportType = 'stdio' | 'http' | 'sse'

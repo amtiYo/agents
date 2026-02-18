@@ -12,7 +12,9 @@ const ALL_INTEGRATIONS: IntegrationName[] = [
   'gemini',
   'copilot_vscode',
   'cursor',
-  'antigravity'
+  'antigravity',
+  'windsurf',
+  'opencode'
 ]
 
 const DEFAULT_RUNTIME_TIMEOUT_MS = 8000
@@ -238,7 +240,13 @@ function runRuntimeChecks(entries: McpServerEntry[], projectRoot: string, timeou
     const runtimeByIntegration: Partial<Record<IntegrationName, RuntimeIntegrationResult>> = {}
 
     for (const integration of targets) {
-      if (integration === 'codex' || integration === 'copilot_vscode' || integration === 'antigravity') {
+      if (
+        integration === 'codex'
+        || integration === 'copilot_vscode'
+        || integration === 'antigravity'
+        || integration === 'windsurf'
+        || integration === 'opencode'
+      ) {
         runtimeByIntegration[integration] = {
           status: 'unsupported',
           message: 'Runtime health introspection is not supported for this integration.'

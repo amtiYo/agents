@@ -21,11 +21,16 @@ describe('reset command', () => {
       await mkdir(path.join(projectRoot, '.agents', 'generated'), { recursive: true })
       await mkdir(path.join(projectRoot, '.codex'), { recursive: true })
       await mkdir(path.join(projectRoot, '.gemini'), { recursive: true })
+      await mkdir(path.join(projectRoot, '.windsurf', 'skills'), { recursive: true })
+      await mkdir(path.join(projectRoot, '.opencode', 'agent'), { recursive: true })
       await mkdir(path.join(projectRoot, '.vscode'), { recursive: true })
 
       await writeFile(path.join(projectRoot, '.agents', 'generated', 'x.txt'), 'x\n')
       await writeFile(path.join(projectRoot, '.codex', 'config.toml'), 'x\n')
       await writeFile(path.join(projectRoot, '.gemini', 'settings.json'), '{}\n')
+      await writeFile(path.join(projectRoot, '.windsurf', 'skills', 'sample.md'), 'x\n')
+      await writeFile(path.join(projectRoot, '.opencode', 'agent', 'sample.md'), 'x\n')
+      await writeFile(path.join(projectRoot, 'opencode.json'), '{}\n')
       await writeFile(path.join(projectRoot, '.vscode', 'mcp.json'), '{}\n')
 
       await runReset({ projectRoot, localOnly: true, hard: false })
@@ -33,6 +38,9 @@ describe('reset command', () => {
       expect(await exists(path.join(projectRoot, '.agents', 'generated'))).toBe(true)
       expect(await exists(path.join(projectRoot, '.codex'))).toBe(false)
       expect(await exists(path.join(projectRoot, '.gemini'))).toBe(false)
+      expect(await exists(path.join(projectRoot, '.windsurf'))).toBe(false)
+      expect(await exists(path.join(projectRoot, '.opencode'))).toBe(false)
+      expect(await exists(path.join(projectRoot, 'opencode.json'))).toBe(false)
       expect(await exists(path.join(projectRoot, '.vscode', 'mcp.json'))).toBe(false)
     } finally {
       await rm(projectRoot, { recursive: true, force: true })

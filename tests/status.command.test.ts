@@ -5,12 +5,19 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { runInit } from '../src/commands/init.js'
 import { runStatus } from '../src/commands/status.js'
 import { loadAgentsConfig, saveAgentsConfig } from '../src/core/config.js'
+import { performSync } from '../src/core/sync.js'
 import * as shell from '../src/core/shell.js'
 
 const tempDirs: string[] = []
+let previousWindsurfMcpPath: string | undefined
 
 afterEach(async () => {
   vi.restoreAllMocks()
+  if (previousWindsurfMcpPath === undefined) {
+    delete process.env.AGENTS_WINDSURF_MCP_PATH
+  } else {
+    process.env.AGENTS_WINDSURF_MCP_PATH = previousWindsurfMcpPath
+  }
   for (const dir of tempDirs.splice(0, tempDirs.length)) {
     await rm(dir, { recursive: true, force: true })
   }
@@ -23,7 +30,16 @@ describe('status command', () => {
 
     await runInit({ projectRoot, force: true })
     const config = await loadAgentsConfig(projectRoot)
-    config.integrations.enabled = ['codex', 'claude', 'gemini', 'cursor', 'copilot_vscode', 'antigravity']
+    config.integrations.enabled = [
+      'codex',
+      'claude',
+      'gemini',
+      'cursor',
+      'copilot_vscode',
+      'antigravity',
+      'windsurf',
+      'opencode'
+    ]
     await saveAgentsConfig(projectRoot, config)
 
     const runCommandSpy = vi.spyOn(shell, 'runCommand')
@@ -66,6 +82,39 @@ describe('status command', () => {
     expect(parsed.files['.gemini/settings.json']).toBeUndefined()
     expect(parsed.files['.cursor/mcp.json']).toBeUndefined()
     expect(Object.keys(parsed.files).some((key) => key.toLowerCase().includes('antigravity'))).toBe(false)
+    expect(parsed.files['opencode.json']).toBeUndefined()
+    expect(Object.keys(parsed.files).some((key) => key.toLowerCase().includes('windsurf'))).toBe(false)
+  })
+
+  it('includes windsurf and opencode file states when enabled', async () => {
+    const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-status-'))
+    const windsurfDir = await mkdtemp(path.join(os.tmpdir(), 'agents-ws-status-'))
+    tempDirs.push(projectRoot, windsurfDir)
+    previousWindsurfMcpPath = process.env.AGENTS_WINDSURF_MCP_PATH
+    process.env.AGENTS_WINDSURF_MCP_PATH = path.join(windsurfDir, 'mcp_config.json')
+
+    await runInit({ projectRoot, force: true })
+    const config = await loadAgentsConfig(projectRoot)
+    config.integrations.enabled = ['windsurf', 'opencode']
+    await saveAgentsConfig(projectRoot, config)
+    await performSync({
+      projectRoot,
+      check: false,
+      verbose: false
+    })
+
+    const output = await captureStdout(async () => {
+      await runStatus({
+        projectRoot,
+        json: true,
+        verbose: false,
+        fast: true
+      })
+    })
+
+    const parsed = JSON.parse(output) as { files: Record<string, boolean> }
+    expect(parsed.files['opencode.json']).toBe(true)
+    expect(Object.keys(parsed.files).some((key) => key.includes('mcp_config.json'))).toBe(true)
   })
 })
 
