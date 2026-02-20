@@ -55,7 +55,7 @@
     "url": "https://github.com/amtiYo/agents/issues"
   },
   "homepage": "https://github.com/amtiYo/agents#readme",
-  "license": "MIT",
+  "license": "Apache-2.0",
   "type": "module",
   "engines": {
     "node": ">=20.0.0"

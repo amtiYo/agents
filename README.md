@@ -6,7 +6,7 @@
   <a href="https://www.npmjs.com/package/@agents-dev/cli"><img src="https://img.shields.io/npm/v/@agents-dev/cli?style=for-the-badge&logo=npm&logoColor=white&labelColor=0f172a&color=e11d48" alt="npm version"></a>
   <a href="https://www.npmjs.com/package/@agents-dev/cli"><img src="https://img.shields.io/npm/dt/@agents-dev/cli?style=for-the-badge&logo=npm&logoColor=white&labelColor=0f172a&color=2563eb" alt="downloads"></a>
   <a href="https://www.npmjs.com/package/@agents-dev/cli"><img src="https://img.shields.io/node/v/@agents-dev/cli?style=for-the-badge&logo=node.js&logoColor=white&labelColor=0f172a&color=10b981" alt="node version"></a>
-  <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/license-MIT-334155?style=for-the-badge&labelColor=0f172a" alt="license"></a>
+  <a href="https://www.apache.org/licenses/LICENSE-2.0"><img src="https://img.shields.io/badge/license-Apache%202.0-334155?style=for-the-badge&labelColor=0f172a" alt="license"></a>
 </p>
 
 <p align="center">

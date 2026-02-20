@@ -161,4 +161,4 @@ Found a vulnerability? **Email us instead of opening a public issue.**
 
 ## License
 
-By contributing, you agree your contributions are licensed under the MIT License.
+By contributing, you agree your contributions are licensed under the Apache License 2.0.
