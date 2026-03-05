@@ -13,6 +13,18 @@ afterEach(async () => {
 })
 
 describe('init command AGENTS.md safety', () => {
+  it('adds Claude bridge entries to managed gitignore rules', async () => {
+    const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-init-gitignore-'))
+    tempDirs.push(projectRoot)
+
+    await runInit({ projectRoot, force: true })
+
+    const gitignore = await readFile(path.join(projectRoot, '.gitignore'), 'utf8')
+    expect(gitignore).toContain('.claude/skills')
+    expect(gitignore).toContain('.claude/commands')
+    expect(gitignore).toContain('.claude/hooks')
+  })
+
   it('preserves an existing AGENTS.md even when force=true', async () => {
     const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-init-preserve-'))
     tempDirs.push(projectRoot)

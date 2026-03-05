@@ -1,6 +1,7 @@
 import os from 'node:os'
 import path from 'node:path'
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
+import { spawnSync } from 'node:child_process'
 import { afterEach, describe, expect, it } from 'vitest'
 import { runInit } from '../src/commands/init.js'
 import { runDoctor } from '../src/commands/doctor.js'
@@ -78,6 +79,38 @@ describe('doctor command', () => {
     expect(output).toContain('Dry-run (would apply):')
     expect(output).toContain('Would run agents sync after fixes.')
     expect(output).toContain('Next: run "agents doctor --fix" to apply these changes.')
+  }, 15000)
+
+  it('reports tracked Claude command and hook bridges in source-only mode', async () => {
+    const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-doctor-'))
+    tempDirs.push(projectRoot)
+
+    await runInit({ projectRoot, force: true })
+    const config = await loadAgentsConfig(projectRoot)
+    config.integrations.enabled = ['claude']
+    await saveAgentsConfig(projectRoot, config)
+
+    const init = spawnSync('git', ['-C', projectRoot, 'init'], { encoding: 'utf8' })
+    expect(init.status).toBe(0)
+
+    await mkdir(path.join(projectRoot, '.claude', 'commands'), { recursive: true })
+    await mkdir(path.join(projectRoot, '.claude', 'hooks'), { recursive: true })
+    await writeFile(path.join(projectRoot, '.claude', 'commands', 'hello.md'), '# hello\n', 'utf8')
+    await writeFile(path.join(projectRoot, '.claude', 'hooks', 'pre-tool-use.sh'), 'echo test\n', 'utf8')
+
+    const add = spawnSync(
+      'git',
+      ['-C', projectRoot, 'add', '-f', '.claude/commands/hello.md', '.claude/hooks/pre-tool-use.sh'],
+      { encoding: 'utf8' },
+    )
+    expect(add.status).toBe(0)
+
+    const output = await captureStdout(async () => {
+      await runDoctor({ projectRoot, fix: false })
+    })
+
+    expect(output).toContain('".claude/commands" is tracked by git')
+    expect(output).toContain('".claude/hooks" is tracked by git')
   }, 15000)
 })
 

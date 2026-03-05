@@ -21,6 +21,9 @@ describe('reset command', () => {
       await mkdir(path.join(projectRoot, '.agents', 'generated'), { recursive: true })
       await mkdir(path.join(projectRoot, '.codex'), { recursive: true })
       await mkdir(path.join(projectRoot, '.gemini'), { recursive: true })
+      await mkdir(path.join(projectRoot, '.claude', 'skills'), { recursive: true })
+      await mkdir(path.join(projectRoot, '.claude', 'commands'), { recursive: true })
+      await mkdir(path.join(projectRoot, '.claude', 'hooks'), { recursive: true })
       await mkdir(path.join(projectRoot, '.windsurf', 'skills'), { recursive: true })
       await mkdir(path.join(projectRoot, '.opencode', 'agent'), { recursive: true })
       await mkdir(path.join(projectRoot, '.vscode'), { recursive: true })
@@ -28,6 +31,9 @@ describe('reset command', () => {
       await writeFile(path.join(projectRoot, '.agents', 'generated', 'x.txt'), 'x\n')
       await writeFile(path.join(projectRoot, '.codex', 'config.toml'), 'x\n')
       await writeFile(path.join(projectRoot, '.gemini', 'settings.json'), '{}\n')
+      await writeFile(path.join(projectRoot, '.claude', 'skills', 'guide.md'), 'x\n')
+      await writeFile(path.join(projectRoot, '.claude', 'commands', 'hello.md'), 'x\n')
+      await writeFile(path.join(projectRoot, '.claude', 'hooks', 'pre-tool-use.sh'), 'x\n')
       await writeFile(path.join(projectRoot, '.windsurf', 'skills', 'sample.md'), 'x\n')
       await writeFile(path.join(projectRoot, '.opencode', 'agent', 'sample.md'), 'x\n')
       await writeFile(path.join(projectRoot, 'opencode.json'), '{}\n')
@@ -38,6 +44,9 @@ describe('reset command', () => {
       expect(await exists(path.join(projectRoot, '.agents', 'generated'))).toBe(true)
       expect(await exists(path.join(projectRoot, '.codex'))).toBe(false)
       expect(await exists(path.join(projectRoot, '.gemini'))).toBe(false)
+      expect(await exists(path.join(projectRoot, '.claude', 'skills'))).toBe(false)
+      expect(await exists(path.join(projectRoot, '.claude', 'commands'))).toBe(false)
+      expect(await exists(path.join(projectRoot, '.claude', 'hooks'))).toBe(false)
       expect(await exists(path.join(projectRoot, '.windsurf'))).toBe(false)
       expect(await exists(path.join(projectRoot, '.opencode'))).toBe(false)
       expect(await exists(path.join(projectRoot, 'opencode.json'))).toBe(false)
@@ -54,7 +63,10 @@ describe('reset command', () => {
       await mkdir(path.join(projectRoot, '.agents'), { recursive: true })
       await writeFile(path.join(projectRoot, '.agents', 'agents.json'), '{}\n')
       await writeFile(path.join(projectRoot, '.agents', 'local.json'), '{}\n')
-      await writeFile(path.join(projectRoot, '.gitignore'), '.agents/local.json\n.agents/generated/\n.custom\n')
+      await writeFile(
+        path.join(projectRoot, '.gitignore'),
+        '.agents/local.json\n.agents/generated/\n.claude/skills\n.claude/commands\n.claude/hooks\n.custom\n',
+      )
       await writeFile(path.join(projectRoot, 'AGENTS.md'), 'placeholder\n')
 
       await runReset({ projectRoot, localOnly: false, hard: true })
@@ -66,6 +78,9 @@ describe('reset command', () => {
       expect(gitignore).toContain('.custom')
       expect(gitignore).not.toContain('.agents/local.json')
       expect(gitignore).not.toContain('.agents/generated/')
+      expect(gitignore).not.toContain('.claude/skills')
+      expect(gitignore).not.toContain('.claude/commands')
+      expect(gitignore).not.toContain('.claude/hooks')
     } finally {
       await rm(projectRoot, { recursive: true, force: true })
     }

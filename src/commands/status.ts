@@ -91,6 +91,8 @@ export async function runStatus(options: StatusOptions): Promise<void> {
   }
   if (enabled.has('claude')) {
     files['.claude/skills'] = await pathExists(paths.claudeSkillsBridge)
+    files['.claude/commands'] = await pathExists(paths.claudeCommandsBridge)
+    files['.claude/hooks'] = await pathExists(paths.claudeHooksBridge)
   }
   if (enabled.has('cursor')) {
     files['.cursor/skills'] = await pathExists(paths.cursorSkillsBridge)

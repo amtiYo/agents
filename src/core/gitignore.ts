@@ -9,6 +9,8 @@ const SOURCE_ONLY_ENTRIES = [
   '.gemini/',
   '.vscode/mcp.json',
   '.claude/skills',
+  '.claude/commands',
+  '.claude/hooks',
   '.cursor/',
   '.antigravity/',
   '.windsurf/',

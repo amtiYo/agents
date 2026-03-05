@@ -1,6 +1,6 @@
 import os from 'node:os'
 import path from 'node:path'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { runInit } from '../src/commands/init.js'
 import { runStatus } from '../src/commands/status.js'
@@ -115,6 +115,41 @@ describe('status command', () => {
     const parsed = JSON.parse(output) as { files: Record<string, boolean> }
     expect(parsed.files['opencode.json']).toBe(true)
     expect(Object.keys(parsed.files).some((key) => key.includes('mcp_config.json'))).toBe(true)
+  })
+
+  it('includes Claude commands/hooks bridge file states when enabled', async () => {
+    const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-status-'))
+    tempDirs.push(projectRoot)
+
+    await runInit({ projectRoot, force: true })
+    const config = await loadAgentsConfig(projectRoot)
+    config.integrations.enabled = ['claude']
+    await saveAgentsConfig(projectRoot, config)
+
+    await mkdir(path.join(projectRoot, '.agents', 'commands'), { recursive: true })
+    await mkdir(path.join(projectRoot, '.agents', 'hooks'), { recursive: true })
+    await writeFile(path.join(projectRoot, '.agents', 'commands', 'hello.md'), '# hello\n', 'utf8')
+    await writeFile(path.join(projectRoot, '.agents', 'hooks', 'pre-tool-use.sh'), 'echo test\n', 'utf8')
+
+    await performSync({
+      projectRoot,
+      check: false,
+      verbose: false
+    })
+
+    const output = await captureStdout(async () => {
+      await runStatus({
+        projectRoot,
+        json: true,
+        verbose: false,
+        fast: true
+      })
+    })
+
+    const parsed = JSON.parse(output) as { files: Record<string, boolean> }
+    expect(parsed.files['.claude/skills']).toBe(true)
+    expect(parsed.files['.claude/commands']).toBe(true)
+    expect(parsed.files['.claude/hooks']).toBe(true)
   })
 })
 

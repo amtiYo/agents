@@ -164,6 +164,8 @@ export async function runDoctor(options: DoctorOptions): Promise<void> {
         ...(enabled.has('copilot_vscode') ? ['.vscode/mcp.json'] : []),
         ...(enabled.has('cursor') ? ['.cursor/mcp.json'] : []),
         ...(enabled.has('claude') ? ['.claude/skills'] : []),
+        ...(enabled.has('claude') ? ['.claude/commands'] : []),
+        ...(enabled.has('claude') ? ['.claude/hooks'] : []),
         ...(enabled.has('cursor') ? ['.cursor/skills'] : []),
         ...(enabled.has('windsurf') ? ['.windsurf/skills'] : []),
         ...((enabled.has('gemini') || enabled.has('antigravity')) ? ['.gemini/skills'] : []),

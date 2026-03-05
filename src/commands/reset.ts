@@ -57,6 +57,8 @@ export async function runReset(options: ResetOptions): Promise<void> {
           legacyAgentDir,
           paths.vscodeMcp,
           paths.claudeSkillsBridge,
+          paths.claudeCommandsBridge,
+          paths.claudeHooksBridge,
           paths.cursorSkillsBridge
         ]
       : [
@@ -71,6 +73,8 @@ export async function runReset(options: ResetOptions): Promise<void> {
           legacyAgentDir,
           paths.vscodeMcp,
           paths.claudeSkillsBridge,
+          paths.claudeCommandsBridge,
+          paths.claudeHooksBridge,
           paths.cursorSkillsBridge
         ]
 

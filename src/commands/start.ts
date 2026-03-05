@@ -270,6 +270,8 @@ async function shouldOfferCleanup(projectRoot: string): Promise<boolean> {
     legacyAgentDir,
     paths.vscodeMcp,
     paths.claudeSkillsBridge,
+    paths.claudeCommandsBridge,
+    paths.claudeHooksBridge,
     paths.cursorSkillsBridge,
     paths.geminiSkillsBridge,
     paths.windsurfSkillsBridge
