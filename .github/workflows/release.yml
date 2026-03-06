@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version to publish (must match package.json, e.g. 0.8.4)'
+        description: 'Version to publish (must match package.json, for example 1.2.3)'
         required: true
         type: string
 
