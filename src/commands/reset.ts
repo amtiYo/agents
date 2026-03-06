@@ -2,6 +2,7 @@ import path from 'node:path'
 import { cleanupManagedGitignore } from '../core/gitignore.js'
 import { getProjectPaths } from '../core/paths.js'
 import { pathExists, removeIfExists } from '../core/fs.js'
+import { cleanupManagedClaudeInstructions } from '../core/claudeInstructions.js'
 import { cleanupVscodeSettingsIfManaged } from '../core/vscodeSettings.js'
 import * as ui from '../core/ui.js'
 
@@ -29,6 +30,12 @@ export async function runReset(options: ResetOptions): Promise<void> {
       removed.push(path.relative(projectRoot, paths.vscodeSettings) || paths.vscodeSettings)
     }
   }
+
+  await cleanupManagedClaudeInstructions({
+    projectRoot,
+    check: false,
+    changed: removed,
+  })
 
   const targets = options.hard
     ? [

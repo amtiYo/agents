@@ -1,5 +1,6 @@
 import TOML from '@iarna/toml'
 import { loadAgentsConfig } from '../core/config.js'
+import { getClaudeInstructionsHealth } from '../core/claudeInstructions.js'
 import { pathExists, readJson, readTextOrEmpty } from '../core/fs.js'
 import { loadResolvedRegistry } from '../core/mcp.js'
 import { getProjectPaths } from '../core/paths.js'
@@ -157,8 +158,28 @@ export async function runDoctor(options: DoctorOptions): Promise<void> {
   }
 
   const enabled = new Set(config.integrations.enabled)
+  if (enabled.has('claude')) {
+    const claudeInstructions = await getClaudeInstructionsHealth(options.projectRoot)
+    if (!claudeInstructions.exists && claudeInstructions.hasAgents) {
+      issues.push({
+        level: 'warning',
+        message: 'Claude integration enabled but managed root CLAUDE.md wrapper is missing (run agents sync).'
+      })
+    } else if (!claudeInstructions.isWrapper && claudeInstructions.managed) {
+      issues.push({
+        level: 'warning',
+        message: 'CLAUDE.md no longer matches the agents-managed wrapper. Run agents sync to reconcile or keep the file custom.'
+      })
+    } else if (!claudeInstructions.isWrapper && claudeInstructions.exists) {
+      issues.push({
+        level: 'warning',
+        message: 'Custom root CLAUDE.md detected. agents will preserve it and stop managing Claude instructions for this project.'
+      })
+    }
+  }
   const trackedChecks = config.syncMode === 'source-only'
     ? [
+        ...(enabled.has('claude') ? ['CLAUDE.md'] : []),
         ...(enabled.has('codex') ? ['.codex/config.toml'] : []),
         ...(enabled.has('gemini') ? ['.gemini/settings.json'] : []),
         ...(enabled.has('copilot_vscode') ? ['.vscode/mcp.json'] : []),

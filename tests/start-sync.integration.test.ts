@@ -72,6 +72,7 @@ describe('start + sync flow', () => {
 
     expect(Object.keys(projectConfig.mcp.servers).sort()).toEqual(['fetch', 'filesystem', 'git'])
     expect(await exists(path.join(projectRoot, '.agents', 'skills', 'skill-guide', 'SKILL.md'))).toBe(true)
+    expect(await readFile(path.join(projectRoot, '.gitignore'), 'utf8')).toContain('CLAUDE.md')
 
     const configWithHttp = await loadAgentsConfig(projectRoot)
     configWithHttp.mcp.servers.remoteDocs = {

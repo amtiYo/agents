@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.4] - 2026-03-06
+
+### Fixed
+
+- Claude integration now manages a root `CLAUDE.md` wrapper that references canonical `AGENTS.md` without duplicating instructions.
+- `agents sync`, `agents status`, `agents doctor`, and `agents reset` now distinguish between agents-managed `CLAUDE.md` wrappers and custom user-owned `CLAUDE.md` files.
+
 ## [0.8.3] - 2026-02-18
 
 ### Added

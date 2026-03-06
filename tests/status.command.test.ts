@@ -1,6 +1,6 @@
 import os from 'node:os'
 import path from 'node:path'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { runInit } from '../src/commands/init.js'
 import { runStatus } from '../src/commands/status.js'
@@ -115,6 +115,49 @@ describe('status command', () => {
     const parsed = JSON.parse(output) as { files: Record<string, boolean> }
     expect(parsed.files['opencode.json']).toBe(true)
     expect(Object.keys(parsed.files).some((key) => key.includes('mcp_config.json'))).toBe(true)
+  })
+
+  it('includes root CLAUDE.md file state when Claude is enabled', async () => {
+    const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-status-'))
+    tempDirs.push(projectRoot)
+
+    await runInit({ projectRoot, force: true })
+    const config = await loadAgentsConfig(projectRoot)
+    config.integrations.enabled = ['claude']
+    await saveAgentsConfig(projectRoot, config)
+
+    await performSync({
+      projectRoot,
+      check: false,
+      verbose: false
+    })
+
+    const output = await captureStdout(async () => {
+      await runStatus({
+        projectRoot,
+        json: true,
+        verbose: false,
+        fast: true
+      })
+    })
+
+    const parsed = JSON.parse(output) as { files: Record<string, boolean> }
+    expect(parsed.files['CLAUDE.md']).toBe(true)
+    expect(parsed.files['.claude/skills']).toBe(true)
+
+    await writeFile(path.join(projectRoot, 'CLAUDE.md'), '# custom\n', 'utf8')
+
+    const outputAfterCustom = await captureStdout(async () => {
+      await runStatus({
+        projectRoot,
+        json: true,
+        verbose: false,
+        fast: true
+      })
+    })
+
+    const parsedAfterCustom = JSON.parse(outputAfterCustom) as { files: Record<string, boolean> }
+    expect(parsedAfterCustom.files['CLAUDE.md']).toBe(true)
   })
 })
 

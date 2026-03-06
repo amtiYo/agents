@@ -1,6 +1,6 @@
 import os from 'node:os'
 import path from 'node:path'
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, rm, unlink, writeFile } from 'node:fs/promises'
 import { afterEach, describe, expect, it } from 'vitest'
 import { runInit } from '../src/commands/init.js'
 import { runDoctor } from '../src/commands/doctor.js'
@@ -78,6 +78,43 @@ describe('doctor command', () => {
     expect(output).toContain('Dry-run (would apply):')
     expect(output).toContain('Would run agents sync after fixes.')
     expect(output).toContain('Next: run "agents doctor --fix" to apply these changes.')
+  }, 15000)
+
+  it('reports missing managed root CLAUDE.md wrapper when Claude is enabled', async () => {
+    const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-doctor-'))
+    tempDirs.push(projectRoot)
+
+    await runInit({ projectRoot, force: true })
+    const config = await loadAgentsConfig(projectRoot)
+    config.integrations.enabled = ['claude']
+    await saveAgentsConfig(projectRoot, config)
+    await performSync({ projectRoot, check: false, verbose: false })
+
+    await unlink(path.join(projectRoot, 'CLAUDE.md'))
+
+    const output = await captureStdout(async () => {
+      await runDoctor({ projectRoot, fix: false })
+    })
+
+    expect(output).toContain('Claude integration enabled but managed root CLAUDE.md wrapper is missing')
+  }, 15000)
+
+  it('reports custom root CLAUDE.md when Claude is enabled', async () => {
+    const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-doctor-'))
+    tempDirs.push(projectRoot)
+
+    await runInit({ projectRoot, force: true })
+    const config = await loadAgentsConfig(projectRoot)
+    config.integrations.enabled = ['claude']
+    await saveAgentsConfig(projectRoot, config)
+
+    await writeFile(path.join(projectRoot, 'CLAUDE.md'), '# custom\n', 'utf8')
+
+    const output = await captureStdout(async () => {
+      await runDoctor({ projectRoot, fix: false })
+    })
+
+    expect(output).toContain('Custom root CLAUDE.md detected')
   }, 15000)
 })
 
