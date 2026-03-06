@@ -3,6 +3,7 @@ import path from 'node:path'
 import { lstat, mkdtemp, readFile, readlink, rm, symlink, writeFile } from 'node:fs/promises'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { runStart } from '../src/commands/start.js'
+import { runReset } from '../src/commands/reset.js'
 import { loadAgentsConfig, saveAgentsConfig } from '../src/core/config.js'
 import { performSync } from '../src/core/sync.js'
 import TOML from '@iarna/toml'
@@ -112,6 +113,76 @@ describe('start + sync flow', () => {
       await readFile(path.join(projectRoot, '.agents', 'agents.json'), 'utf8'),
     ) as { lastSync: string | null }
     expect(configAfterCheck.lastSync).toBe(configAfterNoopSync.lastSync)
+  })
+
+  it('keeps lastSync stable after safe reset when sources did not change', async () => {
+    const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-start-reset-'))
+    const codexDir = await mkdtemp(path.join(os.tmpdir(), 'agents-codex-'))
+    tempDirs.push(projectRoot, codexDir)
+
+    process.env.AGENTS_CODEX_CONFIG_PATH = path.join(codexDir, 'config.toml')
+    process.env.PATH = '/dev/null'
+
+    await runStart({
+      projectRoot,
+      nonInteractive: true,
+      yes: true
+    })
+
+    const configBeforeReset = JSON.parse(
+      await readFile(path.join(projectRoot, '.agents', 'agents.json'), 'utf8'),
+    ) as { lastSync: string | null; lastSyncSourceHash?: string | null }
+
+    expect(typeof configBeforeReset.lastSync).toBe('string')
+    expect(typeof configBeforeReset.lastSyncSourceHash).toBe('string')
+
+    await runReset({ projectRoot, localOnly: false, hard: false })
+    await waitForTimestampTick()
+    await performSync({ projectRoot, check: false, verbose: false })
+
+    const configAfterResetSync = JSON.parse(
+      await readFile(path.join(projectRoot, '.agents', 'agents.json'), 'utf8'),
+    ) as { lastSync: string | null; lastSyncSourceHash?: string | null }
+
+    expect(configAfterResetSync.lastSync).toBe(configBeforeReset.lastSync)
+    expect(configAfterResetSync.lastSyncSourceHash).toBe(configBeforeReset.lastSyncSourceHash)
+  })
+
+  it('backfills source hash for legacy configs without bumping lastSync', async () => {
+    const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-start-legacy-'))
+    const codexDir = await mkdtemp(path.join(os.tmpdir(), 'agents-codex-'))
+    tempDirs.push(projectRoot, codexDir)
+
+    process.env.AGENTS_CODEX_CONFIG_PATH = path.join(codexDir, 'config.toml')
+    process.env.PATH = '/dev/null'
+
+    await runStart({
+      projectRoot,
+      nonInteractive: true,
+      yes: true
+    })
+
+    const configPath = path.join(projectRoot, '.agents', 'agents.json')
+    const legacyConfig = JSON.parse(await readFile(configPath, 'utf8')) as {
+      lastSync: string | null
+      lastSyncSourceHash?: string | null
+    }
+
+    const lastSyncBeforeBackfill = legacyConfig.lastSync
+    delete legacyConfig.lastSyncSourceHash
+    await writeFile(configPath, `${JSON.stringify(legacyConfig, null, 2)}\n`, 'utf8')
+
+    await runReset({ projectRoot, localOnly: false, hard: false })
+    await waitForTimestampTick()
+    await performSync({ projectRoot, check: false, verbose: false })
+
+    const configAfterBackfill = JSON.parse(await readFile(configPath, 'utf8')) as {
+      lastSync: string | null
+      lastSyncSourceHash?: string | null
+    }
+
+    expect(configAfterBackfill.lastSync).toBe(lastSyncBeforeBackfill)
+    expect(typeof configAfterBackfill.lastSyncSourceHash).toBe('string')
   })
 
   it('preserves existing AGENTS.md during start even with force setup', async () => {

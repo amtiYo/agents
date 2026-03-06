@@ -36,6 +36,7 @@ export interface AgentsConfig {
     }
   }
   lastSync: string | null
+  lastSyncSourceHash?: string | null
 }
 
 export interface McpServerDefinition {
@@ -82,6 +83,7 @@ export interface LegacyProjectConfig {
   }
   syncMode: SyncMode
   lastSync: string | null
+  lastSyncSourceHash?: string | null
 }
 
 export interface ResolvedMcpServer {

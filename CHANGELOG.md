@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.5] - 2026-03-06
+
+### Fixed
+
+- `agents sync` no longer rewrites `lastSync` after `agents reset` or other output-only regeneration when project source inputs did not change.
+
 ## [0.8.4] - 2026-03-06
 
 ### Changed

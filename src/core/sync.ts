@@ -19,6 +19,7 @@ import { renderVscodeMcp } from './renderers.js'
 import { ensureProjectGitignore } from './gitignore.js'
 import { syncSkills } from './skills.js'
 import { syncClaudeInstructions } from './claudeInstructions.js'
+import { computeSharedSourceFingerprint } from './sourceFingerprint.js'
 import { syncVscodeSettings } from './vscodeSettings.js'
 import { listCursorMcpStatuses } from './cursorCli.js'
 import { listClaudeManagedServerNames } from './claudeCli.js'
@@ -40,6 +41,7 @@ export async function performSync(options: SyncOptions): Promise<SyncResult> {
   const releaseLock = await acquireSyncLock(paths.generatedSyncLock)
   try {
     const config = await loadAgentsConfig(projectRoot)
+    const sourceFingerprint = await computeSharedSourceFingerprint(projectRoot, config)
 
     const resolved = await loadResolvedRegistry(projectRoot)
     const warnings = [...resolved.warnings]
@@ -158,8 +160,16 @@ export async function performSync(options: SyncOptions): Promise<SyncResult> {
       projectRoot
     })
 
-    if (!check && changed.length > 0) {
-      config.lastSync = new Date().toISOString()
+    const previousSourceHash = config.lastSyncSourceHash ?? null
+    const sourceStateChanged = sourceFingerprint !== previousSourceHash
+    if (!check && sourceStateChanged) {
+      if (previousSourceHash === null && config.lastSync !== null) {
+        config.lastSyncSourceHash = sourceFingerprint
+      } else {
+        config.lastSync = new Date().toISOString()
+        config.lastSyncSourceHash = sourceFingerprint
+      }
+      changed.push('.agents/agents.json')
       await saveAgentsConfig(projectRoot, config)
     }
 
