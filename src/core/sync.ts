@@ -162,6 +162,9 @@ export async function performSync(options: SyncOptions): Promise<SyncResult> {
 
     const previousSourceHash = config.lastSyncSourceHash ?? null
     const sourceStateChanged = sourceFingerprint !== previousSourceHash
+    if (sourceStateChanged) {
+      changed.push('.agents/agents.json')
+    }
     if (!check && sourceStateChanged) {
       if (previousSourceHash === null && config.lastSync !== null) {
         config.lastSyncSourceHash = sourceFingerprint
@@ -169,7 +172,6 @@ export async function performSync(options: SyncOptions): Promise<SyncResult> {
         config.lastSync = new Date().toISOString()
         config.lastSyncSourceHash = sourceFingerprint
       }
-      changed.push('.agents/agents.json')
       await saveAgentsConfig(projectRoot, config)
     }
 
