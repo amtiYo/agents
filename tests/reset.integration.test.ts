@@ -21,6 +21,7 @@ describe('reset command', () => {
       await mkdir(path.join(projectRoot, '.agents', 'generated'), { recursive: true })
       await mkdir(path.join(projectRoot, '.codex'), { recursive: true })
       await mkdir(path.join(projectRoot, '.gemini'), { recursive: true })
+      await mkdir(path.join(projectRoot, '.claude', 'skills'), { recursive: true })
       await mkdir(path.join(projectRoot, '.windsurf', 'skills'), { recursive: true })
       await mkdir(path.join(projectRoot, '.opencode', 'agent'), { recursive: true })
       await mkdir(path.join(projectRoot, '.vscode'), { recursive: true })

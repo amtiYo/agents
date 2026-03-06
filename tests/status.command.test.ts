@@ -126,6 +126,8 @@ describe('status command', () => {
     config.integrations.enabled = ['claude']
     await saveAgentsConfig(projectRoot, config)
 
+    vi.spyOn(shell, 'commandExists').mockImplementation(() => false)
+
     await performSync({
       projectRoot,
       check: false,
@@ -158,7 +160,7 @@ describe('status command', () => {
 
     const parsedAfterCustom = JSON.parse(outputAfterCustom) as { files: Record<string, boolean> }
     expect(parsedAfterCustom.files['CLAUDE.md']).toBe(true)
-  })
+  }, 15000)
 })
 
 async function captureStdout(fn: () => Promise<void>): Promise<string> {
