@@ -90,6 +90,7 @@ export async function runStatus(options: StatusOptions): Promise<void> {
     files['opencode.json'] = await pathExists(paths.opencodeConfig)
   }
   if (enabled.has('claude')) {
+    files['CLAUDE.md'] = await pathExists(paths.rootClaudeMd)
     files['.claude/skills'] = await pathExists(paths.claudeSkillsBridge)
   }
   if (enabled.has('cursor')) {

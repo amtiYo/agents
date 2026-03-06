@@ -6,6 +6,7 @@ export interface ProjectPaths {
   agentsConfig: string
   agentsLocal: string
   rootAgentsMd: string
+  rootClaudeMd: string
   agentsReadme: string
   agentsSkillsDir: string
   generatedDir: string
@@ -18,6 +19,7 @@ export interface ProjectPaths {
   generatedOpencode: string
   generatedClaude: string
   generatedClaudeState: string
+  generatedClaudeInstructionsState: string
   generatedCursorState: string
   generatedSkillsState: string
   generatedVscodeSettingsState: string
@@ -54,6 +56,7 @@ export function getProjectPaths(projectRoot: string): ProjectPaths {
     agentsConfig: path.join(agentsDir, 'agents.json'),
     agentsLocal: path.join(agentsDir, 'local.json'),
     rootAgentsMd: path.join(root, 'AGENTS.md'),
+    rootClaudeMd: path.join(root, 'CLAUDE.md'),
     agentsReadme: path.join(agentsDir, 'README.md'),
     agentsSkillsDir: path.join(agentsDir, 'skills'),
     generatedDir,
@@ -66,6 +69,7 @@ export function getProjectPaths(projectRoot: string): ProjectPaths {
     generatedOpencode: path.join(generatedDir, 'opencode.json'),
     generatedClaude: path.join(generatedDir, 'claude.mcp.json'),
     generatedClaudeState: path.join(generatedDir, 'claude.state.json'),
+    generatedClaudeInstructionsState: path.join(generatedDir, 'claude.instructions.state.json'),
     generatedCursorState: path.join(generatedDir, 'cursor.state.json'),
     generatedSkillsState: path.join(generatedDir, 'skills.state.json'),
     generatedVscodeSettingsState: path.join(generatedDir, 'vscode.settings.state.json'),

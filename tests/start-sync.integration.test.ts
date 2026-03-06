@@ -69,9 +69,12 @@ describe('start + sync flow', () => {
     expect(projectConfig.syncMode).toBe('source-only')
     expect(projectConfig.integrations.enabled).toContain('codex')
     expect(projectConfig.workspace.vscode.hideGenerated).toBe(true)
+    expect(typeof projectConfig.lastSync).toBe('string')
 
     expect(Object.keys(projectConfig.mcp.servers).sort()).toEqual(['fetch', 'filesystem', 'git'])
     expect(await exists(path.join(projectRoot, '.agents', 'skills', 'skill-guide', 'SKILL.md'))).toBe(true)
+    expect(await readFile(path.join(projectRoot, '.gitignore'), 'utf8')).toContain('CLAUDE.md')
+    const firstLastSync = projectConfig.lastSync
 
     const configWithHttp = await loadAgentsConfig(projectRoot)
     configWithHttp.mcp.servers.remoteDocs = {
@@ -87,8 +90,28 @@ describe('start + sync flow', () => {
     expect(codexConfigText).toContain('url = "https://developers.openai.com/mcp"')
     expect(() => TOML.parse(codexConfigText)).not.toThrow()
 
+    const configAfterDriftSync = JSON.parse(
+      await readFile(path.join(projectRoot, '.agents', 'agents.json'), 'utf8'),
+    ) as { lastSync: string | null }
+    expect(typeof configAfterDriftSync.lastSync).toBe('string')
+    expect(configAfterDriftSync.lastSync).not.toBe(firstLastSync)
+
+    await waitForTimestampTick()
+    await performSync({ projectRoot, check: false, verbose: false })
+
+    const configAfterNoopSync = JSON.parse(
+      await readFile(path.join(projectRoot, '.agents', 'agents.json'), 'utf8'),
+    ) as { lastSync: string | null }
+    expect(configAfterNoopSync.lastSync).toBe(configAfterDriftSync.lastSync)
+
+    await writeFile(path.join(projectRoot, '.codex', 'config.toml'), '', 'utf8')
     const check = await performSync({ projectRoot, check: true, verbose: false })
-    expect(check.changed).toHaveLength(0)
+    expect(check.changed).toContain('.codex/config.toml')
+
+    const configAfterCheck = JSON.parse(
+      await readFile(path.join(projectRoot, '.agents', 'agents.json'), 'utf8'),
+    ) as { lastSync: string | null }
+    expect(configAfterCheck.lastSync).toBe(configAfterNoopSync.lastSync)
   })
 
   it('preserves existing AGENTS.md during start even with force setup', async () => {
@@ -153,4 +176,8 @@ async function captureStdout(fn: () => Promise<void>): Promise<string> {
   }
 
   return chunks.join('')
+}
+
+async function waitForTimestampTick(): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, 20))
 }

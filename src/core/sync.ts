@@ -18,6 +18,7 @@ import { buildOpencodePayload } from '../integrations/opencode.js'
 import { renderVscodeMcp } from './renderers.js'
 import { ensureProjectGitignore } from './gitignore.js'
 import { syncSkills } from './skills.js'
+import { syncClaudeInstructions } from './claudeInstructions.js'
 import { syncVscodeSettings } from './vscodeSettings.js'
 import { listCursorMcpStatuses } from './cursorCli.js'
 import { listClaudeManagedServerNames } from './claudeCli.js'
@@ -138,6 +139,14 @@ export async function performSync(options: SyncOptions): Promise<SyncResult> {
       warnings
     })
 
+    await syncClaudeInstructions({
+      enabled: enabled.has('claude'),
+      projectRoot,
+      check,
+      changed,
+      warnings
+    })
+
     await syncVscodeSettings({
       settingsPath: paths.vscodeSettings,
       statePath: paths.generatedVscodeSettingsState,
@@ -149,7 +158,7 @@ export async function performSync(options: SyncOptions): Promise<SyncResult> {
       projectRoot
     })
 
-    if (!check) {
+    if (!check && changed.length > 0) {
       config.lastSync = new Date().toISOString()
       await saveAgentsConfig(projectRoot, config)
     }

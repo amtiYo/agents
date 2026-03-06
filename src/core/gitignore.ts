@@ -5,6 +5,7 @@ import { pathExists, removeIfExists, writeTextAtomic } from './fs.js'
 
 const BASE_MANAGED_ENTRIES = ['.agents/local.json', '.agents/generated/']
 const SOURCE_ONLY_ENTRIES = [
+  'CLAUDE.md',
   '.codex/',
   '.gemini/',
   '.vscode/mcp.json',

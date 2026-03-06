@@ -19,6 +19,7 @@ Technical blueprint for advanced users.
 | Component | Purpose |
 |:----------|:--------|
 | `AGENTS.md` | Instructions (all tools) |
+| `CLAUDE.md` | Generated Claude Code wrapper that imports `AGENTS.md` |
 | `.agents/agents.json` | MCP servers (shared) |
 | `.agents/local.json` | Secrets (gitignored) |
 | `.agents/skills/` | Reusable workflows |
@@ -36,6 +37,7 @@ Technical blueprint for advanced users.
 ```
 project/
 ├── AGENTS.md                    # Instructions
+├── CLAUDE.md                    # Generated wrapper for Claude Code
 ├── .agents/
 │   ├── agents.json             # MCP servers (committed)
 │   ├── local.json              # Secrets (gitignored)
@@ -64,13 +66,24 @@ project/
 | Tool | Generated Config |
 |:-----|:-----------------|
 | **Codex** | `.codex/config.toml` |
-| **Claude** | `claude mcp add -s local` (CLI) |
+| **Claude** | `claude mcp add -s local` (CLI) + root `CLAUDE.md` wrapper |
 | **Gemini** | `.gemini/settings.json` |
 | **Cursor** | `.cursor/mcp.json` + CLI enable |
 | **Copilot** | `.vscode/mcp.json` |
 | **Antigravity** | Global user profile `mcp.json` (not project-local) |
 | **Windsurf** | Global user profile `~/.codeium/windsurf/mcp_config.json` |
 | **OpenCode** | `opencode.json` (`mcp` block) |
+
+## Claude Instructions
+
+- `AGENTS.md` is the only canonical instruction source in the project.
+- When Claude integration is enabled, `agents sync` manages a minimal root `CLAUDE.md` wrapper with:
+
+```md
+@AGENTS.md
+```
+
+- If a custom `CLAUDE.md` already exists, `agents` preserves it and stops managing Claude instructions for that project.
 
 ## VS Code Integration
 
@@ -114,7 +127,7 @@ project/
 |:--------|:-------|
 | `agents reset` | Remove generated files, keep `.agents/` |
 | `agents reset --local-only` | Remove tool configs only |
-| `agents reset --hard` | Remove everything (`.agents/`, `AGENTS.md`, gitignore entries) |
+| `agents reset --hard` | Remove all agents-managed setup (`.agents/`, `AGENTS.md`, managed `CLAUDE.md`, gitignore entries) |
 
 ## Security Model
 
@@ -177,6 +190,7 @@ project/
 - ✅ `AGENTS.md`
 
 **Gitignored:**
+- ❌ `CLAUDE.md` (source-only mode)
 - ❌ `.agents/local.json`
 - ❌ `.agents/generated/`
 - ❌ `.codex/`, `.claude/`, `.cursor/`, `.gemini/`

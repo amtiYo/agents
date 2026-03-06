@@ -260,6 +260,7 @@ async function shouldOfferCleanup(projectRoot: string): Promise<boolean> {
   const legacyAgentDir = path.join(projectRoot, '.agent')
   const candidates = [
     paths.generatedDir,
+    paths.rootClaudeMd,
     paths.codexDir,
     paths.geminiDir,
     paths.cursorDir,

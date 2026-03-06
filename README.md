@@ -35,6 +35,7 @@ Every AI coding tool wants its own config format:
 > **Result:** Duplicated configs, team drift, painful onboarding.
 
 `agents` gives you **one source of truth** in `.agents/` and syncs MCP servers, skills, and instructions to every tool automatically.
+For Claude Code, it keeps `AGENTS.md` canonical and generates a minimal root `CLAUDE.md` wrapper (`@AGENTS.md`) when the Claude integration is enabled.
 
 ---
 
@@ -77,7 +78,7 @@ That's it. Your `.agents/agents.json` is now the single source of truth.
     <td align="center">✅</td>
     <td align="center">✅</td>
     <td align="center">✅</td>
-    <td>Calls <code>claude mcp add/remove</code> CLI</td>
+    <td>Calls <code>claude mcp add/remove</code> CLI + manages root <code>CLAUDE.md</code> wrapper</td>
   </tr>
   <tr>
     <td><strong>Gemini CLI</strong></td>
@@ -129,7 +130,8 @@ That's it. Your `.agents/agents.json` is now the single source of truth.
 
 ```
 your-project/
-├── AGENTS.md                        ← Instructions for all tools
+├── AGENTS.md                        ← Canonical instructions for all tools
+├── CLAUDE.md                        ← Generated Claude wrapper (`@AGENTS.md`)
 ├── .agents/
 │   ├── agents.json                  ← MCP servers & config (commit this)
 │   ├── local.json                   ← Secrets & overrides (gitignored)
@@ -149,13 +151,13 @@ your-project/
 ├── .cursor/mcp.json                  │
 ├── .vscode/mcp.json                  │
 ├── opencode.json                     │
-└── .claude/skills/ → .agents/skills  │  Symlinked skill bridges
-    .cursor/skills/ → .agents/skills  │
-    .gemini/skills/ → .agents/skills  │
-    .windsurf/skills/ → .agents/skills│
+├── .claude/skills/ → .agents/skills  │  Claude workspace bridges
+├── .cursor/skills/ → .agents/skills  │
+├── .gemini/skills/ → .agents/skills  │
+└── .windsurf/skills/ → .agents/skills│
 ```
 
-> **Git strategy:** By default only `.agents/agents.json`, `.agents/skills/`, and `AGENTS.md` are committed. Everything else is gitignored and regenerated with `agents sync`.
+> **Git strategy:** By default only `.agents/agents.json`, `.agents/skills/`, and `AGENTS.md` are committed. Generated `CLAUDE.md` and tool-specific outputs are gitignored in source-only mode and regenerated with `agents sync`.
 
 ---
 
@@ -200,7 +202,7 @@ your-project/
 | `agents connect --llm cursor,claude` | Enable integrations |
 | `agents disconnect --llm codex` | Disable integrations |
 | `agents reset` | Remove generated files, keep `.agents/` |
-| `agents reset --hard` | Full cleanup — removes everything |
+| `agents reset --hard` | Full cleanup — removes all agents-managed setup |
 
 ---
 
@@ -215,7 +217,8 @@ your-project/
 │         (shared)           ↑        Registry          TOML   │
 │                            │           │                     │
 │   .agents/local.json ──────┘           ├────────→ Claude     │
-│      (secrets)                         │          CLI calls  │
+│      (secrets)                         │          CLI + root │
+│                                        │          CLAUDE.md  │
 │                                        ├────────→ Gemini     │
 │   ${ENV_VARS} ─── resolve ─────────────┤          JSON       │
 │   ${PROJECT_ROOT}                      ├────────→ Cursor     │
@@ -240,7 +243,7 @@ your-project/
 2. **Resolve** — expands `${PROJECT_ROOT}`, `${ENV_VAR}` placeholders, filters by `enabled` and `requiredEnv`
 3. **Route** — sends each server to its target integrations (or all, if no `targets` specified)
 4. **Generate** — renders tool-specific config formats (TOML for Codex, JSON for others)
-5. **Materialize** — writes configs atomically (project-local and global targets), calls CLIs for Claude/Cursor
+5. **Materialize** — writes configs atomically (project-local and global targets), calls CLIs for Claude/Cursor, and manages Claude's root `CLAUDE.md` wrapper
 6. **Bridge skills** — creates symlinks from tool directories to `.agents/skills/` (including Windsurf workspace bridge)
 
 ---
@@ -325,6 +328,7 @@ agents start        # Prompts for API_TOKEN, syncs everything
 <summary><b>Does this replace AGENTS.md?</b></summary>
 <br/>
 No. It extends it. <code>AGENTS.md</code> is human-readable guidance for LLMs; <code>agents</code> handles machine-readable config (MCP servers, skills) and keeps everything in sync.
+When Claude integration is enabled, <code>agents</code> also generates a minimal root <code>CLAUDE.md</code> wrapper that references <code>AGENTS.md</code>.
 </details>
 
 <details>
@@ -343,6 +347,7 @@ In <code>.agents/local.json</code> (gitignored by default). The CLI automaticall
 <summary><b>What happens during <code>agents sync</code>?</b></summary>
 <br/>
 It reads your <code>.agents/</code> config, merges secrets, resolves placeholders, generates tool-specific files, and writes them atomically. For Claude and Cursor it also calls their CLIs to register servers. The whole process is idempotent and safe to run repeatedly.
+For Claude it also maintains a root <code>CLAUDE.md</code> wrapper without duplicating the contents of <code>AGENTS.md</code>.
 </details>
 
 <details>

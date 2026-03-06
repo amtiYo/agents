@@ -64,6 +64,7 @@ describe('mcp command integration', () => {
     expect(configAfterAdd.mcp.servers.context7.args[3]).toMatch(/^\$\{[A-Z0-9_]+\}$/)
     expect(localAfterAdd.mcpServers.context7.args[3]).toBe('secret')
     expect(typeof configAfterAdd.lastSync).toBe('string')
+    const lastSyncAfterAdd = configAfterAdd.lastSync
 
     await runMcpImport({
       projectRoot,
@@ -111,6 +112,25 @@ describe('mcp command integration', () => {
       check: false,
       verbose: false
     })
+
+    const configAfterSync = JSON.parse(
+      await readFile(path.join(projectRoot, '.agents', 'agents.json'), 'utf8'),
+    ) as AgentsFile
+    expect(configAfterSync.lastSync).toBeTypeOf('string')
+    expect(configAfterSync.lastSync).not.toBe(lastSyncAfterAdd)
+
+    await waitForTimestampTick()
+
+    await performSync({
+      projectRoot,
+      check: false,
+      verbose: false
+    })
+
+    const configAfterNoopSync = JSON.parse(
+      await readFile(path.join(projectRoot, '.agents', 'agents.json'), 'utf8'),
+    ) as AgentsFile
+    expect(configAfterNoopSync.lastSync).toBe(configAfterSync.lastSync)
 
     const check = await performSync({
       projectRoot,
@@ -296,4 +316,8 @@ async function captureStdout(fn: () => Promise<void>): Promise<string> {
   }
 
   return chunks.join('')
+}
+
+async function waitForTimestampTick(): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, 20))
 }
