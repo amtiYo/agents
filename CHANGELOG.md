@@ -9,10 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.8.4] - 2026-03-06
 
+### Changed
+
+- Project licensing has been switched from MIT to Apache 2.0, and a `NOTICE` file is now included.
+
 ### Fixed
 
 - Claude integration now manages a root `CLAUDE.md` wrapper that references canonical `AGENTS.md` without duplicating instructions.
 - `agents sync`, `agents status`, `agents doctor`, and `agents reset` now distinguish between agents-managed `CLAUDE.md` wrappers and custom user-owned `CLAUDE.md` files.
+- `agents sync` no longer updates `lastSync` on idempotent runs when no managed drift is detected.
 
 ## [0.8.3] - 2026-02-18
 

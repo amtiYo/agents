@@ -127,7 +127,7 @@ project/
 |:--------|:-------|
 | `agents reset` | Remove generated files, keep `.agents/` |
 | `agents reset --local-only` | Remove tool configs only |
-| `agents reset --hard` | Remove everything (`.agents/`, `AGENTS.md`, managed `CLAUDE.md`, gitignore entries) |
+| `agents reset --hard` | Remove all agents-managed setup (`.agents/`, `AGENTS.md`, managed `CLAUDE.md`, gitignore entries) |
 
 ## Security Model
 

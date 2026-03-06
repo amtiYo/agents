@@ -184,7 +184,7 @@ async function main(): Promise<void> {
     .description('Clean generated/materialized files safely')
     .option('--path <dir>', 'Target project directory', process.cwd())
     .option('--local-only', 'Clean only materialized integration files', false)
-    .option('--hard', 'Remove all agents-managed setup (including .agents and root AGENTS.md)', false)
+    .option('--hard', 'Remove all agents-managed setup (including .agents, root AGENTS.md, and managed CLAUDE.md)', false)
     .action(async (opts: { path: string; localOnly: boolean; hard: boolean }) => {
       await runReset({
         projectRoot: resolvePath(opts.path),

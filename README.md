@@ -202,7 +202,7 @@ your-project/
 | `agents connect --llm cursor,claude` | Enable integrations |
 | `agents disconnect --llm codex` | Disable integrations |
 | `agents reset` | Remove generated files, keep `.agents/` |
-| `agents reset --hard` | Full cleanup — removes everything |
+| `agents reset --hard` | Full cleanup — removes all agents-managed setup |
 
 ---
 
