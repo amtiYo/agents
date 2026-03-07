@@ -1,5 +1,6 @@
 import { loadAgentsConfig, saveAgentsConfig } from './config.js'
 import { pathExists, readJson, writeJsonAtomic } from './fs.js'
+import { deepMerge } from './objectUtils.js'
 import { getProjectPaths } from './paths.js'
 import type { AgentsConfig, LocalOverridesFile, McpServerDefinition } from '../types.js'
 
@@ -68,7 +69,7 @@ export async function upsertMcpServers(args: {
 
     if (hasMeaningfulOverride(update.localOverride)) {
       state.local.mcpServers[update.name] = update.localOverride as Partial<McpServerDefinition>
-    } else if (exists) {
+    } else {
       delete state.local.mcpServers[update.name]
     }
 
@@ -130,20 +131,4 @@ export function mergeServerWithLocal(
 function hasMeaningfulOverride(value: Partial<McpServerDefinition> | undefined): boolean {
   if (!value || typeof value !== 'object') return false
   return Object.entries(value).some(([, entry]) => entry !== undefined)
-}
-
-function isObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
-
-function deepMerge(base: unknown, override: unknown): unknown {
-  if (Array.isArray(base) && Array.isArray(override)) return override
-  if (isObject(base) && isObject(override)) {
-    const out: Record<string, unknown> = { ...base }
-    for (const [key, value] of Object.entries(override)) {
-      out[key] = key in out ? deepMerge(out[key], value) : value
-    }
-    return out
-  }
-  return override === undefined ? base : override
 }

@@ -21,6 +21,11 @@ interface StorageState {
   document: Record<string, unknown>
 }
 
+interface ReadDocumentResult {
+  document: Record<string, unknown>
+  valid: boolean
+}
+
 export interface UpdateStatus {
   currentVersion: string
   latestVersion: string | null
@@ -125,28 +130,38 @@ export async function maybeNotifyAboutUpdate(args: {
 async function loadStorageState(projectRoot: string | undefined): Promise<StorageState> {
   const projectLocalPath = projectRoot ? getProjectPaths(projectRoot).agentsLocal : undefined
   if (projectLocalPath && (await pathExists(projectLocalPath))) {
-    return {
-      kind: 'project-local',
-      filePath: projectLocalPath,
-      document: await readDocument(projectLocalPath)
+    const local = await readDocument(projectLocalPath)
+    if (local.valid) {
+      return {
+        kind: 'project-local',
+        filePath: projectLocalPath,
+        document: local.document
+      }
     }
   }
 
   const globalPath = path.join(os.homedir(), '.agents-dev', 'update-check.json')
+  const globalDocument = await readDocument(globalPath)
   return {
     kind: 'global',
     filePath: globalPath,
-    document: await readDocument(globalPath)
+    document: globalDocument.document
   }
 }
 
-async function readDocument(filePath: string): Promise<Record<string, unknown>> {
-  if (!(await pathExists(filePath))) return {}
+async function readDocument(filePath: string): Promise<ReadDocumentResult> {
+  if (!(await pathExists(filePath))) return { document: {}, valid: true }
   try {
     const parsed = await readJson<Record<string, unknown>>(filePath)
-    return typeof parsed === 'object' && parsed !== null ? parsed : {}
+    if (typeof parsed === 'object' && parsed !== null) {
+      return { document: parsed, valid: true }
+    }
+    return {
+      document: {},
+      valid: false
+    }
   } catch {
-    return {}
+    return { document: {}, valid: false }
   }
 }
 

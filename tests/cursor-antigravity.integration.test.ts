@@ -1,6 +1,6 @@
 import os from 'node:os'
 import path from 'node:path'
-import { lstat, mkdtemp, readFile, rm } from 'node:fs/promises'
+import { lstat, mkdtemp, readFile, rm, stat } from 'node:fs/promises'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { runInit } from '../src/commands/init.js'
 import { loadAgentsConfig, saveAgentsConfig } from '../src/core/config.js'
@@ -49,13 +49,12 @@ describe('cursor + antigravity sync', () => {
     const cursorMcp = JSON.parse(await readFile(path.join(projectRoot, '.cursor', 'mcp.json'), 'utf8')) as Record<string, unknown>
     expect(Object.keys((cursorMcp.mcpServers as Record<string, unknown>) ?? {})).toContain('filesystem')
 
-    const antigravityGlobal = JSON.parse(
-      await readFile(path.join(antigravityGlobalDir, 'mcp.json'), 'utf8'),
+    await expect(stat(path.join(antigravityGlobalDir, 'mcp.json'))).rejects.toThrow()
+    const generatedAntigravity = JSON.parse(
+      await readFile(path.join(projectRoot, '.agents', 'generated', 'antigravity.mcp.json'), 'utf8'),
     ) as Record<string, unknown>
-    const serverNames = Object.keys((antigravityGlobal.servers as Record<string, unknown>) ?? {})
-    const mcpServerNames = Object.keys((antigravityGlobal.mcpServers as Record<string, unknown>) ?? {})
-    expect(serverNames.some((name) => name.includes('filesystem'))).toBe(true)
-    expect(mcpServerNames.some((name) => name.includes('filesystem'))).toBe(true)
+    const generatedServerNames = Object.keys((generatedAntigravity.servers as Record<string, unknown>) ?? {})
+    expect(generatedServerNames.some((name) => name.includes('filesystem'))).toBe(true)
     await expect(lstat(path.join(projectRoot, '.antigravity', 'mcp.json'))).rejects.toThrow()
     await expect(lstat(path.join(projectRoot, '.gemini', 'skills'))).resolves.toBeTruthy()
   }, 15000)

@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- `agents connect` is now additive: selected integrations are added to the existing enabled set instead of replacing it.
+- `agents sync --check` is now strictly read-only (no lock acquisition, no directory creation, no file writes).
+- Startup update notifications are now non-blocking best-effort checks so command execution is not delayed by network calls.
+- Sync orchestration now uses integration hooks from `src/integrations/syncHooks.ts` for generated + materialized outputs.
+
+### Fixed
+
+- Fixed Commander wiring for `agents mcp add|import|remove --no-sync` (maps correctly to skip auto-sync).
+- `agents watch --once` now sets a non-zero exit code on sync failure and quiet mode no longer suppresses errors.
+- `integrations.options.antigravityGlobalSync=false` now prevents writing Antigravity global MCP output while keeping generated snapshots.
+- `updateCheck` now falls back to global cache when project `.agents/local.json` is malformed, instead of overwriting the broken file.
+- `validateServerName` now rejects reserved names (`__proto__`, `prototype`, `constructor`).
+- `agents mcp test --runtime-timeout-ms` now normalizes invalid values (`NaN`, `<=0`) to a safe default timeout.
+- Sync lock now uses owner tokens and PID liveness checks to avoid unsafe stale-lock takeovers and foreign lock removal.
+- `.gitignore` managed-entry matching now treats `/entry` and `entry` as equivalent to avoid duplicate managed lines.
+- `loadAgentsConfig` now validates `syncMode` and falls back to `source-only` on invalid values.
+- `upsertMcpServers` now removes stale local overrides when an update does not provide an override.
+- VS Code managed exclude sync now forces managed keys to `true` when they exist as `false`.
+- `start` now runs optional cleanup after final confirmation and handles Codex trust TOML parse failures as warnings.
+- `CLI_VERSION` now resolves from `package.json` (single source of truth) with a safe fallback.
+- Removed `removeIfExists` TOCTOU check and fixed `cleanupManagedBridge` async return clarity.
+- Replaced raw verbose sync stdout writes with shared `ui.*` output helpers.
+
+### Removed
+
+- Removed unused `LegacyProjectConfig` type.
+- Removed unused `loadProjectConfig` / `saveProjectConfig` compatibility aliases.
+
 ## [0.8.6] - 2026-03-07
 
 ### Added

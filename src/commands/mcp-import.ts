@@ -1,6 +1,7 @@
 import * as clack from '@clack/prompts'
 import type { IntegrationName, McpServerDefinition } from '../types.js'
 import { loadAgentsConfig } from '../core/config.js'
+import { CancelledError } from '../core/errors.js'
 import { parseImportedServers, readImportInput } from '../core/mcpImport.js'
 import { upsertMcpServers } from '../core/mcpCrud.js'
 import {
@@ -260,7 +261,7 @@ async function promptSecretInput(message: string): Promise<string> {
   })
   if (clack.isCancel(value)) {
     clack.cancel('Canceled.')
-    process.exit(1)
+    throw new CancelledError()
   }
   return String(value ?? '').trim()
 }

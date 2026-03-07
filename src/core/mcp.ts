@@ -7,6 +7,7 @@ import type {
 } from '../types.js'
 import { loadAgentsConfig } from './config.js'
 import { pathExists, readJson } from './fs.js'
+import { deepMerge } from './objectUtils.js'
 import { getProjectPaths } from './paths.js'
 
 const ALL_INTEGRATIONS: IntegrationName[] = [
@@ -167,20 +168,4 @@ function resolveServer(
       : undefined,
     cwd: resolveValue(server.cwd)
   }
-}
-
-function isObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
-
-function deepMerge(base: unknown, override: unknown): unknown {
-  if (Array.isArray(base) && Array.isArray(override)) return override
-  if (isObject(base) && isObject(override)) {
-    const out: Record<string, unknown> = { ...base }
-    for (const [key, value] of Object.entries(override)) {
-      out[key] = key in out ? deepMerge(out[key], value) : value
-    }
-    return out
-  }
-  return override === undefined ? base : override
 }

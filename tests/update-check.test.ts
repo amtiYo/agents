@@ -158,4 +158,39 @@ describe('update checks', () => {
     ) as { meta?: { updateCheck?: { latestVersion?: string } } }
     expect(globalCache.meta?.updateCheck?.latestVersion).toBe('0.8.2')
   })
+
+  it('falls back to global cache when project local.json is malformed', async () => {
+    const homeDir = await mkdtemp(path.join(os.tmpdir(), 'agents-update-home-'))
+    const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-update-project-'))
+    tempDirs.push(homeDir, projectRoot)
+    process.env.HOME = homeDir
+
+    await mkdir(path.join(projectRoot, '.agents'), { recursive: true })
+    const projectLocalPath = path.join(projectRoot, '.agents', 'local.json')
+    await writeFile(projectLocalPath, '{ invalid json', 'utf8')
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        new Response(JSON.stringify({ version: '0.8.2' }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' }
+        })
+      )
+    )
+
+    await checkForUpdates({
+      currentVersion: '0.8.2',
+      projectRoot,
+      forceRefresh: true
+    })
+
+    const projectLocalAfter = await readFile(projectLocalPath, 'utf8')
+    expect(projectLocalAfter).toBe('{ invalid json')
+
+    const globalCache = JSON.parse(
+      await readFile(path.join(homeDir, '.agents-dev', 'update-check.json'), 'utf8')
+    ) as { meta?: { updateCheck?: { latestVersion?: string } } }
+    expect(globalCache.meta?.updateCheck?.latestVersion).toBe('0.8.2')
+  })
 })

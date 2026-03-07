@@ -304,6 +304,29 @@ describe('start + sync flow', () => {
     expect(after.mcp.servers.teamDocs).toBeUndefined()
     expect(Object.keys(after.mcp.servers).sort()).toEqual(['fetch', 'filesystem', 'git'])
   })
+
+  it('does not fail start when Codex trust config is invalid TOML', async () => {
+    const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-start-codex-invalid-'))
+    const codexDir = await mkdtemp(path.join(os.tmpdir(), 'agents-codex-invalid-'))
+    tempDirs.push(projectRoot, codexDir)
+
+    const brokenCodexConfig = path.join(codexDir, 'config.toml')
+    await writeFile(brokenCodexConfig, '[[projects]\n', 'utf8')
+
+    process.env.AGENTS_CODEX_CONFIG_PATH = brokenCodexConfig
+    process.env.PATH = '/dev/null'
+
+    const output = await captureStdout(async () => {
+      await runStart({
+        projectRoot,
+        nonInteractive: true,
+        yes: true
+      })
+    })
+
+    expect(await exists(path.join(projectRoot, '.agents', 'agents.json'))).toBe(true)
+    expect(output).toContain('Codex trust setup skipped')
+  })
 })
 
 async function captureStdout(fn: () => Promise<void>): Promise<string> {

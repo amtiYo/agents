@@ -10,6 +10,7 @@ import * as shell from '../src/core/shell.js'
 
 const tempDirs: string[] = []
 let previousWindsurfMcpPath: string | undefined
+let previousAntigravityMcpPath: string | undefined
 
 afterEach(async () => {
   vi.restoreAllMocks()
@@ -17,6 +18,11 @@ afterEach(async () => {
     delete process.env.AGENTS_WINDSURF_MCP_PATH
   } else {
     process.env.AGENTS_WINDSURF_MCP_PATH = previousWindsurfMcpPath
+  }
+  if (previousAntigravityMcpPath === undefined) {
+    delete process.env.AGENTS_ANTIGRAVITY_MCP_PATH
+  } else {
+    process.env.AGENTS_ANTIGRAVITY_MCP_PATH = previousAntigravityMcpPath
   }
   for (const dir of tempDirs.splice(0, tempDirs.length)) {
     await rm(dir, { recursive: true, force: true })
@@ -161,6 +167,38 @@ describe('status command', () => {
     const parsedAfterCustom = JSON.parse(outputAfterCustom) as { files: Record<string, boolean> }
     expect(parsedAfterCustom.files['CLAUDE.md']).toBe(true)
   }, 15000)
+
+  it('omits Antigravity global file checks when global sync option is disabled', async () => {
+    const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-status-'))
+    const antigravityDir = await mkdtemp(path.join(os.tmpdir(), 'agents-ag-status-'))
+    tempDirs.push(projectRoot, antigravityDir)
+    previousAntigravityMcpPath = process.env.AGENTS_ANTIGRAVITY_MCP_PATH
+    process.env.AGENTS_ANTIGRAVITY_MCP_PATH = path.join(antigravityDir, 'mcp.json')
+
+    await runInit({ projectRoot, force: true })
+    const config = await loadAgentsConfig(projectRoot)
+    config.integrations.enabled = ['antigravity']
+    config.integrations.options.antigravityGlobalSync = false
+    await saveAgentsConfig(projectRoot, config)
+    await performSync({
+      projectRoot,
+      check: false,
+      verbose: false
+    })
+
+    const output = await captureStdout(async () => {
+      await runStatus({
+        projectRoot,
+        json: true,
+        verbose: false,
+        fast: false
+      })
+    })
+
+    const parsed = JSON.parse(output) as { files: Record<string, boolean>; probes: Record<string, string> }
+    expect(Object.keys(parsed.files).some((key) => key.includes('mcp.json') && key.includes('agents-ag-status'))).toBe(false)
+    expect(parsed.probes.antigravity).toContain('global sync disabled')
+  })
 })
 
 async function captureStdout(fn: () => Promise<void>): Promise<string> {

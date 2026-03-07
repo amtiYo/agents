@@ -1,4 +1,5 @@
 import { loadAgentsConfig, saveAgentsConfig } from '../core/config.js'
+import { CancelledError } from '../core/errors.js'
 import { performSync } from '../core/sync.js'
 import { formatWarnings } from '../core/warnings.js'
 import * as ui from '../core/ui.js'
@@ -71,7 +72,7 @@ async function promptSelection(enabled: IntegrationName[]): Promise<IntegrationN
 
   if (ui.clack.isCancel(value)) {
     ui.clack.cancel('Operation canceled.')
-    process.exit(1)
+    throw new CancelledError()
   }
 
   return (value as IntegrationName[]) ?? []

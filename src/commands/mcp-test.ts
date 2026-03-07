@@ -75,7 +75,7 @@ export async function runMcpTest(options: McpTestOptions): Promise<void> {
   }
 
   const runtimeEnabled = options.runtime === true
-  const runtimeTimeoutMs = options.runtimeTimeoutMs ?? DEFAULT_RUNTIME_TIMEOUT_MS
+  const runtimeTimeoutMs = normalizeRuntimeTimeout(options.runtimeTimeoutMs)
 
   const spin = ui.spinner()
   if (runtimeEnabled) {
@@ -524,4 +524,10 @@ function isValidHttpUrl(value: string): boolean {
 
 function compact(input: string): string {
   return input.trim().split('\n').at(-1) ?? ''
+}
+
+function normalizeRuntimeTimeout(input: number | undefined): number {
+  if (!Number.isFinite(input)) return DEFAULT_RUNTIME_TIMEOUT_MS
+  if (input === undefined || input <= 0) return DEFAULT_RUNTIME_TIMEOUT_MS
+  return Math.floor(input)
 }

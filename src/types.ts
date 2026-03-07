@@ -72,20 +72,6 @@ export interface VscodeSettingsState {
   managedPaths: string[]
 }
 
-export interface LegacyProjectConfig {
-  schemaVersion: number
-  projectRoot: string
-  agentsMdPath: string
-  enabledIntegrations: IntegrationName[]
-  integrationOptions: {
-    cursorAutoApprove: boolean
-    antigravityGlobalSync: boolean
-  }
-  syncMode: SyncMode
-  lastSync: string | null
-  lastSyncSourceHash?: string | null
-}
-
 export interface ResolvedMcpServer {
   name: string
   transport: McpTransportType

@@ -1,5 +1,6 @@
 import path from 'node:path'
 import { lstat, readdir } from 'node:fs/promises'
+import { setTimeout as sleep } from 'node:timers/promises'
 import { performSync } from '../core/sync.js'
 import { getProjectPaths } from '../core/paths.js'
 import { pathExists } from '../core/fs.js'
@@ -14,13 +15,16 @@ export interface WatchOptions {
 }
 
 export async function runWatch(options: WatchOptions): Promise<void> {
-  ui.setContext({ quiet: options.quiet })
+  ui.setContext({ quiet: false })
 
   const projectRoot = path.resolve(options.projectRoot)
   const intervalMs = normalizeInterval(options.intervalMs)
 
   if (options.once) {
-    await runSingleSync(projectRoot, options.quiet)
+    const ok = await runSingleSync(projectRoot, options.quiet)
+    if (!ok) {
+      process.exitCode = 1
+    }
     return
   }
 
@@ -30,16 +34,31 @@ export async function runWatch(options: WatchOptions): Promise<void> {
 
   let lastSignature = await safeSnapshotSignature(projectRoot, options.quiet) ?? 'unavailable'
   let stopped = false
+  let sleepAbort: AbortController | null = null
 
   const stop = (): void => {
     stopped = true
+    sleepAbort?.abort()
   }
 
   process.on('SIGINT', stop)
   process.on('SIGTERM', stop)
   try {
     while (!stopped) {
-      await sleep(intervalMs)
+      const controller = new AbortController()
+      sleepAbort = controller
+      try {
+        await sleep(intervalMs, undefined, { signal: controller.signal })
+      } catch (error) {
+        if (!isAbortError(error)) {
+          throw error
+        }
+      } finally {
+        if (sleepAbort === controller) {
+          sleepAbort = null
+        }
+      }
+      if (stopped) break
       const nextSignature = await safeSnapshotSignature(projectRoot, options.quiet)
       if (nextSignature === null) continue
       if (nextSignature === lastSignature) continue
@@ -56,7 +75,7 @@ export async function runWatch(options: WatchOptions): Promise<void> {
   ui.info('Watch stopped')
 }
 
-async function runSingleSync(projectRoot: string, quiet: boolean): Promise<void> {
+async function runSingleSync(projectRoot: string, quiet: boolean): Promise<boolean> {
   const startedAt = new Date().toISOString()
   try {
     const result = await performSync({
@@ -66,7 +85,7 @@ async function runSingleSync(projectRoot: string, quiet: boolean): Promise<void>
     })
 
     if (quiet && result.changed.length === 0 && result.warnings.length === 0) {
-      return
+      return true
     }
 
     ui.dim(`[${startedAt}] sync`)
@@ -89,7 +108,9 @@ async function runSingleSync(projectRoot: string, quiet: boolean): Promise<void>
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     ui.error(`[${startedAt}] sync failed: ${message}`)
+    return false
   }
+  return true
 }
 
 async function snapshotSignature(projectRoot: string): Promise<string> {
@@ -168,12 +189,6 @@ function normalizeInterval(input: number): number {
   return Math.floor(input)
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, ms)
-  })
-}
-
 async function safeSnapshotSignature(projectRoot: string, quiet: boolean): Promise<string | null> {
   try {
     return await snapshotSignature(projectRoot)
@@ -190,4 +205,9 @@ function isTransientFsError(value: unknown): boolean {
   if (typeof value !== 'object' || value === null || !('code' in value)) return false
   const code = (value as { code?: unknown }).code
   return code === 'ENOENT' || code === 'EPERM' || code === 'EACCES'
+}
+
+function isAbortError(value: unknown): boolean {
+  if (typeof value !== 'object' || value === null) return false
+  return 'name' in value && (value as { name?: unknown }).name === 'AbortError'
 }

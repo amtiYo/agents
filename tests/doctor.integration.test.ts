@@ -116,6 +116,23 @@ describe('doctor command', () => {
 
     expect(output).toContain('Custom root CLAUDE.md detected')
   }, 15000)
+
+  it('does not warn about missing Antigravity global MCP when global sync is disabled', async () => {
+    const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-doctor-'))
+    tempDirs.push(projectRoot)
+
+    await runInit({ projectRoot, force: true })
+    const config = await loadAgentsConfig(projectRoot)
+    config.integrations.enabled = ['antigravity']
+    config.integrations.options.antigravityGlobalSync = false
+    await saveAgentsConfig(projectRoot, config)
+
+    const output = await captureStdout(async () => {
+      await runDoctor({ projectRoot, fix: false })
+    })
+
+    expect(output).not.toContain('Antigravity global MCP file missing')
+  }, 15000)
 })
 
 async function captureStdout(fn: () => Promise<void>): Promise<string> {

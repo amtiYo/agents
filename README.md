@@ -171,8 +171,8 @@ your-project/
 | `agents start --reinit` | Reinitialize existing `.agents/agents.json` with fresh wizard/default choices |
 | `agents init` | Scaffold `.agents/` directory without guided setup |
 | `agents sync` | Regenerate and materialize all tool configs |
-| `agents sync --check` | Dry-run — exits `2` if config is out of sync |
-| `agents watch` | Auto-sync on `.agents/` file changes |
+| `agents sync --check` | Strict read-only drift check — exits `2` if config is out of sync |
+| `agents watch` | Auto-sync on `.agents/` file changes (`--once` exits non-zero on sync failure) |
 
 ### Diagnostics
 
@@ -192,7 +192,7 @@ your-project/
 | `agents mcp add <url>` | Import a server from URL (mcpservers.org, GitHub, etc.) |
 | `agents mcp import --file config.json` | Bulk import from JSON/JSONC file |
 | `agents mcp list` | List all configured servers |
-| `agents mcp remove <name>` | Remove a server |
+| `agents mcp remove <name>` | Remove a server (`--no-sync` skips auto-sync for add/import/remove) |
 | `agents mcp test` | Validate server definitions |
 | `agents mcp test --runtime` | Live connectivity check via tool CLIs |
 
@@ -200,7 +200,7 @@ your-project/
 
 | Command | Description |
 |:--------|:------------|
-| `agents connect --llm cursor,claude` | Enable integrations |
+| `agents connect --llm cursor,claude` | Add integrations to the currently enabled set |
 | `agents disconnect --llm codex` | Disable integrations |
 | `agents reset` | Remove generated files, keep `.agents/` |
 | `agents reset --hard` | Full cleanup — removes all agents-managed setup |

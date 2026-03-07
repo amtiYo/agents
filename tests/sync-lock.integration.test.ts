@@ -1,9 +1,10 @@
 import os from 'node:os'
 import path from 'node:path'
-import { mkdir, mkdtemp, rm, utimes, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, stat, utimes, writeFile } from 'node:fs/promises'
 import { afterEach, describe, expect, it } from 'vitest'
 import { runInit } from '../src/commands/init.js'
 import { performSync } from '../src/core/sync.js'
+import { acquireSyncLock } from '../src/core/syncLock.js'
 
 const tempDirs: string[] = []
 
@@ -53,4 +54,47 @@ describe('sync lock', () => {
 
     expect(result.changed.length).toBeGreaterThan(0)
   }, 15_000)
+
+  it('does not take over stale lock when owner pid is still alive', async () => {
+    const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-sync-lock-'))
+    tempDirs.push(projectRoot)
+
+    await runInit({ projectRoot, force: true })
+    const generatedDir = path.join(projectRoot, '.agents', 'generated')
+    const lockPath = path.join(generatedDir, 'sync.lock')
+    await mkdir(generatedDir, { recursive: true })
+    await writeFile(
+      lockPath,
+      `${JSON.stringify({ pid: process.pid, startedAt: '2000-01-01T00:00:00.000Z', token: 'live-owner' })}\n`,
+      'utf8'
+    )
+
+    const staleAt = new Date(Date.now() - 10 * 60_000)
+    await utimes(lockPath, staleAt, staleAt)
+
+    await expect(
+      performSync({
+        projectRoot,
+        check: false,
+        verbose: false
+      }),
+    ).rejects.toThrow(/Another sync is already running/)
+  }, 15_000)
+
+  it('does not remove lock file if release token no longer matches', async () => {
+    const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-sync-lock-'))
+    tempDirs.push(projectRoot)
+    const lockPath = path.join(projectRoot, '.agents', 'generated', 'sync.lock')
+
+    const release = await acquireSyncLock(lockPath)
+    const current = JSON.parse(await readFile(lockPath, 'utf8')) as { pid?: number; startedAt?: string }
+    await writeFile(
+      lockPath,
+      `${JSON.stringify({ pid: current.pid, startedAt: current.startedAt, token: 'other-owner' })}\n`,
+      'utf8'
+    )
+
+    await release()
+    await expect(stat(lockPath)).resolves.toBeTruthy()
+  })
 })

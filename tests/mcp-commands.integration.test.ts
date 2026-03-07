@@ -302,6 +302,56 @@ describe('mcp command integration', () => {
       }),
     ).rejects.toThrow(/Invalid header key/)
   })
+
+  it('rejects reserved server names in mcp add', async () => {
+    const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-mcp-cmds-'))
+    tempDirs.push(projectRoot)
+
+    await runInit({ projectRoot, force: true })
+
+    await expect(
+      runMcpAdd({
+        projectRoot,
+        name: '__proto__',
+        transport: 'stdio',
+        command: 'npx',
+        args: ['-y', '@upstash/context7-mcp'],
+        env: [],
+        headers: [],
+        secretEnv: [],
+        secretHeaders: [],
+        secretArgs: [],
+        targets: [],
+        disabled: false,
+        replace: false,
+        noSync: true,
+        nonInteractive: true
+      }),
+    ).rejects.toThrow(/reserved object property name/)
+  })
+
+  it('rejects reserved server names in mcp import', async () => {
+    const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-mcp-cmds-'))
+    tempDirs.push(projectRoot)
+
+    await runInit({ projectRoot, force: true })
+
+    await expect(
+      runMcpImport({
+        projectRoot,
+        json: JSON.stringify({
+          mcpServers: {
+            constructor: {
+              url: 'https://example.com/mcp'
+            }
+          }
+        }),
+        replace: false,
+        noSync: true,
+        nonInteractive: true
+      }),
+    ).rejects.toThrow(/reserved object property name/)
+  })
 })
 
 async function captureStdout(fn: () => Promise<void>): Promise<string> {

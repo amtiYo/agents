@@ -31,7 +31,7 @@ export async function ensureProjectGitignore(projectRoot: string, syncMode: Sync
   let changed = false
 
   for (const line of lines) {
-    if (shouldRemoveSourceOnly && managedSourceOnly.has(line.trim())) {
+    if (shouldRemoveSourceOnly && managedSourceOnly.has(normalizeManagedEntry(line))) {
       changed = true
       continue
     }
@@ -39,7 +39,7 @@ export async function ensureProjectGitignore(projectRoot: string, syncMode: Sync
   }
 
   for (const entry of required) {
-    if (nextLines.some((line) => line.trim() === entry)) continue
+    if (nextLines.some((line) => normalizeManagedEntry(line) === entry)) continue
     nextLines.push(entry)
     changed = true
   }
@@ -57,7 +57,7 @@ export async function cleanupManagedGitignore(projectRoot: string): Promise<bool
   const lines = content.split(/\r?\n/)
 
   const managed = new Set([...BASE_MANAGED_ENTRIES, ...SOURCE_ONLY_ENTRIES])
-  const filtered = lines.filter((line) => !managed.has(line.trim()))
+  const filtered = lines.filter((line) => !managed.has(normalizeManagedEntry(line)))
 
   if (filtered.join('\n') === lines.join('\n')) {
     return false
@@ -75,4 +75,10 @@ export async function cleanupManagedGitignore(projectRoot: string): Promise<bool
 
   await writeTextAtomic(gitignorePath, `${normalized.join('\n')}\n`)
   return true
+}
+
+function normalizeManagedEntry(line: string): string {
+  const trimmed = line.trim()
+  if (!trimmed.startsWith('/')) return trimmed
+  return trimmed.replace(/^\/+/, '')
 }

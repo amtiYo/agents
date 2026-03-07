@@ -17,7 +17,9 @@ export async function syncSkills(args: {
   const { projectRoot, enabledIntegrations, check, changed, warnings } = args
   const paths = getProjectPaths(projectRoot)
 
-  await ensureDir(paths.agentsSkillsDir)
+  if (!check) {
+    await ensureDir(paths.agentsSkillsDir)
+  }
 
   const hasSkills = await hasSkillDirectories(paths.agentsSkillsDir)
 
@@ -114,7 +116,9 @@ async function syncToolSkillsBridge(args: {
     return
   }
 
-  await ensureDir(parentDir)
+  if (!check) {
+    await ensureDir(parentDir)
+  }
 
   const exists = await pathExists(bridgePath)
   if (exists) {
@@ -173,7 +177,7 @@ async function cleanupManagedBridge(bridgePath: string, expectedRelative: string
   }
 
   const marker = path.join(bridgePath, BRIDGE_MARKER_FILENAME)
-  return pathExists(marker)
+  return await pathExists(marker)
 }
 
 async function cleanupLegacyAntigravityBridge(args: {

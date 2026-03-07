@@ -23,6 +23,41 @@ afterEach(async () => {
 })
 
 describe('cursor sync idempotency', () => {
+  it('does not report cursor-local-approval drift when cursor-agent is missing', async () => {
+    const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-cursor-sync-missing-cli-'))
+    tempDirs.push(projectRoot)
+
+    await runInit({ projectRoot, force: true })
+    const config = await loadAgentsConfig(projectRoot)
+    config.integrations.enabled = ['cursor']
+    config.integrations.options.cursorAutoApprove = true
+    config.mcp.servers.docs = {
+      transport: 'http',
+      url: 'https://example.com/mcp',
+      targets: ['cursor']
+    }
+    await saveAgentsConfig(projectRoot, config)
+
+    previousPathEnv = process.env.PATH
+    process.env.PATH = ''
+
+    const first = await performSync({
+      projectRoot,
+      check: false,
+      verbose: false
+    })
+    expect(first.changed).not.toContain('cursor-local-approval')
+    expect(first.warnings.join(' ')).toContain('Cursor CLI not found; skipped Cursor MCP approval sync.')
+
+    const second = await performSync({
+      projectRoot,
+      check: true,
+      verbose: false
+    })
+    expect(second.changed).not.toContain('cursor-local-approval')
+    expect(second.warnings.join(' ')).toContain('Cursor CLI not found; skipped Cursor MCP approval sync.')
+  })
+
   it('does not loop cursor-local-approval when runtime status is error', async () => {
     const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-cursor-sync-'))
     const binDir = await mkdtemp(path.join(os.tmpdir(), 'agents-cursor-sync-bin-'))

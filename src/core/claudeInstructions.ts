@@ -1,5 +1,5 @@
-import path from 'node:path'
-import { pathExists, readJson, readTextOrEmpty, removeIfExists, writeJsonAtomic, writeTextAtomic } from './fs.js'
+import { pathExists, readJson, readTextOrEmpty, removeIfExists, writeJsonAtomic } from './fs.js'
+import { toChangedEntry, writeManagedFile } from './managedFiles.js'
 import { getProjectPaths } from './paths.js'
 
 export interface ClaudeInstructionsState {
@@ -56,11 +56,13 @@ export async function syncClaudeInstructions(args: {
 
   if (!hasClaudeInstructions || wrapperDetected) {
     await writeManagedFile(
-      paths.rootClaudeMd,
-      buildClaudeInstructionsWrapper(),
-      projectRoot,
-      check,
-      changed,
+      {
+        absolutePath: paths.rootClaudeMd,
+        content: buildClaudeInstructionsWrapper(),
+        projectRoot,
+        check,
+        changed
+      }
     )
     if (!check) {
       await saveClaudeInstructionsState(paths.generatedClaudeInstructionsState, {
@@ -169,27 +171,4 @@ async function saveClaudeInstructionsState(
 
 function normalizeClaudeInstructions(content: string): string {
   return content.replaceAll('\r\n', '\n').trim()
-}
-
-async function writeManagedFile(
-  absolutePath: string,
-  content: string,
-  projectRoot: string,
-  check: boolean,
-  changed: string[],
-): Promise<void> {
-  const previous = await readTextOrEmpty(absolutePath)
-  if (previous === content) return
-
-  changed.push(toChangedEntry(projectRoot, absolutePath))
-
-  if (check) return
-  await writeTextAtomic(absolutePath, content)
-}
-
-function toChangedEntry(projectRoot: string, absolutePath: string): string {
-  const relative = path.relative(projectRoot, absolutePath)
-  if (relative.length === 0) return absolutePath
-  if (relative.startsWith('..') || path.isAbsolute(relative)) return absolutePath
-  return relative
 }
