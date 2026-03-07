@@ -193,4 +193,46 @@ describe('update checks', () => {
     ) as { meta?: { updateCheck?: { latestVersion?: string } } }
     expect(globalCache.meta?.updateCheck?.latestVersion).toBe('0.8.2')
   })
+
+  it('does not overwrite project local.json when it becomes invalid during in-flight update check', async () => {
+    const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-update-check-race-'))
+    tempDirs.push(projectRoot)
+
+    await mkdir(path.join(projectRoot, '.agents'), { recursive: true })
+    const projectLocalPath = path.join(projectRoot, '.agents', 'local.json')
+    await writeFile(
+      projectLocalPath,
+      JSON.stringify({ mcpServers: { docs: { token: 'secret-before' } } }, null, 2),
+      'utf8'
+    )
+
+    let releaseFetch: (() => void) | null = null
+    const fetchGate = new Promise<void>((resolve) => {
+      releaseFetch = resolve
+    })
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        await fetchGate
+        return new Response(JSON.stringify({ version: '99.99.99' }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' }
+        })
+      })
+    )
+
+    const pending = checkForUpdates({
+      currentVersion: '0.8.2',
+      projectRoot,
+      forceRefresh: true
+    })
+
+    await writeFile(projectLocalPath, '{ invalid json', 'utf8')
+    releaseFetch?.()
+    await pending
+
+    const projectLocalAfter = await readFile(projectLocalPath, 'utf8')
+    expect(projectLocalAfter).toBe('{ invalid json')
+  })
 })

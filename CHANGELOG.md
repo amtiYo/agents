@@ -45,6 +45,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `agents watch --once` now sets a non-zero exit code on sync failure and quiet mode no longer suppresses errors.
 - `integrations.options.antigravityGlobalSync=false` now prevents writing Antigravity global MCP output while keeping generated snapshots.
 - `updateCheck` now falls back to global cache when project `.agents/local.json` is malformed, instead of overwriting the broken file.
+- `updateCheck` now avoids writing stale project-local snapshots when `.agents/local.json` changes or becomes invalid during in-flight checks.
 - `validateServerName` now rejects reserved names (`__proto__`, `prototype`, `constructor`).
 - `agents mcp test --runtime-timeout-ms` now normalizes invalid values (`NaN`, `<=0`) to a safe default timeout.
 - Sync lock now uses owner tokens and PID liveness checks to avoid unsafe stale-lock takeovers and foreign lock removal.

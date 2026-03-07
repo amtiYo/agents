@@ -194,13 +194,17 @@ function writeUpdateMetadata(
 /** Re-reads project-local file before writing to avoid overwriting concurrent changes (e.g. mcp add --secret-env). */
 async function persistUpdateMetadata(storage: StorageState, metadata: UpdateCheckMetadata): Promise<void> {
   if (storage.kind === 'project-local') {
+    if (!(await pathExists(storage.filePath))) {
+      return
+    }
     const fresh = await readDocument(storage.filePath)
     if (fresh.valid) {
       writeUpdateMetadata(fresh.document, storage.kind, metadata)
       await writeJsonAtomic(storage.filePath, fresh.document)
-      return
     }
-  }
+    return
+    }
+
   writeUpdateMetadata(storage.document, storage.kind, metadata)
   await writeJsonAtomic(storage.filePath, storage.document)
 }
