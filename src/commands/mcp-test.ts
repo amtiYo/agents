@@ -527,7 +527,6 @@ function compact(input: string): string {
 }
 
 function normalizeRuntimeTimeout(input: number | undefined): number {
-  if (!Number.isFinite(input)) return DEFAULT_RUNTIME_TIMEOUT_MS
-  if (input === undefined || input <= 0) return DEFAULT_RUNTIME_TIMEOUT_MS
+  if (typeof input !== 'number' || !Number.isFinite(input) || input <= 0) return DEFAULT_RUNTIME_TIMEOUT_MS
   return Math.floor(input)
 }
