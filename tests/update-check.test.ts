@@ -129,6 +129,32 @@ describe('update checks', () => {
     expect(result.isOutdated).toBe(true)
   })
 
+  it('allows disabling retry attempts for faster best-effort checks', async () => {
+    const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-update-check-'))
+    tempDirs.push(projectRoot)
+
+    await mkdir(path.join(projectRoot, '.agents'), { recursive: true })
+    await writeFile(
+      path.join(projectRoot, '.agents', 'local.json'),
+      JSON.stringify({ mcpServers: {} }, null, 2),
+      'utf8'
+    )
+
+    const fetchMock = vi.fn().mockRejectedValue(new Error('network down'))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await checkForUpdates({
+      currentVersion: '0.8.2',
+      projectRoot,
+      forceRefresh: true,
+      fetchRetries: 0
+    })
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(result.latestVersion).toBe(null)
+    expect(result.source).toBe('unavailable')
+  })
+
   it('uses global cache path when project local.json is missing', async () => {
     const homeDir = await mkdtemp(path.join(os.tmpdir(), 'agents-update-home-'))
     const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-update-project-'))

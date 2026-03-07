@@ -307,6 +307,38 @@ describe('start + sync flow', () => {
     expect(Object.keys(after.mcp.servers).sort()).toEqual(['fetch', 'filesystem', 'git'])
   })
 
+  it('reinitializes automatically when existing agents config is malformed', async () => {
+    const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-start-invalid-config-'))
+    const codexDir = await mkdtemp(path.join(os.tmpdir(), 'agents-codex-'))
+    tempDirs.push(projectRoot, codexDir)
+
+    process.env.AGENTS_CODEX_CONFIG_PATH = path.join(codexDir, 'config.toml')
+    process.env.PATH = '/dev/null'
+
+    await runStart({
+      projectRoot,
+      nonInteractive: true,
+      yes: true
+    })
+
+    await writeFile(path.join(projectRoot, '.agents', 'agents.json'), '{ invalid json', 'utf8')
+
+    const output = await captureStdout(async () => {
+      await runStart({
+        projectRoot,
+        nonInteractive: true,
+        yes: true
+      })
+    })
+
+    expect(output).toContain('Config mode: reinitialized')
+    expect(output).toContain('Existing .agents/agents.json is invalid; reinitialized with defaults.')
+
+    const after = await loadAgentsConfig(projectRoot)
+    expect(after.integrations.enabled).toEqual(['codex'])
+    expect(Object.keys(after.mcp.servers).sort()).toEqual(['fetch', 'filesystem', 'git'])
+  })
+
   it('does not fail start when Codex trust config is invalid TOML', async () => {
     const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-start-codex-invalid-'))
     const codexDir = await mkdtemp(path.join(os.tmpdir(), 'agents-codex-invalid-'))

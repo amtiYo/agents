@@ -1,6 +1,6 @@
 import path from 'node:path'
-import { pathExists, readJson } from '../core/fs.js'
-import { writeManagedFile } from '../core/managedFiles.js'
+import { pathExists, readJson, removeIfExists } from '../core/fs.js'
+import { toChangedEntry, writeManagedFile } from '../core/managedFiles.js'
 import { getAntigravityGlobalMcpPath, normalizeAntigravityMcpPayload, readAntigravityMcp } from '../core/antigravity.js'
 import { getWindsurfGlobalMcpPath, normalizeWindsurfMcpPayload } from '../core/windsurf.js'
 import { normalizeOpencodeConfig } from '../core/opencode.js'
@@ -165,11 +165,21 @@ export const INTEGRATION_SYNC_HOOKS: IntegrationSyncHook[] = [
         warnings: antigravity.warnings
       }
     },
-    shouldMaterialize: (config) => config.integrations.options.antigravityGlobalSync !== false,
     materialize: async (context) => {
       const rawGenerated = context.generatedByIntegration.antigravity ?? ''
       const legacyProjectPath = context.paths.antigravityProjectMcp
       const globalPath = getAntigravityGlobalMcpPath()
+      const globalSyncEnabled = context.config.integrations.options.antigravityGlobalSync !== false
+
+      if (!globalSyncEnabled) {
+        if (await pathExists(globalPath)) {
+          context.changed.push(toChangedEntry(context.projectRoot, globalPath))
+          if (!context.check) {
+            await removeIfExists(globalPath)
+          }
+        }
+        return
+      }
 
       let normalized: Record<string, unknown> = {}
       if (rawGenerated.trim().length > 0) {
@@ -308,4 +318,3 @@ function parseJsonObject(raw: string, label: string): Record<string, unknown> {
     throw new Error(`Failed to parse ${label}: ${error instanceof Error ? error.message : String(error)}`)
   }
 }
-

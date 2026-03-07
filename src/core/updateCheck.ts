@@ -7,8 +7,10 @@ import * as ui from './ui.js'
 
 const NPM_LATEST_URL = 'https://registry.npmjs.org/@agents-dev/cli/latest'
 const DEFAULT_TIMEOUT_MS = 5000
+const STARTUP_TIMEOUT_MS = 1200
 const STARTUP_RECHECK_MS = 6 * 60 * 60 * 1000
-const REGISTRY_FETCH_RETRIES = 1
+const DEFAULT_REGISTRY_FETCH_RETRIES = 1
+const STARTUP_FETCH_RETRIES = 0
 
 export const UPGRADE_COMMAND = 'npm install -g @agents-dev/cli@latest'
 
@@ -41,6 +43,7 @@ export interface CheckForUpdatesOptions {
   projectRoot?: string
   forceRefresh?: boolean
   timeoutMs?: number
+  fetchRetries?: number
   markNotifiedIfOutdated?: boolean
 }
 
@@ -48,6 +51,7 @@ export async function checkForUpdates(options: CheckForUpdatesOptions): Promise<
   const now = new Date()
   const nowIso = now.toISOString()
   const timeoutMs = normalizeTimeout(options.timeoutMs)
+  const fetchRetries = normalizeRetryCount(options.fetchRetries, DEFAULT_REGISTRY_FETCH_RETRIES)
   const storage = await loadStorageState(options.projectRoot)
   const metadata = readUpdateMetadata(storage.document)
   const channel = resolveUpdateChannel()
@@ -72,7 +76,7 @@ export async function checkForUpdates(options: CheckForUpdatesOptions): Promise<
 
   const shouldRefresh = options.forceRefresh === true || !isRecent(metadata.lastCheckedAt, STARTUP_RECHECK_MS)
   if (!latestVersion || shouldRefresh) {
-    const fetched = await fetchLatestVersion(timeoutMs)
+    const fetched = await fetchLatestVersion(timeoutMs, fetchRetries)
     if (fetched.version) {
       latestVersion = fetched.version
       metadata.latestVersion = fetched.version
@@ -113,6 +117,8 @@ export async function maybeNotifyAboutUpdate(args: {
     const status = await checkForUpdates({
       currentVersion: args.currentVersion,
       projectRoot: args.projectRoot,
+      timeoutMs: STARTUP_TIMEOUT_MS,
+      fetchRetries: STARTUP_FETCH_RETRIES,
       markNotifiedIfOutdated: true
     })
     if (!status.isOutdated || !status.latestVersion) return
@@ -209,12 +215,13 @@ async function persistUpdateMetadata(storage: StorageState, metadata: UpdateChec
   await writeJsonAtomic(storage.filePath, storage.document)
 }
 
-async function fetchLatestVersion(timeoutMs: number): Promise<{ version: string | null; error?: string }> {
+async function fetchLatestVersion(timeoutMs: number, retries: number): Promise<{ version: string | null; error?: string }> {
   let lastError: string | undefined
 
-  for (let attempt = 0; attempt <= REGISTRY_FETCH_RETRIES; attempt += 1) {
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), timeoutMs)
+    timeout.unref()
     try {
       const response = await fetch(NPM_LATEST_URL, {
         headers: { Accept: 'application/json' },
@@ -245,6 +252,12 @@ async function fetchLatestVersion(timeoutMs: number): Promise<{ version: string 
 function normalizeTimeout(input: number | undefined): number {
   if (!Number.isFinite(input)) return DEFAULT_TIMEOUT_MS
   if (!input || input <= 0) return DEFAULT_TIMEOUT_MS
+  return Math.floor(input)
+}
+
+function normalizeRetryCount(input: number | undefined, fallback: number): number {
+  if (!Number.isFinite(input)) return fallback
+  if (input === undefined || input < 0) return fallback
   return Math.floor(input)
 }
 

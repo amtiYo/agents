@@ -43,9 +43,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Fixed Commander wiring for `agents mcp add|import|remove --no-sync` (maps correctly to skip auto-sync).
 - `agents watch --once` now sets a non-zero exit code on sync failure and quiet mode no longer suppresses errors.
+- `agents watch --quiet` now correctly respects quiet mode for non-error output while still printing sync failures.
 - `integrations.options.antigravityGlobalSync=false` now prevents writing Antigravity global MCP output while keeping generated snapshots.
+- Disabling `integrations.options.antigravityGlobalSync` now also removes stale previously managed global Antigravity MCP output.
 - `updateCheck` now falls back to global cache when project `.agents/local.json` is malformed, instead of overwriting the broken file.
 - `updateCheck` now avoids writing stale project-local snapshots when `.agents/local.json` changes or becomes invalid during in-flight checks.
+- Startup update checks now use a short best-effort timeout with no retry, avoiding long command shutdown delays on bad networks.
 - `validateServerName` now rejects reserved names (`__proto__`, `prototype`, `constructor`).
 - `agents mcp test --runtime-timeout-ms` now normalizes invalid values (`NaN`, `<=0`) to a safe default timeout.
 - Sync lock now uses owner tokens and PID liveness checks to avoid unsafe stale-lock takeovers and foreign lock removal.
@@ -54,6 +57,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `upsertMcpServers` now removes stale local overrides when an update does not provide an override.
 - VS Code managed exclude sync now forces managed keys to `true` when they exist as `false`.
 - `start` now runs optional cleanup after final confirmation and handles Codex trust TOML parse failures as warnings.
+- `start` now automatically reinitializes when an existing `.agents/agents.json` is malformed, instead of failing before setup.
 - `CLI_VERSION` now resolves from `package.json` (single source of truth) with a safe fallback.
 - Removed `removeIfExists` TOCTOU check and fixed `cleanupManagedBridge` async return clarity.
 - Replaced raw verbose sync stdout writes with shared `ui.*` output helpers.

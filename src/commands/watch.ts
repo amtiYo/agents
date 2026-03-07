@@ -15,7 +15,7 @@ export interface WatchOptions {
 }
 
 export async function runWatch(options: WatchOptions): Promise<void> {
-  ui.setContext({ quiet: false })
+  ui.setContext({ quiet: options.quiet })
 
   const projectRoot = path.resolve(options.projectRoot)
   const intervalMs = normalizeInterval(options.intervalMs)
@@ -107,7 +107,7 @@ async function runSingleSync(projectRoot: string, quiet: boolean): Promise<boole
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
-    ui.error(`[${startedAt}] sync failed: ${message}`)
+    writeError(`[${startedAt}] sync failed: ${message}`, quiet)
     return false
   }
   return true
@@ -210,4 +210,18 @@ function isTransientFsError(value: unknown): boolean {
 function isAbortError(value: unknown): boolean {
   if (typeof value !== 'object' || value === null) return false
   return 'name' in value && (value as { name?: unknown }).name === 'AbortError'
+}
+
+function writeError(message: string, quiet: boolean): void {
+  if (!quiet) {
+    ui.error(message)
+    return
+  }
+
+  ui.setContext({ quiet: false })
+  try {
+    ui.error(message)
+  } finally {
+    ui.setContext({ quiet: true })
+  }
 }

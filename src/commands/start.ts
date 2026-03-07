@@ -33,8 +33,22 @@ export async function runStart(options: StartOptions): Promise<void> {
   const interactive = !options.nonInteractive && !options.yes
   const paths = getProjectPaths(projectRoot)
   const reinit = options.reinit === true
-  const preserveExistingConfig = !reinit && (await pathExists(paths.agentsConfig))
-  const existingConfig = preserveExistingConfig ? await loadAgentsConfig(projectRoot) : null
+  const hasExistingConfig = await pathExists(paths.agentsConfig)
+  const startupWarnings: string[] = []
+  let preserveExistingConfig = !reinit && hasExistingConfig
+  let forceInitialize = reinit
+  let existingConfig: AgentsConfig | null = null
+
+  if (preserveExistingConfig) {
+    try {
+      existingConfig = await loadAgentsConfig(projectRoot)
+    } catch (error) {
+      preserveExistingConfig = false
+      forceInitialize = true
+      const message = error instanceof Error ? error.message : String(error)
+      startupWarnings.push(`Existing .agents/agents.json is invalid; reinitialized with defaults. ${message}`)
+    }
+  }
 
   if (interactive) {
     clack.intro(color.cyan('agents start'))
@@ -42,6 +56,11 @@ export async function runStart(options: StartOptions): Promise<void> {
     if (preserveExistingConfig) {
       clack.note(
         'Existing .agents/agents.json detected. start will preserve current integrations/MCP config. Use --reinit to reset.',
+        'Configuration mode'
+      )
+    } else if (hasExistingConfig && !reinit) {
+      clack.note(
+        'Existing .agents/agents.json is invalid. start will reinitialize defaults and continue.',
         'Configuration mode'
       )
     }
@@ -120,7 +139,7 @@ export async function runStart(options: StartOptions): Promise<void> {
 
   const init = await initializeProjectSkeleton({
     projectRoot,
-    force: reinit,
+    force: forceInitialize,
     integrations: selectedIntegrations,
     integrationOptions: access.integrationOptions,
     syncMode,
@@ -143,7 +162,7 @@ export async function runStart(options: StartOptions): Promise<void> {
     : { changed: [], skipped: [] }
 
   spin?.stop('Setup complete.')
-  const configMode = preserveExistingConfig ? 'preserved existing config' : reinit ? 'reinitialized' : 'initialized'
+  const configMode = preserveExistingConfig ? 'preserved existing config' : forceInitialize ? 'reinitialized' : 'initialized'
 
   const summaryLines = [
     `Project: ${projectRoot}`,
@@ -167,7 +186,7 @@ export async function runStart(options: StartOptions): Promise<void> {
     summaryLines.push(`${formatSummaryKey(key)}: ${value}`)
   }
 
-  const normalizedWarnings = normalizeWarnings([...init.warnings, ...sync.warnings, ...access.warnings])
+  const normalizedWarnings = normalizeWarnings([...startupWarnings, ...init.warnings, ...sync.warnings, ...access.warnings])
   if (normalizedWarnings.length > 0) {
     summaryLines.push(`Warnings: ${normalizedWarnings.length}`)
   }

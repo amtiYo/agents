@@ -58,4 +58,49 @@ describe('cursor + antigravity sync', () => {
     await expect(lstat(path.join(projectRoot, '.antigravity', 'mcp.json'))).rejects.toThrow()
     await expect(lstat(path.join(projectRoot, '.gemini', 'skills'))).resolves.toBeTruthy()
   }, 15000)
+
+  it('removes stale antigravity global config when global sync is disabled', async () => {
+    const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-ca-'))
+    const antigravityGlobalDir = await mkdtemp(path.join(os.tmpdir(), 'agents-ag-global-'))
+    const globalPath = path.join(antigravityGlobalDir, 'mcp.json')
+    tempDirs.push(projectRoot, antigravityGlobalDir)
+    process.env.AGENTS_ANTIGRAVITY_MCP_PATH = globalPath
+
+    await runInit({ projectRoot, force: true })
+
+    const config = await loadAgentsConfig(projectRoot)
+    config.integrations.enabled = ['antigravity']
+    config.integrations.options.antigravityGlobalSync = true
+    await saveAgentsConfig(projectRoot, config)
+
+    await performSync({
+      projectRoot,
+      check: false,
+      verbose: false
+    })
+    await expect(stat(globalPath)).resolves.toBeTruthy()
+
+    const disabled = await loadAgentsConfig(projectRoot)
+    disabled.integrations.options.antigravityGlobalSync = false
+    await saveAgentsConfig(projectRoot, disabled)
+
+    const check = await performSync({
+      projectRoot,
+      check: true,
+      verbose: false
+    })
+    expect(check.changed).toContain(globalPath)
+
+    await performSync({
+      projectRoot,
+      check: false,
+      verbose: false
+    })
+    await expect(stat(globalPath)).rejects.toThrow()
+
+    const generatedAntigravity = JSON.parse(
+      await readFile(path.join(projectRoot, '.agents', 'generated', 'antigravity.mcp.json'), 'utf8'),
+    ) as Record<string, unknown>
+    expect(Object.keys((generatedAntigravity.servers as Record<string, unknown>) ?? {})).not.toHaveLength(0)
+  })
 })
