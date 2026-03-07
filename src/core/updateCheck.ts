@@ -54,8 +54,7 @@ export async function checkForUpdates(options: CheckForUpdatesOptions): Promise<
 
   if (!channel.ok) {
     metadata.lastSeenVersion = options.currentVersion
-    writeUpdateMetadata(storage.document, storage.kind, metadata)
-    await writeJsonAtomic(storage.filePath, storage.document)
+    await persistUpdateMetadata(storage, metadata)
     return {
       currentVersion: options.currentVersion,
       latestVersion: normalizeVersion(metadata.latestVersion),
@@ -93,8 +92,7 @@ export async function checkForUpdates(options: CheckForUpdatesOptions): Promise<
   if (isOutdated && options.markNotifiedIfOutdated) {
     metadata.lastNotifiedAt = nowIso
   }
-  writeUpdateMetadata(storage.document, storage.kind, metadata)
-  await writeJsonAtomic(storage.filePath, storage.document)
+  await persistUpdateMetadata(storage, metadata)
 
   return {
     currentVersion: options.currentVersion,
@@ -191,6 +189,20 @@ function writeUpdateMetadata(
     ...metadata
   }
   document.meta = meta
+}
+
+/** Re-reads project-local file before writing to avoid overwriting concurrent changes (e.g. mcp add --secret-env). */
+async function persistUpdateMetadata(storage: StorageState, metadata: UpdateCheckMetadata): Promise<void> {
+  if (storage.kind === 'project-local') {
+    const fresh = await readDocument(storage.filePath)
+    if (fresh.valid) {
+      writeUpdateMetadata(fresh.document, storage.kind, metadata)
+      await writeJsonAtomic(storage.filePath, fresh.document)
+      return
+    }
+  }
+  writeUpdateMetadata(storage.document, storage.kind, metadata)
+  await writeJsonAtomic(storage.filePath, storage.document)
 }
 
 async function fetchLatestVersion(timeoutMs: number): Promise<{ version: string | null; error?: string }> {
