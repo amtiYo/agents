@@ -209,7 +209,7 @@ async function persistUpdateMetadata(storage: StorageState, metadata: UpdateChec
       await writeJsonAtomic(storage.filePath, fresh.document)
     }
     return
-    }
+  }
 
   writeUpdateMetadata(storage.document, storage.kind, metadata)
   await writeJsonAtomic(storage.filePath, storage.document)
