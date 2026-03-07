@@ -15,6 +15,7 @@ import {
 import { parseTargetOptions, resolveDefaultTargets, validateServerName } from '../core/mcpValidation.js'
 import { performSync } from '../core/sync.js'
 import { formatWarnings } from '../core/warnings.js'
+import * as ui from '../core/ui.js'
 
 export interface McpImportOptions {
   projectRoot: string
@@ -30,6 +31,8 @@ export interface McpImportOptions {
 }
 
 export async function runMcpImport(options: McpImportOptions): Promise<void> {
+  ui.setContext({ json: false })
+
   const config = await loadAgentsConfig(options.projectRoot)
   const payload = await readImportInput({
     filePath: options.file,
@@ -114,21 +117,26 @@ export async function runMcpImport(options: McpImportOptions): Promise<void> {
     warnings.push(...sync.warnings)
   }
 
-  process.stdout.write(
-    `Imported MCP servers: ${updates.length} (created: ${String(result.created.length)}, updated: ${String(result.updated.length)})\n`,
+  ui.success(
+    `Imported MCP servers: ${updates.length} (created: ${String(result.created.length)}, updated: ${String(result.updated.length)})`,
   )
   if (result.created.length > 0) {
-    process.stdout.write(`Created: ${result.created.join(', ')}\n`)
+    ui.keyValue('Created', result.created.join(', '))
   }
   if (result.updated.length > 0) {
-    process.stdout.write(`Updated: ${result.updated.join(', ')}\n`)
+    ui.keyValue('Updated', result.updated.join(', '))
   }
   if (options.noSync) {
-    process.stdout.write('Skipped sync (--no-sync).\n')
+    ui.dim('Skipped sync (--no-sync).')
   }
   const warningBlock = formatWarnings(warnings, 4)
   if (warningBlock) {
-    process.stdout.write(warningBlock)
+    ui.blank()
+    for (const line of warningBlock.split('\n').filter(Boolean)) {
+      if (line.startsWith('- ')) {
+        ui.warning(line.slice(2))
+      }
+    }
   }
 }
 

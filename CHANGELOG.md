@@ -9,8 +9,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.8.6] - 2026-03-07
 
+### Added
+
+- New `agents start --reinit` flag for explicit project config reinitialization from the start flow.
+- New integration coverage for stability fixes:
+  - repeated `agents start` preserves existing config by default
+  - `agents start --reinit` resets to selected/default setup
+  - `syncMode` switch updates managed `.gitignore` entries correctly
+  - copy-mode skills bridge drift is detected in `sync --check`
+  - watch snapshot traversal tolerates transient filesystem races
+
+### Changed
+
+- `agents start` is now non-destructive by default when `.agents/agents.json` already exists (preserves integrations/MCP/workspace config unless `--reinit` is used).
+- Managed `.gitignore` handling is now bidirectional across sync modes:
+  - `source-only` adds managed source-only ignore entries
+  - `commit-generated` removes only managed source-only entries while keeping base-managed and user custom lines
+- Documentation/examples now use the correct repeatable `--arg` flag for stdio MCP commands and clarify onboarding behavior around local secrets.
+
 ### Fixed
 
+- `sync --check` now reports drift for managed copy-mode skills bridges (`.agents_bridge`) when bridge contents diverge from `.agents/skills`.
+- `agents watch` no longer crashes on transient `ENOENT`/`EPERM`/`EACCES` races during snapshot traversal.
+- Gemini config materialization warning path now uses sync warning aggregation instead of raw `console.warn`.
+- `agents mcp import` output now goes through the shared UI pipeline instead of direct stdout writes.
 - `agents update` no longer reports "Up to date" when the npm registry check fails and only stale cached metadata is available.
 - Update checks now use a longer default timeout and retry once before falling back to cache, reducing false stale-cache results on slow networks.
 

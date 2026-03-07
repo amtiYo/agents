@@ -168,6 +168,7 @@ your-project/
 | Command | Description |
 |:--------|:------------|
 | `agents start` | Interactive setup wizard — integrations, MCP servers, skills, first sync |
+| `agents start --reinit` | Reinitialize existing `.agents/agents.json` with fresh wizard/default choices |
 | `agents init` | Scaffold `.agents/` directory without guided setup |
 | `agents sync` | Regenerate and materialize all tool configs |
 | `agents sync --check` | Dry-run — exits `2` if config is out of sync |
@@ -260,8 +261,9 @@ agents mcp add https://mcpservers.org/servers/context7-mcp
 
 ```bash
 agents mcp add my-server \
-  --command "npx" \
-  --args "@my-org/mcp-server /path/to/project"
+  --command npx \
+  --arg @my-org/mcp-server \
+  --arg /path/to/project
 ```
 
 ### Add an HTTP server with secrets
@@ -281,7 +283,7 @@ agents mcp add company-api \
 agents mcp add claude-only-server --url "https://..." --target claude
 
 # Only for Cursor and Copilot
-agents mcp add ide-server --command "ide-mcp" --target cursor --target copilot_vscode
+agents mcp add ide-server --command ide-mcp --target cursor --target copilot_vscode
 ```
 
 ---
@@ -315,7 +317,8 @@ git add .agents/agents.json .agents/skills/ AGENTS.md && git commit -m "Add agen
 **New member onboards:**
 ```bash
 git clone <repo> && cd <repo>
-agents start        # Prompts for API_TOKEN, syncs everything
+agents start        # Preserves team config and syncs local tool files
+# Add your local secrets in .agents/local.json if required by project MCP servers
 ```
 
 > One command. Same MCP servers, same skills, same instructions. No drift.

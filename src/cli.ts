@@ -53,11 +53,13 @@ async function main(): Promise<void> {
     .option('--path <dir>', 'Target project directory', process.cwd())
     .option('--non-interactive', 'Disable interactive wizard and use defaults', false)
     .option('--yes', 'Auto-confirm defaults (non-interactive)', false)
-    .action(async (opts: { path: string; nonInteractive: boolean; yes: boolean }) => {
+    .option('--reinit', 'Reinitialize existing .agents/agents.json with wizard/default values', false)
+    .action(async (opts: { path: string; nonInteractive: boolean; yes: boolean; reinit: boolean }) => {
       await runStart({
         projectRoot: resolvePath(opts.path),
         nonInteractive: Boolean(opts.nonInteractive),
-        yes: Boolean(opts.yes)
+        yes: Boolean(opts.yes),
+        reinit: Boolean(opts.reinit)
       })
     })
 

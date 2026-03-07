@@ -22,19 +22,30 @@ export async function ensureProjectGitignore(projectRoot: string, syncMode: Sync
   const exists = await pathExists(gitignorePath)
   const content = exists ? await readFile(gitignorePath, 'utf8') : ''
   const lines = content.split(/\r?\n/).filter(Boolean)
-
   const required =
     syncMode === 'source-only' ? [...BASE_MANAGED_ENTRIES, ...SOURCE_ONLY_ENTRIES] : [...BASE_MANAGED_ENTRIES]
+  const shouldRemoveSourceOnly = syncMode === 'commit-generated'
+  const managedSourceOnly = new Set(SOURCE_ONLY_ENTRIES)
 
+  const nextLines: string[] = []
   let changed = false
+
+  for (const line of lines) {
+    if (shouldRemoveSourceOnly && managedSourceOnly.has(line.trim())) {
+      changed = true
+      continue
+    }
+    nextLines.push(line)
+  }
+
   for (const entry of required) {
-    if (lines.includes(entry)) continue
-    lines.push(entry)
+    if (nextLines.some((line) => line.trim() === entry)) continue
+    nextLines.push(entry)
     changed = true
   }
 
   if (!changed) return false
-  await writeTextAtomic(gitignorePath, `${lines.join('\n')}\n`)
+  await writeTextAtomic(gitignorePath, `${nextLines.join('\n')}\n`)
   return true
 }
 

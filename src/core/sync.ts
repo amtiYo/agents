@@ -75,7 +75,7 @@ export async function performSync(options: SyncOptions): Promise<SyncResult> {
       await materializeCodex(paths.generatedCodex, paths.codexConfig, check, changed)
     }
     if (enabled.has('gemini')) {
-      await materializeGemini(paths.generatedGemini, paths.geminiSettings, check, changed)
+      await materializeGemini(paths.generatedGemini, paths.geminiSettings, check, changed, warnings)
     }
     if (enabled.has('copilot_vscode')) {
       await materializeCopilot(paths.generatedCopilot, paths.vscodeMcp, check, changed)
@@ -280,7 +280,13 @@ async function materializeCodex(generatedPath: string, targetPath: string, check
   await writeManagedFile(targetPath, content, path.dirname(path.dirname(targetPath)), check, changed)
 }
 
-async function materializeGemini(generatedPath: string, targetPath: string, check: boolean, changed: string[]): Promise<void> {
+async function materializeGemini(
+  generatedPath: string,
+  targetPath: string,
+  check: boolean,
+  changed: string[],
+  warnings: string[]
+): Promise<void> {
   const rawGenerated = await readTextOrEmpty(generatedPath)
   let generated: Record<string, unknown> = {}
   if (rawGenerated.trim()) {
@@ -296,8 +302,8 @@ async function materializeGemini(generatedPath: string, targetPath: string, chec
     try {
       existing = await readJson<Record<string, unknown>>(targetPath)
     } catch (error) {
-      // Warn instead of silently ignoring - corrupted files should be noticed
-      console.warn(`Warning: Failed to read existing Gemini config at ${targetPath}, starting fresh. Error: ${error instanceof Error ? error.message : String(error)}`)
+      const message = error instanceof Error ? error.message : String(error)
+      warnings.push(`Failed to read existing Gemini config at ${targetPath}; starting fresh. ${message}`)
       existing = {}
     }
   }

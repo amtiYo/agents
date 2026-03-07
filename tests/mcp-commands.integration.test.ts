@@ -66,22 +66,25 @@ describe('mcp command integration', () => {
     expect(typeof configAfterAdd.lastSync).toBe('string')
     const lastSyncAfterAdd = configAfterAdd.lastSync
 
-    await runMcpImport({
-      projectRoot,
-      json: JSON.stringify({
-        mcpServers: {
-          docs: {
-            url: 'https://example.com/mcp'
+    const importOutput = await captureStdout(async () => {
+      await runMcpImport({
+        projectRoot,
+        json: JSON.stringify({
+          mcpServers: {
+            docs: {
+              url: 'https://example.com/mcp'
+            }
           }
-        }
-      }),
-      file: undefined,
-      name: undefined,
-      targets: [],
-      replace: false,
-      noSync: true,
-      nonInteractive: true
+        }),
+        file: undefined,
+        name: undefined,
+        targets: [],
+        replace: false,
+        noSync: true,
+        nonInteractive: true
+      })
     })
+    expect(importOutput).toContain('Imported MCP servers: 1')
 
     const listed = await captureStdout(async () => {
       await runMcpList({

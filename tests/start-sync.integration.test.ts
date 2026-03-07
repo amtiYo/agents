@@ -230,6 +230,80 @@ describe('start + sync flow', () => {
     expect(await readlink(path.join(projectRoot, 'AGENTS.md'))).toBe('TEAM.md')
     expect(output).toContain('AGENTS.md exists and is not a regular file (symlink/directory). Skipped overwrite.')
   })
+
+  it('preserves existing agents config on repeated start by default', async () => {
+    const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-start-preserve-config-'))
+    const codexDir = await mkdtemp(path.join(os.tmpdir(), 'agents-codex-'))
+    tempDirs.push(projectRoot, codexDir)
+
+    process.env.AGENTS_CODEX_CONFIG_PATH = path.join(codexDir, 'config.toml')
+    process.env.PATH = '/dev/null'
+
+    await runStart({
+      projectRoot,
+      nonInteractive: true,
+      yes: true
+    })
+
+    const config = await loadAgentsConfig(projectRoot)
+    config.integrations.enabled = ['cursor', 'claude']
+    config.mcp.servers.teamDocs = {
+      transport: 'http',
+      url: 'https://example.com/mcp',
+      targets: ['cursor', 'claude']
+    }
+    await saveAgentsConfig(projectRoot, config)
+
+    await runStart({
+      projectRoot,
+      nonInteractive: true,
+      yes: true
+    })
+
+    const after = await loadAgentsConfig(projectRoot)
+    expect(after.integrations.enabled).toEqual(['cursor', 'claude'])
+    expect(after.mcp.servers.teamDocs).toEqual({
+      transport: 'http',
+      url: 'https://example.com/mcp',
+      targets: ['cursor', 'claude']
+    })
+  })
+
+  it('reinitializes existing agents config when start uses --reinit', async () => {
+    const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-start-reinit-config-'))
+    const codexDir = await mkdtemp(path.join(os.tmpdir(), 'agents-codex-'))
+    tempDirs.push(projectRoot, codexDir)
+
+    process.env.AGENTS_CODEX_CONFIG_PATH = path.join(codexDir, 'config.toml')
+    process.env.PATH = '/dev/null'
+
+    await runStart({
+      projectRoot,
+      nonInteractive: true,
+      yes: true
+    })
+
+    const config = await loadAgentsConfig(projectRoot)
+    config.integrations.enabled = ['cursor']
+    config.mcp.servers.teamDocs = {
+      transport: 'http',
+      url: 'https://example.com/mcp',
+      targets: ['cursor']
+    }
+    await saveAgentsConfig(projectRoot, config)
+
+    await runStart({
+      projectRoot,
+      nonInteractive: true,
+      yes: true,
+      reinit: true
+    })
+
+    const after = await loadAgentsConfig(projectRoot)
+    expect(after.integrations.enabled).toEqual(['codex'])
+    expect(after.mcp.servers.teamDocs).toBeUndefined()
+    expect(Object.keys(after.mcp.servers).sort()).toEqual(['fetch', 'filesystem', 'git'])
+  })
 })
 
 async function captureStdout(fn: () => Promise<void>): Promise<string> {

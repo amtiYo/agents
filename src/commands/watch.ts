@@ -28,7 +28,7 @@ export async function runWatch(options: WatchOptions): Promise<void> {
   ui.dim(`Interval: ${intervalMs}ms. Press Ctrl+C to stop.`)
   ui.blank()
 
-  let lastSignature = await snapshotSignature(projectRoot)
+  let lastSignature = await safeSnapshotSignature(projectRoot, options.quiet) ?? 'unavailable'
   let stopped = false
 
   const stop = (): void => {
@@ -37,14 +37,19 @@ export async function runWatch(options: WatchOptions): Promise<void> {
 
   process.on('SIGINT', stop)
   process.on('SIGTERM', stop)
+  try {
+    while (!stopped) {
+      await sleep(intervalMs)
+      const nextSignature = await safeSnapshotSignature(projectRoot, options.quiet)
+      if (nextSignature === null) continue
+      if (nextSignature === lastSignature) continue
 
-  while (!stopped) {
-    await sleep(intervalMs)
-    const nextSignature = await snapshotSignature(projectRoot)
-    if (nextSignature === lastSignature) continue
-
-    lastSignature = nextSignature
-    await runSingleSync(projectRoot, options.quiet)
+      lastSignature = nextSignature
+      await runSingleSync(projectRoot, options.quiet)
+    }
+  } finally {
+    process.off('SIGINT', stop)
+    process.off('SIGTERM', stop)
   }
 
   ui.blank()
@@ -104,7 +109,13 @@ async function fingerprintPath(filePath: string, label: string): Promise<string>
     return `${label}:missing`
   }
 
-  const info = await lstat(filePath)
+  let info
+  try {
+    info = await lstat(filePath)
+  } catch (error) {
+    if (isTransientFsError(error)) return `${label}:missing`
+    throw error
+  }
   const kind = info.isSymbolicLink() ? 'symlink' : info.isDirectory() ? 'dir' : 'file'
   return `${label}:${kind}:${info.size}:${Math.round(info.mtimeMs)}`
 }
@@ -117,7 +128,13 @@ async function fingerprintTree(rootDir: string, label: string): Promise<string> 
   const entries: string[] = []
 
   async function walk(currentDir: string): Promise<void> {
-    const children = await readdir(currentDir, { withFileTypes: true })
+    let children
+    try {
+      children = await readdir(currentDir, { withFileTypes: true })
+    } catch (error) {
+      if (isTransientFsError(error)) return
+      throw error
+    }
     children.sort((a, b) => a.name.localeCompare(b.name))
 
     for (const child of children) {
@@ -128,7 +145,13 @@ async function fingerprintTree(rootDir: string, label: string): Promise<string> 
         await walk(absolute)
         continue
       }
-      const info = await lstat(absolute)
+      let info
+      try {
+        info = await lstat(absolute)
+      } catch (error) {
+        if (isTransientFsError(error)) continue
+        throw error
+      }
       const kind = info.isSymbolicLink() ? 'l' : 'f'
       entries.push(`${kind}:${relative}:${info.size}:${Math.round(info.mtimeMs)}`)
     }
@@ -149,4 +172,22 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => {
     setTimeout(resolve, ms)
   })
+}
+
+async function safeSnapshotSignature(projectRoot: string, quiet: boolean): Promise<string | null> {
+  try {
+    return await snapshotSignature(projectRoot)
+  } catch (error) {
+    if (!quiet) {
+      const message = error instanceof Error ? error.message : String(error)
+      ui.warning(`Watch snapshot skipped: ${message}`)
+    }
+    return null
+  }
+}
+
+function isTransientFsError(value: unknown): boolean {
+  if (typeof value !== 'object' || value === null || !('code' in value)) return false
+  const code = (value as { code?: unknown }).code
+  return code === 'ENOENT' || code === 'EPERM' || code === 'EACCES'
 }
