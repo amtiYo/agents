@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { open, readFile, rm, stat } from 'node:fs/promises'
 import path from 'node:path'
 import { ensureDir } from './fs.js'
@@ -7,18 +8,21 @@ const DEFAULT_STALE_MS = 5 * 60_000
 interface LockMetadata {
   pid?: number
   startedAt?: string
+  token?: string
 }
 
 export async function acquireSyncLock(lockPath: string, staleMs = DEFAULT_STALE_MS): Promise<() => Promise<void>> {
   await ensureDir(path.dirname(lockPath))
+  const ownerToken = randomUUID()
 
-  for (let attempt = 0; attempt < 2; attempt += 1) {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
       const handle = await open(lockPath, 'wx')
       try {
         const metadata: LockMetadata = {
           pid: process.pid,
-          startedAt: new Date().toISOString()
+          startedAt: new Date().toISOString(),
+          token: ownerToken
         }
         await handle.writeFile(`${JSON.stringify(metadata)}\n`, 'utf8')
       } finally {
@@ -26,6 +30,13 @@ export async function acquireSyncLock(lockPath: string, staleMs = DEFAULT_STALE_
       }
 
       return async (): Promise<void> => {
+        const metadata = await readLockMetadata(lockPath)
+        if (metadata?.token && metadata.token !== ownerToken) {
+          return
+        }
+        if (!metadata?.token && typeof metadata?.pid === 'number' && metadata.pid !== process.pid) {
+          return
+        }
         await rm(lockPath, { force: true })
       }
     } catch (error) {
@@ -34,13 +45,15 @@ export async function acquireSyncLock(lockPath: string, staleMs = DEFAULT_STALE_
         throw error
       }
 
+      const metadata = await readLockMetadata(lockPath)
       const stale = await isLockStale(lockPath, staleMs)
-      if (stale) {
+      const ownerAlive = await isLockOwnerAlive(metadata)
+      if (stale && !ownerAlive) {
         await rm(lockPath, { force: true })
         continue
       }
 
-      throw new Error(buildLockBusyMessage(lockPath, await readLockMetadata(lockPath)))
+      throw new Error(buildLockBusyMessage(lockPath, metadata))
     }
   }
 
@@ -71,6 +84,21 @@ async function isLockStale(lockPath: string, staleMs: number): Promise<boolean> 
     const ageMs = Date.now() - info.mtimeMs
     return ageMs > staleMs
   } catch {
+    return true
+  }
+}
+
+async function isLockOwnerAlive(metadata: LockMetadata | null): Promise<boolean> {
+  if (typeof metadata?.pid !== 'number') return false
+  if (metadata.pid === process.pid) return true
+  try {
+    process.kill(metadata.pid, 0)
+    return true
+  } catch (error) {
+    const code = getErrorCode(error)
+    if (code === 'ESRCH') {
+      return false
+    }
     return true
   }
 }

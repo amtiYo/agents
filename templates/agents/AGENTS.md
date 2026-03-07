@@ -16,6 +16,13 @@ Deliver correct, maintainable changes with minimal risk.
 - Local MCP overrides/secrets: `.agents/local.json`
 - Project skills: `.agents/skills/*/SKILL.md`
 
+## MCP & Skills workflow
+1. Add or update MCP entries in `.agents/agents.json`.
+2. Keep reusable instructions in `.agents/skills/*/SKILL.md`.
+3. Run `agents sync` after changes.
+4. Use `agents sync --check` in CI or before opening a PR.
+5. Use `agents mcp test --runtime` when introducing new servers.
+
 ## Workflow
 1. Plan briefly.
 2. Implement minimal viable change.

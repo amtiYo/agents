@@ -23,7 +23,7 @@ afterEach(async () => {
   }
 })
 
-describe('mcp test runtime mode', () => {
+describe.sequential('mcp test runtime mode', () => {
   it('reports runtime health and stays successful when all probes are healthy', async () => {
     const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-mcp-runtime-'))
     const binDir = await mkdtemp(path.join(os.tmpdir(), 'agents-mcp-runtime-bin-'))
@@ -140,6 +140,58 @@ describe('mcp test runtime mode', () => {
     })
 
     expect(process.exitCode).toBe(1)
+  })
+
+  it('normalizes invalid runtime timeout values to default', { timeout: 15000 }, async () => {
+    const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-mcp-runtime-'))
+    tempDirs.push(projectRoot)
+
+    await runInit({ projectRoot, force: true })
+    await runMcpAdd({
+      projectRoot,
+      name: 'docs',
+      transport: 'http',
+      url: 'https://example.com/mcp',
+      targets: ['cursor'],
+      args: [],
+      env: [],
+      headers: [],
+      secretEnv: [],
+      secretHeaders: [],
+      secretArgs: [],
+      disabled: false,
+      replace: false,
+      noSync: true,
+      nonInteractive: true
+    })
+
+    const out = await captureStdout(async () => {
+      await runMcpTest({
+        projectRoot,
+        name: 'docs',
+        json: true,
+        runtime: true,
+        runtimeTimeoutMs: Number.NaN
+      })
+    })
+    const payload = JSON.parse(out) as {
+      runtime?: { timeoutMs: number }
+    }
+    expect(payload.runtime?.timeoutMs).toBe(8000)
+
+    const outZero = await captureStdout(async () => {
+      await runMcpTest({
+        projectRoot,
+        name: 'docs',
+        json: true,
+        runtime: true,
+        runtimeTimeoutMs: 0
+      })
+    })
+    const payloadZero = JSON.parse(outZero) as {
+      runtime?: { timeoutMs: number }
+    }
+    expect(payloadZero.runtime?.timeoutMs).toBe(8000)
   })
 })
 

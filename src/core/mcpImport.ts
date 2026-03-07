@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises'
 import { parse, type ParseError } from 'jsonc-parser'
 import type { McpServerDefinition, McpTransportType } from '../types.js'
 import { parseTargetOptions, validateEnvKey, validateHeaderKey, validateTransport } from './mcpValidation.js'
+import { isObject } from './objectUtils.js'
 
 interface ImportedServer {
   name: string
@@ -263,10 +264,6 @@ function readStringMap(
     out[key] = entry
   }
   return out
-}
-
-function isObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
 async function readStdinAll(): Promise<string> {

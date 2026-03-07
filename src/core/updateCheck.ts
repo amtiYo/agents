@@ -6,8 +6,11 @@ import type { UpdateCheckMetadata } from '../types.js'
 import * as ui from './ui.js'
 
 const NPM_LATEST_URL = 'https://registry.npmjs.org/@agents-dev/cli/latest'
-const DEFAULT_TIMEOUT_MS = 1500
+const DEFAULT_TIMEOUT_MS = 5000
+const STARTUP_TIMEOUT_MS = 1200
 const STARTUP_RECHECK_MS = 6 * 60 * 60 * 1000
+const DEFAULT_REGISTRY_FETCH_RETRIES = 1
+const STARTUP_FETCH_RETRIES = 0
 
 export const UPGRADE_COMMAND = 'npm install -g @agents-dev/cli@latest'
 
@@ -18,6 +21,11 @@ interface StorageState {
   kind: StorageKind
   filePath: string
   document: Record<string, unknown>
+}
+
+interface ReadDocumentResult {
+  document: Record<string, unknown>
+  valid: boolean
 }
 
 export interface UpdateStatus {
@@ -35,6 +43,7 @@ export interface CheckForUpdatesOptions {
   projectRoot?: string
   forceRefresh?: boolean
   timeoutMs?: number
+  fetchRetries?: number
   markNotifiedIfOutdated?: boolean
 }
 
@@ -42,14 +51,14 @@ export async function checkForUpdates(options: CheckForUpdatesOptions): Promise<
   const now = new Date()
   const nowIso = now.toISOString()
   const timeoutMs = normalizeTimeout(options.timeoutMs)
+  const fetchRetries = normalizeRetryCount(options.fetchRetries, DEFAULT_REGISTRY_FETCH_RETRIES)
   const storage = await loadStorageState(options.projectRoot)
   const metadata = readUpdateMetadata(storage.document)
   const channel = resolveUpdateChannel()
 
   if (!channel.ok) {
     metadata.lastSeenVersion = options.currentVersion
-    writeUpdateMetadata(storage.document, storage.kind, metadata)
-    await writeJsonAtomic(storage.filePath, storage.document)
+    await persistUpdateMetadata(storage, metadata)
     return {
       currentVersion: options.currentVersion,
       latestVersion: normalizeVersion(metadata.latestVersion),
@@ -67,7 +76,7 @@ export async function checkForUpdates(options: CheckForUpdatesOptions): Promise<
 
   const shouldRefresh = options.forceRefresh === true || !isRecent(metadata.lastCheckedAt, STARTUP_RECHECK_MS)
   if (!latestVersion || shouldRefresh) {
-    const fetched = await fetchLatestVersion(timeoutMs)
+    const fetched = await fetchLatestVersion(timeoutMs, fetchRetries)
     if (fetched.version) {
       latestVersion = fetched.version
       metadata.latestVersion = fetched.version
@@ -87,8 +96,7 @@ export async function checkForUpdates(options: CheckForUpdatesOptions): Promise<
   if (isOutdated && options.markNotifiedIfOutdated) {
     metadata.lastNotifiedAt = nowIso
   }
-  writeUpdateMetadata(storage.document, storage.kind, metadata)
-  await writeJsonAtomic(storage.filePath, storage.document)
+  await persistUpdateMetadata(storage, metadata)
 
   return {
     currentVersion: options.currentVersion,
@@ -109,6 +117,8 @@ export async function maybeNotifyAboutUpdate(args: {
     const status = await checkForUpdates({
       currentVersion: args.currentVersion,
       projectRoot: args.projectRoot,
+      timeoutMs: STARTUP_TIMEOUT_MS,
+      fetchRetries: STARTUP_FETCH_RETRIES,
       markNotifiedIfOutdated: true
     })
     if (!status.isOutdated || !status.latestVersion) return
@@ -124,28 +134,38 @@ export async function maybeNotifyAboutUpdate(args: {
 async function loadStorageState(projectRoot: string | undefined): Promise<StorageState> {
   const projectLocalPath = projectRoot ? getProjectPaths(projectRoot).agentsLocal : undefined
   if (projectLocalPath && (await pathExists(projectLocalPath))) {
-    return {
-      kind: 'project-local',
-      filePath: projectLocalPath,
-      document: await readDocument(projectLocalPath)
+    const local = await readDocument(projectLocalPath)
+    if (local.valid) {
+      return {
+        kind: 'project-local',
+        filePath: projectLocalPath,
+        document: local.document
+      }
     }
   }
 
   const globalPath = path.join(os.homedir(), '.agents-dev', 'update-check.json')
+  const globalDocument = await readDocument(globalPath)
   return {
     kind: 'global',
     filePath: globalPath,
-    document: await readDocument(globalPath)
+    document: globalDocument.document
   }
 }
 
-async function readDocument(filePath: string): Promise<Record<string, unknown>> {
-  if (!(await pathExists(filePath))) return {}
+async function readDocument(filePath: string): Promise<ReadDocumentResult> {
+  if (!(await pathExists(filePath))) return { document: {}, valid: true }
   try {
     const parsed = await readJson<Record<string, unknown>>(filePath)
-    return typeof parsed === 'object' && parsed !== null ? parsed : {}
+    if (typeof parsed === 'object' && parsed !== null) {
+      return { document: parsed, valid: true }
+    }
+    return {
+      document: {},
+      valid: false
+    }
   } catch {
-    return {}
+    return { document: {}, valid: false }
   }
 }
 
@@ -177,35 +197,67 @@ function writeUpdateMetadata(
   document.meta = meta
 }
 
-async function fetchLatestVersion(timeoutMs: number): Promise<{ version: string | null; error?: string }> {
-  const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), timeoutMs)
-  try {
-    const response = await fetch(NPM_LATEST_URL, {
-      headers: { Accept: 'application/json' },
-      signal: controller.signal
-    })
-    if (!response.ok) {
-      return { version: null, error: `registry request failed (${response.status})` }
+/** Re-reads project-local file before writing to avoid overwriting concurrent changes (e.g. mcp add --secret-env). */
+async function persistUpdateMetadata(storage: StorageState, metadata: UpdateCheckMetadata): Promise<void> {
+  if (storage.kind === 'project-local') {
+    if (!(await pathExists(storage.filePath))) {
+      return
     }
-
-    const payload = await response.json() as { version?: unknown }
-    const version = normalizeVersion(typeof payload.version === 'string' ? payload.version : null)
-    if (!version) {
-      return { version: null, error: 'invalid registry response' }
+    const fresh = await readDocument(storage.filePath)
+    if (fresh.valid) {
+      writeUpdateMetadata(fresh.document, storage.kind, metadata)
+      await writeJsonAtomic(storage.filePath, fresh.document)
     }
-    return { version }
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error)
-    return { version: null, error: message }
-  } finally {
-    clearTimeout(timeout)
+    return
   }
+
+  writeUpdateMetadata(storage.document, storage.kind, metadata)
+  await writeJsonAtomic(storage.filePath, storage.document)
+}
+
+async function fetchLatestVersion(timeoutMs: number, retries: number): Promise<{ version: string | null; error?: string }> {
+  let lastError: string | undefined
+
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), timeoutMs)
+    timeout.unref()
+    try {
+      const response = await fetch(NPM_LATEST_URL, {
+        headers: { Accept: 'application/json' },
+        signal: controller.signal
+      })
+      if (!response.ok) {
+        lastError = `registry request failed (${response.status})`
+        continue
+      }
+
+      const payload = await response.json() as { version?: unknown }
+      const version = normalizeVersion(typeof payload.version === 'string' ? payload.version : null)
+      if (!version) {
+        lastError = 'invalid registry response'
+        continue
+      }
+      return { version }
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : String(error)
+    } finally {
+      clearTimeout(timeout)
+    }
+  }
+
+  return { version: null, error: lastError ?? 'unknown error' }
 }
 
 function normalizeTimeout(input: number | undefined): number {
   if (!Number.isFinite(input)) return DEFAULT_TIMEOUT_MS
   if (!input || input <= 0) return DEFAULT_TIMEOUT_MS
+  return Math.floor(input)
+}
+
+function normalizeRetryCount(input: number | undefined, fallback: number): number {
+  if (!Number.isFinite(input)) return fallback
+  if (input === undefined || input < 0) return fallback
   return Math.floor(input)
 }
 

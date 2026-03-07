@@ -2,6 +2,11 @@
 
 This directory stores project skills used across supported LLM tools.
 
+## Included starter skills
+- `skill-guide`: how to design and maintain project skills.
+- `docs-research`: short workflow for gathering high-signal docs quickly.
+- `mcp-troubleshooting`: triage flow for MCP setup and runtime issues.
+
 ## Skill structure
 Each skill must live in its own folder and contain `SKILL.md`:
 

@@ -1,6 +1,6 @@
 {
   "name": "@agents-dev/cli",
-  "version": "0.8.5",
+  "version": "0.8.6",
   "description": "One config to rule them all — Practical standard layer for multi-LLM development. Sync MCP servers, skills, and AGENTS.md across Codex, Claude Code, Gemini CLI, Cursor, Copilot, Antigravity, Windsurf, and OpenCode.",
   "main": "dist/cli.js",
   "scripts": {

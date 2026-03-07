@@ -16,6 +16,7 @@ beforeEach(() => {
 })
 
 afterEach(async () => {
+  process.exitCode = undefined
   if (previousPathEnv === undefined) {
     delete process.env.PATH
   } else {
@@ -69,4 +70,61 @@ describe('watch command', () => {
     expect(codexConfig).toContain('server-filesystem')
     expect(codexConfig).not.toContain('mcp-server-git')
   })
+
+  it('sets non-zero exit code and still prints errors in quiet once mode', async () => {
+    const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-watch-'))
+    const codexDir = await mkdtemp(path.join(os.tmpdir(), 'agents-codex-'))
+    tempDirs.push(projectRoot, codexDir)
+
+    process.env.AGENTS_CODEX_CONFIG_PATH = path.join(codexDir, 'config.toml')
+    process.env.PATH = '/dev/null'
+
+    await runStart({
+      projectRoot,
+      nonInteractive: true,
+      yes: true
+    })
+
+    const configPath = path.join(projectRoot, '.agents', 'agents.json')
+    const config = JSON.parse(await readFile(configPath, 'utf8')) as Record<string, unknown>
+    const mcp = (config.mcp as { servers?: Record<string, unknown> }).servers ?? {}
+    mcp.bad = {
+      transport: 'stdio',
+      command: 'npx',
+      env: {
+        'BAD KEY': 'x'
+      }
+    }
+    ;(config.mcp as { servers: Record<string, unknown> }).servers = mcp
+    await writeFile(configPath, `${JSON.stringify(config, null, 2)}\n`, 'utf8')
+
+    const output = await captureStdout(async () => {
+      await runWatch({
+        projectRoot,
+        intervalMs: 100,
+        once: true,
+        quiet: true
+      })
+    })
+
+    expect(process.exitCode).toBe(1)
+    expect(output).toContain('sync failed')
+  })
 })
+
+async function captureStdout(fn: () => Promise<void>): Promise<string> {
+  const chunks: string[] = []
+  const originalWrite = process.stdout.write.bind(process.stdout)
+  ;(process.stdout.write as unknown as (chunk: string) => boolean) = ((chunk: string) => {
+    chunks.push(chunk)
+    return true
+  }) as unknown as typeof process.stdout.write
+
+  try {
+    await fn()
+  } finally {
+    ;(process.stdout.write as unknown as typeof process.stdout.write) = originalWrite as unknown as typeof process.stdout.write
+  }
+
+  return chunks.join('')
+}

@@ -2,11 +2,14 @@ import path from 'node:path'
 import * as clack from '@clack/prompts'
 import color from 'picocolors'
 import { pathExists } from '../core/fs.js'
+import { loadAgentsConfig } from '../core/config.js'
+import { CancelledError } from '../core/errors.js'
 import { ensureProjectGitignore } from '../core/gitignore.js'
 import { initializeProjectSkeleton } from '../core/project.js'
 import { performSync } from '../core/sync.js'
 import { commandExists } from '../core/shell.js'
-import type { IntegrationName, SyncMode } from '../types.js'
+import { syncProjectDocsSections } from '../core/projectDocs.js'
+import type { AgentsConfig, IntegrationName, SyncMode } from '../types.js'
 import { INTEGRATIONS } from '../integrations/registry.js'
 import { getProjectPaths } from '../core/paths.js'
 import { runReset } from './reset.js'
@@ -17,6 +20,8 @@ export interface StartOptions {
   projectRoot: string
   nonInteractive: boolean
   yes: boolean
+  reinit?: boolean
+  injectDocs?: boolean
 }
 
 export async function runStart(options: StartOptions): Promise<void> {
@@ -26,10 +31,39 @@ export async function runStart(options: StartOptions): Promise<void> {
   }
 
   const interactive = !options.nonInteractive && !options.yes
+  const paths = getProjectPaths(projectRoot)
+  const reinit = options.reinit === true
+  const hasExistingConfig = await pathExists(paths.agentsConfig)
+  const startupWarnings: string[] = []
+  let preserveExistingConfig = !reinit && hasExistingConfig
+  let forceInitialize = reinit
+  let existingConfig: AgentsConfig | null = null
+
+  if (preserveExistingConfig) {
+    try {
+      existingConfig = await loadAgentsConfig(projectRoot)
+    } catch (error) {
+      preserveExistingConfig = false
+      forceInitialize = true
+      const message = error instanceof Error ? error.message : String(error)
+      startupWarnings.push(`Existing .agents/agents.json is invalid; reinitialized with defaults. ${message}`)
+    }
+  }
 
   if (interactive) {
     clack.intro(color.cyan('agents start'))
     clack.note('One command setup for AGENTS.md + LLM integrations + MCP + SKILLS.', 'Welcome')
+    if (preserveExistingConfig) {
+      clack.note(
+        'Existing .agents/agents.json detected. start will preserve current integrations/MCP config. Use --reinit to reset.',
+        'Configuration mode'
+      )
+    } else if (hasExistingConfig && !reinit) {
+      clack.note(
+        'Existing .agents/agents.json is invalid. start will reinitialize defaults and continue.',
+        'Configuration mode'
+      )
+    }
   }
 
   const preflight = collectPreflight()
@@ -38,35 +72,45 @@ export async function runStart(options: StartOptions): Promise<void> {
     clack.note(renderPreflight(missingPreflight), 'Preflight warnings')
   }
 
+  let cleanupBeforeSetup = false
   if (interactive && (await shouldOfferCleanup(projectRoot))) {
-    const doCleanup = await confirmOrCancel({
+    cleanupBeforeSetup = await confirmOrCancel({
       message: 'Found local generated files. Cleanup before setup?',
       initialValue: true
     })
-    if (doCleanup) {
-      await runReset({ projectRoot, localOnly: false, hard: false })
-    }
   }
 
   const defaults = getDefaults()
-  const selectedIntegrations = interactive
-    ? await selectIntegrations(defaults.integrationDefaults)
-    : defaults.integrationDefaults
+  const selectedIntegrations = preserveExistingConfig
+    ? [...(existingConfig?.integrations.enabled ?? [])]
+    : interactive
+      ? await selectIntegrations(defaults.integrationDefaults)
+      : defaults.integrationDefaults
+
+  const syncMode = preserveExistingConfig
+    ? (existingConfig?.syncMode ?? defaults.syncMode)
+    : interactive
+      ? await selectSyncMode(defaults.syncMode)
+      : defaults.syncMode
+
+  const hideGeneratedInVscode = preserveExistingConfig
+    ? (existingConfig?.workspace.vscode.hideGenerated ?? defaults.hideGeneratedInVscode)
+    : interactive
+      ? await selectVscodeHideDefaults(defaults.hideGeneratedInVscode)
+      : defaults.hideGeneratedInVscode
 
   const access = await resolveIntegrationAccess({
     projectRoot,
     selectedIntegrations,
     interactive,
-    autoApprove: options.yes || options.nonInteractive
+    autoApprove: options.yes || options.nonInteractive,
+    integrationOptions: preserveExistingConfig
+      ? (existingConfig?.integrations.options ?? { cursorAutoApprove: true, antigravityGlobalSync: true })
+      : { cursorAutoApprove: true, antigravityGlobalSync: true },
+    allowOptionPrompts: !preserveExistingConfig
   })
 
-  const hideGeneratedInVscode = interactive
-    ? await selectVscodeHideDefaults(defaults.hideGeneratedInVscode)
-    : defaults.hideGeneratedInVscode
-
-  const syncMode = interactive
-    ? await selectSyncMode(defaults.syncMode)
-    : defaults.syncMode
+  let injectProjectDocs = options.injectDocs === true
 
   if (interactive) {
     const proceed = await confirmOrCancel({
@@ -79,12 +123,23 @@ export async function runStart(options: StartOptions): Promise<void> {
     }
   }
 
+  if (interactive && !injectProjectDocs) {
+    injectProjectDocs = await confirmOrCancel({
+      message: 'Add agents usage section to README/CONTRIBUTING?',
+      initialValue: true
+    })
+  }
+
+  if (cleanupBeforeSetup) {
+    await runReset({ projectRoot, localOnly: false, hard: false })
+  }
+
   const spin = interactive ? clack.spinner() : null
   spin?.start('Applying project setup...')
 
   const init = await initializeProjectSkeleton({
     projectRoot,
-    force: true,
+    force: forceInitialize,
     integrations: selectedIntegrations,
     integrationOptions: access.integrationOptions,
     syncMode,
@@ -99,22 +154,39 @@ export async function runStart(options: StartOptions): Promise<void> {
     verbose: false
   })
 
+  const docsSync = injectProjectDocs
+    ? await syncProjectDocsSections({
+      projectRoot,
+      includeContributing: true
+    })
+    : { changed: [], skipped: [] }
+
   spin?.stop('Setup complete.')
+  const configMode = preserveExistingConfig ? 'preserved existing config' : forceInitialize ? 'reinitialized' : 'initialized'
 
   const summaryLines = [
     `Project: ${projectRoot}`,
+    `Config mode: ${configMode}`,
     `Integrations: ${selectedIntegrations.join(', ') || '(none)'}`,
     `Sync mode: ${syncMode}`,
     `VS Code hide tool dirs: ${hideGeneratedInVscode ? 'enabled' : 'disabled'}`,
-    `Codex trust: ${access.summaries.codex}`,
-    `Cursor approval: ${access.summaries.cursor}`,
-    `Antigravity sync: ${access.summaries.antigravity}`,
-    `Windsurf sync: ${access.summaries.windsurf}`,
-    `OpenCode sync: ${access.summaries.opencode}`,
     `Created/updated: ${init.changed.length}`
   ]
 
-  const normalizedWarnings = normalizeWarnings([...init.warnings, ...sync.warnings])
+  if (injectProjectDocs) {
+    summaryLines.push(`Docs guide: ${docsSync.changed.length > 0 ? `updated ${docsSync.changed.join(', ')}` : 'no changes'}`)
+    if (docsSync.skipped.length > 0) {
+      summaryLines.push(`Docs skipped: ${docsSync.skipped.join(', ')}`)
+    }
+  } else {
+    summaryLines.push('Docs guide: skipped')
+  }
+
+  for (const [key, value] of Object.entries(access.summaries)) {
+    summaryLines.push(`${formatSummaryKey(key)}: ${value}`)
+  }
+
+  const normalizedWarnings = normalizeWarnings([...startupWarnings, ...init.warnings, ...sync.warnings, ...access.warnings])
   if (normalizedWarnings.length > 0) {
     summaryLines.push(`Warnings: ${normalizedWarnings.length}`)
   }
@@ -149,27 +221,31 @@ async function resolveIntegrationAccess(args: {
   selectedIntegrations: IntegrationName[]
   interactive: boolean
   autoApprove: boolean
+  integrationOptions: AgentsConfig['integrations']['options']
+  allowOptionPrompts: boolean
 }): Promise<{
   integrationOptions: { cursorAutoApprove: boolean; antigravityGlobalSync: boolean }
-  summaries: { codex: string; cursor: string; antigravity: string; windsurf: string; opencode: string }
+  summaries: Record<string, string>
+  warnings: string[]
 }> {
-  const { projectRoot, selectedIntegrations, interactive, autoApprove } = args
+  const { projectRoot, selectedIntegrations, interactive, autoApprove, integrationOptions: baseOptions, allowOptionPrompts } = args
 
-  const summaries: { codex: string; cursor: string; antigravity: string; windsurf: string; opencode: string } = {
-    codex: 'not required',
-    cursor: 'not required',
-    antigravity: 'not required',
-    windsurf: 'not required',
-    opencode: 'not required'
-  }
+  const summaries: Record<string, string> = {}
+  const warnings: string[] = []
 
   const integrationOptions = {
-    cursorAutoApprove: true,
-    antigravityGlobalSync: true
+    cursorAutoApprove: baseOptions.cursorAutoApprove,
+    antigravityGlobalSync: baseOptions.antigravityGlobalSync
   }
 
   if (selectedIntegrations.includes('codex')) {
-    const state = await getCodexTrustState(projectRoot)
+    let state: 'trusted' | 'untrusted' = 'untrusted'
+    try {
+      state = await getCodexTrustState(projectRoot)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      warnings.push(`Failed reading Codex trust state: ${message}`)
+    }
     if (state === 'trusted') {
       summaries.codex = 'already trusted'
     } else {
@@ -191,15 +267,24 @@ async function resolveIntegrationAccess(args: {
       if (!approve) {
         summaries.codex = 'skipped (project may stay untrusted)'
       } else {
-        const result = await ensureCodexProjectTrusted(projectRoot)
-        summaries.codex = result.changed ? `trusted (updated ${result.path})` : 'already trusted'
+        try {
+          const result = await ensureCodexProjectTrusted(projectRoot)
+          summaries.codex = result.changed ? `trusted (updated ${result.path})` : 'already trusted'
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error)
+          summaries.codex = 'warning (trust not updated)'
+          warnings.push(`Codex trust setup skipped: ${message}`)
+        }
       }
     }
   }
 
   if (selectedIntegrations.includes('cursor')) {
-    let approve = autoApprove
-    if (interactive) {
+    let approve = integrationOptions.cursorAutoApprove
+    if (allowOptionPrompts && !interactive) {
+      approve = autoApprove
+    }
+    if (allowOptionPrompts && interactive) {
       clack.note(
         [
           'Cursor MCP servers require approval before they are loaded.',
@@ -217,8 +302,10 @@ async function resolveIntegrationAccess(args: {
   }
 
   if (selectedIntegrations.includes('antigravity')) {
-    integrationOptions.antigravityGlobalSync = true
-    summaries.antigravity = 'global user profile'
+    if (allowOptionPrompts) {
+      integrationOptions.antigravityGlobalSync = true
+    }
+    summaries.antigravity = integrationOptions.antigravityGlobalSync ? 'global user profile' : 'disabled'
   }
 
   if (selectedIntegrations.includes('windsurf')) {
@@ -231,8 +318,20 @@ async function resolveIntegrationAccess(args: {
 
   return {
     integrationOptions,
-    summaries
+    summaries,
+    warnings
   }
+}
+
+function formatSummaryKey(key: string): string {
+  const labels: Record<string, string> = {
+    codex: 'Codex trust',
+    cursor: 'Cursor approval',
+    antigravity: 'Antigravity sync',
+    windsurf: 'Windsurf sync',
+    opencode: 'OpenCode sync'
+  }
+  return labels[key] ?? key
 }
 
 function collectPreflight(): Array<{ label: string; ok: boolean; detail: string }> {
@@ -318,7 +417,7 @@ async function selectIntegrations(defaults: IntegrationName[]): Promise<Integrat
 
   if (clack.isCancel(value)) {
     clack.cancel('Setup canceled.')
-    process.exit(1)
+    throw new CancelledError('Setup canceled.')
   }
 
   return (value as IntegrationName[]) ?? []
@@ -332,7 +431,7 @@ async function selectVscodeHideDefaults(defaultValue: boolean): Promise<boolean>
 
   if (clack.isCancel(value)) {
     clack.cancel('Setup canceled.')
-    process.exit(1)
+    throw new CancelledError('Setup canceled.')
   }
 
   return Boolean(value)
@@ -358,7 +457,7 @@ async function selectSyncMode(defaultSyncMode: SyncMode): Promise<SyncMode> {
 
   if (clack.isCancel(value)) {
     clack.cancel('Setup canceled.')
-    process.exit(1)
+    throw new CancelledError('Setup canceled.')
   }
 
   return value as SyncMode
@@ -368,7 +467,7 @@ async function confirmOrCancel(args: { message: string; initialValue: boolean })
   const value = await clack.confirm(args)
   if (clack.isCancel(value)) {
     clack.cancel('Setup canceled.')
-    process.exit(1)
+    throw new CancelledError('Setup canceled.')
   }
   return Boolean(value)
 }

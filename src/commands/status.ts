@@ -52,6 +52,7 @@ export async function runStatus(options: StatusOptions): Promise<void> {
   const mcpEntries = listMcpEntries(mcpState)
   const paths = getProjectPaths(options.projectRoot)
   const enabled = new Set(config.integrations.enabled)
+  const antigravityGlobalSyncEnabled = config.integrations.options.antigravityGlobalSync !== false
   const antigravityGlobalPath = getAntigravityGlobalMcpPath()
   const antigravityGlobalLabel = toHomeRelativePath(antigravityGlobalPath)
   const windsurfGlobalPath = getWindsurfGlobalMcpPath()
@@ -80,7 +81,7 @@ export async function runStatus(options: StatusOptions): Promise<void> {
   if (enabled.has('cursor')) {
     files['.cursor/mcp.json'] = await pathExists(paths.cursorMcp)
   }
-  if (enabled.has('antigravity')) {
+  if (enabled.has('antigravity') && antigravityGlobalSyncEnabled) {
     files[antigravityGlobalLabel] = await pathExists(antigravityGlobalPath)
   }
   if (enabled.has('windsurf')) {
@@ -111,8 +112,10 @@ export async function runStatus(options: StatusOptions): Promise<void> {
     if (enabled.has('gemini')) probes.gemini = probeGemini(options.projectRoot)
     if (enabled.has('copilot_vscode')) probes.copilot_vscode = await probeCopilot(paths.vscodeMcp)
     if (enabled.has('cursor')) probes.cursor = probeCursor(options.projectRoot, expectedCursorServers)
-    if (enabled.has('antigravity')) {
+    if (enabled.has('antigravity') && antigravityGlobalSyncEnabled) {
       probes.antigravity = await probeAntigravity(antigravityGlobalPath, antigravityGlobalLabel)
+    } else if (enabled.has('antigravity')) {
+      probes.antigravity = 'global sync disabled by integrations.options.antigravityGlobalSync=false'
     }
     if (enabled.has('windsurf')) {
       probes.windsurf = await probeWindsurf(windsurfGlobalPath, windsurfGlobalLabel, expectedWindsurfServers)

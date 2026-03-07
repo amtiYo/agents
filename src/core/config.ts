@@ -119,6 +119,10 @@ export async function loadAgentsConfig(projectRoot: string): Promise<AgentsConfi
     }
   }
 
+  if (config.syncMode !== 'source-only' && config.syncMode !== 'commit-generated') {
+    config.syncMode = 'source-only'
+  }
+
   config.mcp = {
     servers: typeof config.mcp?.servers === 'object' && config.mcp?.servers !== null
       ? config.mcp.servers
@@ -150,7 +154,3 @@ export async function saveAgentsConfig(projectRoot: string, config: AgentsConfig
   await ensureDir(path.dirname(paths.agentsConfig))
   await writeJsonAtomic(paths.agentsConfig, config)
 }
-
-// Compatibility aliases for existing command imports.
-export const loadProjectConfig = loadAgentsConfig
-export const saveProjectConfig = saveAgentsConfig

@@ -24,6 +24,14 @@ export async function scaffoldBaseTemplates(
     {
       from: path.join(TEMPLATE_ROOT, 'skills', 'skill-guide', 'SKILL.md'),
       to: path.join(paths.agentsSkillsDir, 'skill-guide', 'SKILL.md')
+    },
+    {
+      from: path.join(TEMPLATE_ROOT, 'skills', 'docs-research', 'SKILL.md'),
+      to: path.join(paths.agentsSkillsDir, 'docs-research', 'SKILL.md')
+    },
+    {
+      from: path.join(TEMPLATE_ROOT, 'skills', 'mcp-troubleshooting', 'SKILL.md'),
+      to: path.join(paths.agentsSkillsDir, 'mcp-troubleshooting', 'SKILL.md')
     }
   ]
 

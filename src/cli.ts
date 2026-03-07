@@ -15,6 +15,7 @@ import { runStatus } from './commands/status.js'
 import { runSync } from './commands/sync.js'
 import { runUpdate } from './commands/update.js'
 import { runWatch } from './commands/watch.js'
+import { CancelledError } from './core/errors.js'
 import { maybeNotifyAboutUpdate } from './core/updateCheck.js'
 import { CLI_VERSION } from './core/version.js'
 import * as ui from './core/ui.js'
@@ -41,10 +42,10 @@ async function main(): Promise<void> {
     if (actionCommand.name() === 'update') return
 
     const projectRoot = resolvePath(typeof opts.path === 'string' ? opts.path : process.cwd())
-    await maybeNotifyAboutUpdate({
+    void maybeNotifyAboutUpdate({
       currentVersion: CLI_VERSION,
       projectRoot
-    })
+    }).catch(() => {})
   })
 
   program
@@ -53,11 +54,15 @@ async function main(): Promise<void> {
     .option('--path <dir>', 'Target project directory', process.cwd())
     .option('--non-interactive', 'Disable interactive wizard and use defaults', false)
     .option('--yes', 'Auto-confirm defaults (non-interactive)', false)
-    .action(async (opts: { path: string; nonInteractive: boolean; yes: boolean }) => {
+    .option('--reinit', 'Reinitialize existing .agents/agents.json with wizard/default values', false)
+    .option('--inject-docs', 'Insert agents usage section into README/CONTRIBUTING when starting', false)
+    .action(async (opts: { path: string; nonInteractive: boolean; yes: boolean; reinit: boolean; injectDocs: boolean }) => {
       await runStart({
         projectRoot: resolvePath(opts.path),
         nonInteractive: Boolean(opts.nonInteractive),
-        yes: Boolean(opts.yes)
+        yes: Boolean(opts.yes),
+        reinit: Boolean(opts.reinit),
+        injectDocs: Boolean(opts.injectDocs)
       })
     })
 
@@ -224,7 +229,7 @@ async function main(): Promise<void> {
     .option('--description <text>', 'Server description')
     .option('--disabled', 'Create server as disabled', false)
     .option('--replace', 'Replace existing server with same name', false)
-    .option('--no-sync', 'Skip automatic sync after update', false)
+    .option('--no-sync', 'Skip automatic sync after update')
     .option('--non-interactive', 'Disable interactive prompts', false)
     .action(
       async (name: string | undefined, opts: {
@@ -242,7 +247,7 @@ async function main(): Promise<void> {
         description?: string
         disabled: boolean
         replace: boolean
-        noSync: boolean
+        sync: boolean
         nonInteractive: boolean
       }) => {
         await runMcpAdd({
@@ -261,7 +266,7 @@ async function main(): Promise<void> {
           description: opts.description,
           disabled: Boolean(opts.disabled),
           replace: Boolean(opts.replace),
-          noSync: Boolean(opts.noSync),
+          noSync: opts.sync === false,
           nonInteractive: Boolean(opts.nonInteractive)
         })
       },
@@ -277,7 +282,7 @@ async function main(): Promise<void> {
     .option('--name <name>', 'Rename imported server (single-server import only)')
     .option('--target <integration>', 'Target integration override (repeatable)', collectOption, [])
     .option('--replace', 'Replace existing server(s) with the same name', false)
-    .option('--no-sync', 'Skip automatic sync after update', false)
+    .option('--no-sync', 'Skip automatic sync after update')
     .option('--non-interactive', 'Reserved for consistency with add flow', false)
     .action(
       async (opts: {
@@ -288,7 +293,7 @@ async function main(): Promise<void> {
         name?: string
         target: string[]
         replace: boolean
-        noSync: boolean
+        sync: boolean
         nonInteractive: boolean
       }) => {
         await runMcpImport({
@@ -299,7 +304,7 @@ async function main(): Promise<void> {
           name: opts.name,
           targets: opts.target,
           replace: Boolean(opts.replace),
-          noSync: Boolean(opts.noSync),
+          noSync: opts.sync === false,
           nonInteractive: Boolean(opts.nonInteractive)
         })
       },
@@ -310,13 +315,13 @@ async function main(): Promise<void> {
     .description('Remove a project MCP server')
     .option('--path <dir>', 'Target project directory', process.cwd())
     .option('--ignore-missing', 'Do not fail if server does not exist', false)
-    .option('--no-sync', 'Skip automatic sync after update', false)
-    .action(async (name: string, opts: { path: string; ignoreMissing: boolean; noSync: boolean }) => {
+    .option('--no-sync', 'Skip automatic sync after update')
+    .action(async (name: string, opts: { path: string; ignoreMissing: boolean; sync: boolean }) => {
       await runMcpRemove({
         projectRoot: resolvePath(opts.path),
         name,
         ignoreMissing: Boolean(opts.ignoreMissing),
-        noSync: Boolean(opts.noSync)
+        noSync: opts.sync === false
       })
     })
 
@@ -362,6 +367,10 @@ function collectOption(value: string, previous: string[]): string[] {
 }
 
 main().catch((error: unknown) => {
+  if (error instanceof CancelledError) {
+    process.exitCode = 1
+    return
+  }
   const message = error instanceof Error ? error.message : String(error)
   // Use ui.error for colored output, but write to stderr directly for errors
   process.stderr.write(`${ui.color.red(ui.symbols.error)} ${message}\n`)

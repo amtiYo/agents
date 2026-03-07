@@ -66,22 +66,25 @@ describe('mcp command integration', () => {
     expect(typeof configAfterAdd.lastSync).toBe('string')
     const lastSyncAfterAdd = configAfterAdd.lastSync
 
-    await runMcpImport({
-      projectRoot,
-      json: JSON.stringify({
-        mcpServers: {
-          docs: {
-            url: 'https://example.com/mcp'
+    const importOutput = await captureStdout(async () => {
+      await runMcpImport({
+        projectRoot,
+        json: JSON.stringify({
+          mcpServers: {
+            docs: {
+              url: 'https://example.com/mcp'
+            }
           }
-        }
-      }),
-      file: undefined,
-      name: undefined,
-      targets: [],
-      replace: false,
-      noSync: true,
-      nonInteractive: true
+        }),
+        file: undefined,
+        name: undefined,
+        targets: [],
+        replace: false,
+        noSync: true,
+        nonInteractive: true
+      })
     })
+    expect(importOutput).toContain('Imported MCP servers: 1')
 
     const listed = await captureStdout(async () => {
       await runMcpList({
@@ -298,6 +301,56 @@ describe('mcp command integration', () => {
         nonInteractive: true
       }),
     ).rejects.toThrow(/Invalid header key/)
+  })
+
+  it('rejects reserved server names in mcp add', async () => {
+    const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-mcp-cmds-'))
+    tempDirs.push(projectRoot)
+
+    await runInit({ projectRoot, force: true })
+
+    await expect(
+      runMcpAdd({
+        projectRoot,
+        name: '__proto__',
+        transport: 'stdio',
+        command: 'npx',
+        args: ['-y', '@upstash/context7-mcp'],
+        env: [],
+        headers: [],
+        secretEnv: [],
+        secretHeaders: [],
+        secretArgs: [],
+        targets: [],
+        disabled: false,
+        replace: false,
+        noSync: true,
+        nonInteractive: true
+      }),
+    ).rejects.toThrow(/reserved object property name/)
+  })
+
+  it('rejects reserved server names in mcp import', async () => {
+    const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-mcp-cmds-'))
+    tempDirs.push(projectRoot)
+
+    await runInit({ projectRoot, force: true })
+
+    await expect(
+      runMcpImport({
+        projectRoot,
+        json: JSON.stringify({
+          mcpServers: {
+            constructor: {
+              url: 'https://example.com/mcp'
+            }
+          }
+        }),
+        replace: false,
+        noSync: true,
+        nonInteractive: true
+      }),
+    ).rejects.toThrow(/reserved object property name/)
   })
 })
 

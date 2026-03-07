@@ -1,6 +1,7 @@
 import type { Option } from '@clack/prompts'
 import type { IntegrationName, McpServerDefinition, McpTransportType } from '../types.js'
 import { loadAgentsConfig } from '../core/config.js'
+import { CancelledError } from '../core/errors.js'
 import { upsertMcpServers } from '../core/mcpCrud.js'
 import { inferSecretArgs, splitServerSecrets } from '../core/mcpSecrets.js'
 import { runMcpImport } from './mcp-import.js'
@@ -272,7 +273,7 @@ async function promptText(message: string, placeholder: string): Promise<string>
   })
   if (ui.clack.isCancel(value)) {
     ui.clack.cancel('Canceled.')
-    process.exit(1)
+    throw new CancelledError()
   }
   return String(value).trim()
 }
@@ -284,7 +285,7 @@ async function promptOptionalText(message: string): Promise<string> {
   })
   if (ui.clack.isCancel(value)) {
     ui.clack.cancel('Canceled.')
-    process.exit(1)
+    throw new CancelledError()
   }
   return String(value)
 }
@@ -303,7 +304,7 @@ async function promptSelect<T extends string>(
   })
   if (ui.clack.isCancel(value)) {
     ui.clack.cancel('Canceled.')
-    process.exit(1)
+    throw new CancelledError()
   }
   return value as T
 }

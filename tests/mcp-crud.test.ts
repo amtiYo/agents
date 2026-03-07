@@ -1,6 +1,6 @@
 import os from 'node:os'
 import path from 'node:path'
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { afterEach, describe, expect, it } from 'vitest'
 import { createDefaultAgentsConfig, saveAgentsConfig } from '../src/core/config.js'
 import { loadMcpState, removeMcpServer, upsertMcpServers } from '../src/core/mcpCrud.js'
@@ -114,5 +114,42 @@ describe('mcp CRUD', () => {
     const state = await loadMcpState(projectRoot)
     expect(state.config.mcp.servers.context7).toBeUndefined()
     expect(state.local.mcpServers.context7).toBeUndefined()
+  })
+
+  it('cleans stale local override entries when update has no override', async () => {
+    const projectRoot = await setupProject()
+
+    await writeFile(
+      path.join(projectRoot, '.agents', 'local.json'),
+      JSON.stringify({
+        mcpServers: {
+          stale: {
+            env: {
+              TOKEN: 'secret'
+            }
+          }
+        }
+      }, null, 2),
+      'utf8'
+    )
+
+    await upsertMcpServers({
+      projectRoot,
+      replace: false,
+      updates: [
+        {
+          name: 'stale',
+          server: {
+            transport: 'stdio',
+            command: 'npx'
+          }
+        }
+      ]
+    })
+
+    const local = JSON.parse(await readFile(path.join(projectRoot, '.agents', 'local.json'), 'utf8')) as {
+      mcpServers: Record<string, unknown>
+    }
+    expect(local.mcpServers.stale).toBeUndefined()
   })
 })

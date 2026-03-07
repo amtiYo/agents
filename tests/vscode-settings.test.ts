@@ -51,7 +51,7 @@ describe('VS Code settings sync', () => {
 
     expect(warnings).toHaveLength(0)
     const updated = parse(await readFile(settingsPath, 'utf8')) as Record<string, Record<string, boolean>>
-    expect(updated['files.exclude']?.['**/.codex']).toBe(false)
+    expect(updated['files.exclude']?.['**/.codex']).toBe(true)
     expect(updated['search.exclude']?.['**/.codex']).toBe(true)
     expect(updated['files.exclude']?.['**/.claude']).toBe(true)
     expect(updated['search.exclude']?.['**/.claude']).toBe(true)

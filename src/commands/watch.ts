@@ -1,5 +1,6 @@
 import path from 'node:path'
 import { lstat, readdir } from 'node:fs/promises'
+import { setTimeout as sleep } from 'node:timers/promises'
 import { performSync } from '../core/sync.js'
 import { getProjectPaths } from '../core/paths.js'
 import { pathExists } from '../core/fs.js'
@@ -20,7 +21,10 @@ export async function runWatch(options: WatchOptions): Promise<void> {
   const intervalMs = normalizeInterval(options.intervalMs)
 
   if (options.once) {
-    await runSingleSync(projectRoot, options.quiet)
+    const ok = await runSingleSync(projectRoot, options.quiet)
+    if (!ok) {
+      process.exitCode = 1
+    }
     return
   }
 
@@ -28,30 +32,50 @@ export async function runWatch(options: WatchOptions): Promise<void> {
   ui.dim(`Interval: ${intervalMs}ms. Press Ctrl+C to stop.`)
   ui.blank()
 
-  let lastSignature = await snapshotSignature(projectRoot)
+  let lastSignature = await safeSnapshotSignature(projectRoot, options.quiet) ?? 'unavailable'
   let stopped = false
+  let sleepAbort: AbortController | null = null
 
   const stop = (): void => {
     stopped = true
+    sleepAbort?.abort()
   }
 
   process.on('SIGINT', stop)
   process.on('SIGTERM', stop)
+  try {
+    while (!stopped) {
+      const controller = new AbortController()
+      sleepAbort = controller
+      try {
+        await sleep(intervalMs, undefined, { signal: controller.signal })
+      } catch (error) {
+        if (!isAbortError(error)) {
+          throw error
+        }
+      } finally {
+        if (sleepAbort === controller) {
+          sleepAbort = null
+        }
+      }
+      if (stopped) break
+      const nextSignature = await safeSnapshotSignature(projectRoot, options.quiet)
+      if (nextSignature === null) continue
+      if (nextSignature === lastSignature) continue
 
-  while (!stopped) {
-    await sleep(intervalMs)
-    const nextSignature = await snapshotSignature(projectRoot)
-    if (nextSignature === lastSignature) continue
-
-    lastSignature = nextSignature
-    await runSingleSync(projectRoot, options.quiet)
+      lastSignature = nextSignature
+      await runSingleSync(projectRoot, options.quiet)
+    }
+  } finally {
+    process.off('SIGINT', stop)
+    process.off('SIGTERM', stop)
   }
 
   ui.blank()
   ui.info('Watch stopped')
 }
 
-async function runSingleSync(projectRoot: string, quiet: boolean): Promise<void> {
+async function runSingleSync(projectRoot: string, quiet: boolean): Promise<boolean> {
   const startedAt = new Date().toISOString()
   try {
     const result = await performSync({
@@ -61,7 +85,7 @@ async function runSingleSync(projectRoot: string, quiet: boolean): Promise<void>
     })
 
     if (quiet && result.changed.length === 0 && result.warnings.length === 0) {
-      return
+      return true
     }
 
     ui.dim(`[${startedAt}] sync`)
@@ -83,8 +107,10 @@ async function runSingleSync(projectRoot: string, quiet: boolean): Promise<void>
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
-    ui.error(`[${startedAt}] sync failed: ${message}`)
+    writeError(`[${startedAt}] sync failed: ${message}`, quiet)
+    return false
   }
+  return true
 }
 
 async function snapshotSignature(projectRoot: string): Promise<string> {
@@ -104,7 +130,13 @@ async function fingerprintPath(filePath: string, label: string): Promise<string>
     return `${label}:missing`
   }
 
-  const info = await lstat(filePath)
+  let info
+  try {
+    info = await lstat(filePath)
+  } catch (error) {
+    if (isTransientFsError(error)) return `${label}:missing`
+    throw error
+  }
   const kind = info.isSymbolicLink() ? 'symlink' : info.isDirectory() ? 'dir' : 'file'
   return `${label}:${kind}:${info.size}:${Math.round(info.mtimeMs)}`
 }
@@ -117,7 +149,13 @@ async function fingerprintTree(rootDir: string, label: string): Promise<string> 
   const entries: string[] = []
 
   async function walk(currentDir: string): Promise<void> {
-    const children = await readdir(currentDir, { withFileTypes: true })
+    let children
+    try {
+      children = await readdir(currentDir, { withFileTypes: true })
+    } catch (error) {
+      if (isTransientFsError(error)) return
+      throw error
+    }
     children.sort((a, b) => a.name.localeCompare(b.name))
 
     for (const child of children) {
@@ -128,7 +166,13 @@ async function fingerprintTree(rootDir: string, label: string): Promise<string> 
         await walk(absolute)
         continue
       }
-      const info = await lstat(absolute)
+      let info
+      try {
+        info = await lstat(absolute)
+      } catch (error) {
+        if (isTransientFsError(error)) continue
+        throw error
+      }
       const kind = info.isSymbolicLink() ? 'l' : 'f'
       entries.push(`${kind}:${relative}:${info.size}:${Math.round(info.mtimeMs)}`)
     }
@@ -145,8 +189,39 @@ function normalizeInterval(input: number): number {
   return Math.floor(input)
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, ms)
-  })
+async function safeSnapshotSignature(projectRoot: string, quiet: boolean): Promise<string | null> {
+  try {
+    return await snapshotSignature(projectRoot)
+  } catch (error) {
+    if (!quiet) {
+      const message = error instanceof Error ? error.message : String(error)
+      ui.warning(`Watch snapshot skipped: ${message}`)
+    }
+    return null
+  }
+}
+
+function isTransientFsError(value: unknown): boolean {
+  if (typeof value !== 'object' || value === null || !('code' in value)) return false
+  const code = (value as { code?: unknown }).code
+  return code === 'ENOENT' || code === 'EPERM' || code === 'EACCES'
+}
+
+function isAbortError(value: unknown): boolean {
+  if (typeof value !== 'object' || value === null) return false
+  return 'name' in value && (value as { name?: unknown }).name === 'AbortError'
+}
+
+function writeError(message: string, quiet: boolean): void {
+  if (!quiet) {
+    ui.error(message)
+    return
+  }
+
+  ui.setContext({ quiet: false })
+  try {
+    ui.error(message)
+  } finally {
+    ui.setContext({ quiet: true })
+  }
 }
