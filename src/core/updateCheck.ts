@@ -6,8 +6,9 @@ import type { UpdateCheckMetadata } from '../types.js'
 import * as ui from './ui.js'
 
 const NPM_LATEST_URL = 'https://registry.npmjs.org/@agents-dev/cli/latest'
-const DEFAULT_TIMEOUT_MS = 1500
+const DEFAULT_TIMEOUT_MS = 5000
 const STARTUP_RECHECK_MS = 6 * 60 * 60 * 1000
+const REGISTRY_FETCH_RETRIES = 1
 
 export const UPGRADE_COMMAND = 'npm install -g @agents-dev/cli@latest'
 
@@ -178,29 +179,36 @@ function writeUpdateMetadata(
 }
 
 async function fetchLatestVersion(timeoutMs: number): Promise<{ version: string | null; error?: string }> {
-  const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), timeoutMs)
-  try {
-    const response = await fetch(NPM_LATEST_URL, {
-      headers: { Accept: 'application/json' },
-      signal: controller.signal
-    })
-    if (!response.ok) {
-      return { version: null, error: `registry request failed (${response.status})` }
-    }
+  let lastError: string | undefined
 
-    const payload = await response.json() as { version?: unknown }
-    const version = normalizeVersion(typeof payload.version === 'string' ? payload.version : null)
-    if (!version) {
-      return { version: null, error: 'invalid registry response' }
+  for (let attempt = 0; attempt <= REGISTRY_FETCH_RETRIES; attempt += 1) {
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), timeoutMs)
+    try {
+      const response = await fetch(NPM_LATEST_URL, {
+        headers: { Accept: 'application/json' },
+        signal: controller.signal
+      })
+      if (!response.ok) {
+        lastError = `registry request failed (${response.status})`
+        continue
+      }
+
+      const payload = await response.json() as { version?: unknown }
+      const version = normalizeVersion(typeof payload.version === 'string' ? payload.version : null)
+      if (!version) {
+        lastError = 'invalid registry response'
+        continue
+      }
+      return { version }
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : String(error)
+    } finally {
+      clearTimeout(timeout)
     }
-    return { version }
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error)
-    return { version: null, error: message }
-  } finally {
-    clearTimeout(timeout)
   }
+
+  return { version: null, error: lastError ?? 'unknown error' }
 }
 
 function normalizeTimeout(input: number | undefined): number {

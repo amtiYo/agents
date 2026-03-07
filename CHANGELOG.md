@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.6] - 2026-03-07
+
+### Fixed
+
+- `agents update` no longer reports "Up to date" when the npm registry check fails and only stale cached metadata is available.
+- Update checks now use a longer default timeout and retry once before falling back to cache, reducing false stale-cache results on slow networks.
+
 ## [0.8.5] - 2026-03-06
 
 ### Fixed

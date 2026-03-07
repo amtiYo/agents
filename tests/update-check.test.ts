@@ -34,7 +34,7 @@ describe('update checks', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async () =>
-        new Response(JSON.stringify({ version: '0.9.0' }), {
+        new Response(JSON.stringify({ version: '99.99.99' }), {
           status: 200,
           headers: { 'content-type': 'application/json' }
         })
@@ -47,7 +47,7 @@ describe('update checks', () => {
       forceRefresh: true
     })
 
-    expect(result.latestVersion).toBe('0.9.0')
+    expect(result.latestVersion).toBe('99.99.99')
     expect(result.isOutdated).toBe(true)
     expect(result.source).toBe('network')
 
@@ -56,7 +56,7 @@ describe('update checks', () => {
       meta?: { updateCheck?: { latestVersion?: string; lastSeenVersion?: string; lastCheckedAt?: string } }
     }
     expect(saved.mcpServers).toEqual({})
-    expect(saved.meta?.updateCheck?.latestVersion).toBe('0.9.0')
+    expect(saved.meta?.updateCheck?.latestVersion).toBe('99.99.99')
     expect(saved.meta?.updateCheck?.lastSeenVersion).toBe('0.8.2')
     expect(typeof saved.meta?.updateCheck?.lastCheckedAt).toBe('string')
   })
@@ -72,7 +72,7 @@ describe('update checks', () => {
         mcpServers: {},
         meta: {
           updateCheck: {
-            latestVersion: '0.9.0',
+            latestVersion: '99.99.99',
             lastCheckedAt: '2026-01-01T00:00:00.000Z'
           }
         }
@@ -90,9 +90,43 @@ describe('update checks', () => {
       forceRefresh: true
     })
 
-    expect(result.latestVersion).toBe('0.9.0')
+    expect(result.latestVersion).toBe('99.99.99')
     expect(result.isOutdated).toBe(true)
     expect(result.source).toBe('cache-stale')
+  })
+
+  it('retries registry fetch once before falling back', async () => {
+    const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-update-check-'))
+    tempDirs.push(projectRoot)
+
+    await mkdir(path.join(projectRoot, '.agents'), { recursive: true })
+    await writeFile(
+      path.join(projectRoot, '.agents', 'local.json'),
+      JSON.stringify({ mcpServers: {} }, null, 2),
+      'utf8'
+    )
+
+    const fetchMock = vi.fn()
+      .mockRejectedValueOnce(new Error('temporary network issue'))
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ version: '99.99.100' }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' }
+        })
+      )
+
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await checkForUpdates({
+      currentVersion: '0.8.2',
+      projectRoot,
+      forceRefresh: true
+    })
+
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(result.latestVersion).toBe('99.99.100')
+    expect(result.source).toBe('network')
+    expect(result.isOutdated).toBe(true)
   })
 
   it('uses global cache path when project local.json is missing', async () => {
