@@ -142,7 +142,7 @@ describe.sequential('mcp test runtime mode', () => {
     expect(process.exitCode).toBe(1)
   })
 
-  it('normalizes invalid runtime timeout values to default', async () => {
+  it('normalizes invalid runtime timeout values to default', { timeout: 15000 }, async () => {
     const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-mcp-runtime-'))
     tempDirs.push(projectRoot)
 

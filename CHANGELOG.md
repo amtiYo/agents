@@ -7,12 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- New `agents start --inject-docs` flag for non-interactive/CI flows to upsert an agents usage guide block into project docs.
+- New starter skills in template scaffold:
+  - `docs-research`
+  - `mcp-troubleshooting`
+
 ### Changed
 
 - `agents connect` is now additive: selected integrations are added to the existing enabled set instead of replacing it.
 - `agents sync --check` is now strictly read-only (no lock acquisition, no directory creation, no file writes).
 - Startup update notifications are now non-blocking best-effort checks so command execution is not delayed by network calls.
 - Sync orchestration now uses integration hooks from `src/integrations/syncHooks.ts` for generated + materialized outputs.
+- `agents start` interactive flow now asks whether to add an agents usage section to `README.md`/`CONTRIBUTING.md` and performs idempotent managed-block updates when enabled.
+- Template scaffold docs now include a quick workflow section and expanded MCP/skills workflow guidance.
 
 ### Fixed
 

@@ -8,6 +8,7 @@ import { ensureProjectGitignore } from '../core/gitignore.js'
 import { initializeProjectSkeleton } from '../core/project.js'
 import { performSync } from '../core/sync.js'
 import { commandExists } from '../core/shell.js'
+import { syncProjectDocsSections } from '../core/projectDocs.js'
 import type { AgentsConfig, IntegrationName, SyncMode } from '../types.js'
 import { INTEGRATIONS } from '../integrations/registry.js'
 import { getProjectPaths } from '../core/paths.js'
@@ -20,6 +21,7 @@ export interface StartOptions {
   nonInteractive: boolean
   yes: boolean
   reinit?: boolean
+  injectDocs?: boolean
 }
 
 export async function runStart(options: StartOptions): Promise<void> {
@@ -89,6 +91,8 @@ export async function runStart(options: StartOptions): Promise<void> {
     allowOptionPrompts: !preserveExistingConfig
   })
 
+  let injectProjectDocs = options.injectDocs === true
+
   if (interactive) {
     const proceed = await confirmOrCancel({
       message: 'Apply this setup now?',
@@ -98,6 +102,13 @@ export async function runStart(options: StartOptions): Promise<void> {
       clack.outro('Setup canceled.')
       return
     }
+  }
+
+  if (interactive && !injectProjectDocs) {
+    injectProjectDocs = await confirmOrCancel({
+      message: 'Add agents usage section to README/CONTRIBUTING?',
+      initialValue: true
+    })
   }
 
   if (cleanupBeforeSetup) {
@@ -124,6 +135,13 @@ export async function runStart(options: StartOptions): Promise<void> {
     verbose: false
   })
 
+  const docsSync = injectProjectDocs
+    ? await syncProjectDocsSections({
+      projectRoot,
+      includeContributing: true
+    })
+    : { changed: [], skipped: [] }
+
   spin?.stop('Setup complete.')
   const configMode = preserveExistingConfig ? 'preserved existing config' : reinit ? 'reinitialized' : 'initialized'
 
@@ -135,6 +153,15 @@ export async function runStart(options: StartOptions): Promise<void> {
     `VS Code hide tool dirs: ${hideGeneratedInVscode ? 'enabled' : 'disabled'}`,
     `Created/updated: ${init.changed.length}`
   ]
+
+  if (injectProjectDocs) {
+    summaryLines.push(`Docs guide: ${docsSync.changed.length > 0 ? `updated ${docsSync.changed.join(', ')}` : 'no changes'}`)
+    if (docsSync.skipped.length > 0) {
+      summaryLines.push(`Docs skipped: ${docsSync.skipped.join(', ')}`)
+    }
+  } else {
+    summaryLines.push('Docs guide: skipped')
+  }
 
   for (const [key, value] of Object.entries(access.summaries)) {
     summaryLines.push(`${formatSummaryKey(key)}: ${value}`)

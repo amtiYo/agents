@@ -55,12 +55,14 @@ async function main(): Promise<void> {
     .option('--non-interactive', 'Disable interactive wizard and use defaults', false)
     .option('--yes', 'Auto-confirm defaults (non-interactive)', false)
     .option('--reinit', 'Reinitialize existing .agents/agents.json with wizard/default values', false)
-    .action(async (opts: { path: string; nonInteractive: boolean; yes: boolean; reinit: boolean }) => {
+    .option('--inject-docs', 'Insert agents usage section into README/CONTRIBUTING when starting', false)
+    .action(async (opts: { path: string; nonInteractive: boolean; yes: boolean; reinit: boolean; injectDocs: boolean }) => {
       await runStart({
         projectRoot: resolvePath(opts.path),
         nonInteractive: Boolean(opts.nonInteractive),
         yes: Boolean(opts.yes),
-        reinit: Boolean(opts.reinit)
+        reinit: Boolean(opts.reinit),
+        injectDocs: Boolean(opts.injectDocs)
       })
     })
 

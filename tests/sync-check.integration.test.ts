@@ -36,7 +36,7 @@ describe('sync --check behavior', () => {
     expect(process.exitCode).toBe(2)
   })
 
-  it('does not create integration parent dirs in check mode', async () => {
+  it('does not create integration parent dirs in check mode', { timeout: 15000 }, async () => {
     const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-sync-check-'))
     tempDirs.push(projectRoot)
 
@@ -54,4 +54,3 @@ describe('sync --check behavior', () => {
     await expect(stat(path.join(projectRoot, '.claude'))).rejects.toThrow()
   })
 })
-

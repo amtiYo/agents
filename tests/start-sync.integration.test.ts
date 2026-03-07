@@ -74,6 +74,8 @@ describe('start + sync flow', () => {
 
     expect(Object.keys(projectConfig.mcp.servers).sort()).toEqual(['fetch', 'filesystem', 'git'])
     expect(await exists(path.join(projectRoot, '.agents', 'skills', 'skill-guide', 'SKILL.md'))).toBe(true)
+    expect(await exists(path.join(projectRoot, '.agents', 'skills', 'docs-research', 'SKILL.md'))).toBe(true)
+    expect(await exists(path.join(projectRoot, '.agents', 'skills', 'mcp-troubleshooting', 'SKILL.md'))).toBe(true)
     expect(await readFile(path.join(projectRoot, '.gitignore'), 'utf8')).toContain('CLAUDE.md')
     const firstLastSync = projectConfig.lastSync
 
@@ -326,6 +328,80 @@ describe('start + sync flow', () => {
 
     expect(await exists(path.join(projectRoot, '.agents', 'agents.json'))).toBe(true)
     expect(output).toContain('Codex trust setup skipped')
+  })
+
+  it('does not modify README/CONTRIBUTING by default in non-interactive mode', async () => {
+    const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-start-docs-default-'))
+    const codexDir = await mkdtemp(path.join(os.tmpdir(), 'agents-codex-'))
+    tempDirs.push(projectRoot, codexDir)
+
+    process.env.AGENTS_CODEX_CONFIG_PATH = path.join(codexDir, 'config.toml')
+    process.env.PATH = '/dev/null'
+
+    const readmePath = path.join(projectRoot, 'README.md')
+    const contributingPath = path.join(projectRoot, 'CONTRIBUTING.md')
+    await writeFile(readmePath, '# Demo Project\n', 'utf8')
+    await writeFile(contributingPath, '# Contributing\n', 'utf8')
+
+    await runStart({
+      projectRoot,
+      nonInteractive: true,
+      yes: true
+    })
+
+    const readme = await readFile(readmePath, 'utf8')
+    const contributing = await readFile(contributingPath, 'utf8')
+    expect(readme).not.toContain('<!-- agents:project-docs:start -->')
+    expect(contributing).not.toContain('<!-- agents:project-docs:start -->')
+  })
+
+  it('injects docs guide when start uses --inject-docs in non-interactive mode', async () => {
+    const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-start-docs-flag-'))
+    const codexDir = await mkdtemp(path.join(os.tmpdir(), 'agents-codex-'))
+    tempDirs.push(projectRoot, codexDir)
+
+    process.env.AGENTS_CODEX_CONFIG_PATH = path.join(codexDir, 'config.toml')
+    process.env.PATH = '/dev/null'
+
+    const readmePath = path.join(projectRoot, 'README.md')
+    const contributingPath = path.join(projectRoot, 'CONTRIBUTING.md')
+    await writeFile(readmePath, '# Demo Project\n', 'utf8')
+    await writeFile(contributingPath, '# Contributing\n', 'utf8')
+
+    await runStart({
+      projectRoot,
+      nonInteractive: true,
+      yes: true,
+      injectDocs: true
+    })
+
+    const readme = await readFile(readmePath, 'utf8')
+    const contributing = await readFile(contributingPath, 'utf8')
+    expect(readme).toContain('<!-- agents:project-docs:start -->')
+    expect(contributing).toContain('<!-- agents:project-docs:start -->')
+  })
+
+  it('injects README only and does not create CONTRIBUTING when missing', async () => {
+    const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-start-docs-missing-contrib-'))
+    const codexDir = await mkdtemp(path.join(os.tmpdir(), 'agents-codex-'))
+    tempDirs.push(projectRoot, codexDir)
+
+    process.env.AGENTS_CODEX_CONFIG_PATH = path.join(codexDir, 'config.toml')
+    process.env.PATH = '/dev/null'
+
+    const readmePath = path.join(projectRoot, 'README.md')
+    await writeFile(readmePath, '# Demo Project\n', 'utf8')
+
+    await runStart({
+      projectRoot,
+      nonInteractive: true,
+      yes: true,
+      injectDocs: true
+    })
+
+    const readme = await readFile(readmePath, 'utf8')
+    expect(readme).toContain('<!-- agents:project-docs:start -->')
+    expect(await exists(path.join(projectRoot, 'CONTRIBUTING.md'))).toBe(false)
   })
 })
 

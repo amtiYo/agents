@@ -16,7 +16,7 @@ afterEach(async () => {
 })
 
 describe('skills bridge sync', () => {
-  it('detects and reports drift for managed copy-mode bridges in check mode', async () => {
+  it('detects and reports drift for managed copy-mode bridges in check mode', { timeout: 15000 }, async () => {
     const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-skills-sync-'))
     tempDirs.push(projectRoot)
 

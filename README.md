@@ -56,6 +56,32 @@ That's it. Your `.agents/agents.json` is now the single source of truth.
 
 ---
 
+## Using agents in this repository
+
+This repository uses `@agents-dev/cli` to keep MCP servers, skills, and instructions aligned across supported AI tools.
+
+### Quick commands
+
+```bash
+agents status
+agents mcp add <url-or-name>
+agents mcp test --runtime
+agents sync
+agents sync --check
+```
+
+### One MCP setup for all tools
+
+Add a server once in `.agents/agents.json`, then run `agents sync` to materialize it for enabled integrations.
+
+### References
+
+- MCP Protocol Docs: https://modelcontextprotocol.io
+- MCP servers catalog: https://mcpservers.org
+- Project examples: `docs/EXAMPLES.md`
+
+---
+
 ## Supported Integrations
 
 <table>
@@ -168,6 +194,7 @@ your-project/
 | Command | Description |
 |:--------|:------------|
 | `agents start` | Interactive setup wizard — integrations, MCP servers, skills, first sync |
+| `agents start --inject-docs` | Also upsert an agents guide block in `README.md` (+ `CONTRIBUTING.md` if present) |
 | `agents start --reinit` | Reinitialize existing `.agents/agents.json` with fresh wizard/default choices |
 | `agents init` | Scaffold `.agents/` directory without guided setup |
 | `agents sync` | Regenerate and materialize all tool configs |
