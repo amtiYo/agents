@@ -87,7 +87,8 @@ export function createDefaultAgentsConfig(args?: {
         hiddenPaths: [...(args?.hiddenPaths ?? DEFAULT_VSCODE_HIDDEN_PATHS)]
       }
     },
-    lastSync: null
+    lastSync: null,
+    lastSyncSourceHash: null
   }
 }
 
@@ -135,6 +136,10 @@ export async function loadAgentsConfig(projectRoot: string): Promise<AgentsConfi
 
   if (config.lastSync !== null && typeof config.lastSync !== 'string') {
     config.lastSync = null
+  }
+
+  if (typeof config.lastSyncSourceHash !== 'string') {
+    config.lastSyncSourceHash = null
   }
 
   return config
