@@ -45,22 +45,17 @@ export async function syncVscodeSettings(args: {
     const filesExclude = asObject(parsed['files.exclude'])
     const searchExclude = asObject(parsed['search.exclude'])
 
-    const newlyManaged = new Set<string>()
     for (const target of normalized) {
-      if (!(target in filesExclude)) {
+      if (filesExclude[target] !== true) {
         text = applyModify(text, ['files.exclude', target], true)
         settingsChanged = true
-        newlyManaged.add(target)
+        managedSet.add(target)
       }
-      if (!(target in searchExclude)) {
+      if (searchExclude[target] !== true) {
         text = applyModify(text, ['search.exclude', target], true)
         settingsChanged = true
-        newlyManaged.add(target)
+        managedSet.add(target)
       }
-    }
-
-    for (const target of newlyManaged) {
-      managedSet.add(target)
     }
   } else if (managedSet.size > 0) {
     for (const target of [...managedSet]) {

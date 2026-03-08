@@ -7,6 +7,72 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- No changes yet.
+
+## [0.8.6] - 2026-03-07
+
+### Added
+
+- New `agents start --reinit` flag for explicit project config reinitialization from the start flow.
+- New `agents start --inject-docs` flag for non-interactive/CI flows to upsert an agents usage guide block into project docs.
+- New starter skills in template scaffold:
+  - `docs-research`
+  - `mcp-troubleshooting`
+- New integration coverage for stability fixes:
+  - repeated `agents start` preserves existing config by default
+  - `agents start --reinit` resets to selected/default setup
+  - `syncMode` switch updates managed `.gitignore` entries correctly
+  - copy-mode skills bridge drift is detected in `sync --check`
+  - watch snapshot traversal tolerates transient filesystem races
+
+### Changed
+
+- `agents connect` is now additive: selected integrations are added to the existing enabled set instead of replacing it.
+- `agents sync --check` is now strictly read-only (no lock acquisition, no directory creation, no file writes).
+- Startup update notifications are now non-blocking best-effort checks so command execution is not delayed by network calls.
+- Sync orchestration now uses integration hooks from `src/integrations/syncHooks.ts` for generated + materialized outputs.
+- `agents start` interactive flow now asks whether to add an agents usage section to `README.md`/`CONTRIBUTING.md` and performs idempotent managed-block updates when enabled.
+- Template scaffold docs now include a quick workflow section and expanded MCP/skills workflow guidance.
+- `agents start` is now non-destructive by default when `.agents/agents.json` already exists (preserves integrations/MCP/workspace config unless `--reinit` is used).
+- Managed `.gitignore` handling is now bidirectional across sync modes:
+  - `source-only` adds managed source-only ignore entries
+  - `commit-generated` removes only managed source-only entries while keeping base-managed and user custom lines
+- Documentation/examples now use the correct repeatable `--arg` flag for stdio MCP commands and clarify onboarding behavior around local secrets.
+
+### Fixed
+
+- Fixed Commander wiring for `agents mcp add|import|remove --no-sync` (maps correctly to skip auto-sync).
+- `agents watch --once` now sets a non-zero exit code on sync failure and quiet mode no longer suppresses errors.
+- `agents watch --quiet` now correctly respects quiet mode for non-error output while still printing sync failures.
+- `integrations.options.antigravityGlobalSync=false` now prevents writing Antigravity global MCP output while keeping generated snapshots.
+- Disabling `integrations.options.antigravityGlobalSync` now also removes stale previously managed global Antigravity MCP output.
+- `updateCheck` now falls back to global cache when project `.agents/local.json` is malformed, instead of overwriting the broken file.
+- `updateCheck` now avoids writing stale project-local snapshots when `.agents/local.json` changes or becomes invalid during in-flight checks.
+- Startup update checks now use a short best-effort timeout with no retry, avoiding long command shutdown delays on bad networks.
+- `validateServerName` now rejects reserved names (`__proto__`, `prototype`, `constructor`).
+- `agents mcp test --runtime-timeout-ms` now normalizes invalid values (`NaN`, `<=0`) to a safe default timeout.
+- Sync lock now uses owner tokens and PID liveness checks to avoid unsafe stale-lock takeovers and foreign lock removal.
+- `.gitignore` managed-entry matching now treats `/entry` and `entry` as equivalent to avoid duplicate managed lines.
+- `loadAgentsConfig` now validates `syncMode` and falls back to `source-only` on invalid values.
+- `upsertMcpServers` now removes stale local overrides when an update does not provide an override.
+- VS Code managed exclude sync now forces managed keys to `true` when they exist as `false`.
+- `start` now runs optional cleanup after final confirmation and handles Codex trust TOML parse failures as warnings.
+- `start` now automatically reinitializes when an existing `.agents/agents.json` is malformed, instead of failing before setup.
+- `CLI_VERSION` now resolves from `package.json` (single source of truth) with a safe fallback.
+- Removed `removeIfExists` TOCTOU check and fixed `cleanupManagedBridge` async return clarity.
+- Replaced raw verbose sync stdout writes with shared `ui.*` output helpers.
+- `sync --check` now reports drift for managed copy-mode skills bridges (`.agents_bridge`) when bridge contents diverge from `.agents/skills`.
+- `agents watch` no longer crashes on transient `ENOENT`/`EPERM`/`EACCES` races during snapshot traversal.
+- Gemini config materialization warning path now uses sync warning aggregation instead of raw `console.warn`.
+- `agents mcp import` output now goes through the shared UI pipeline instead of direct stdout writes.
+- `agents update` no longer reports "Up to date" when the npm registry check fails and only stale cached metadata is available.
+- Update checks now use a longer default timeout and retry once before falling back to cache, reducing false stale-cache results on slow networks.
+
+### Removed
+
+- Removed unused `LegacyProjectConfig` type.
+- Removed unused `loadProjectConfig` / `saveProjectConfig` compatibility aliases.
+
 ## [0.8.5] - 2026-03-06
 
 ### Fixed

@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { parseTargetOptions, validateEnvKey, validateEnvValueForShell, validateHeaderKey } from '../src/core/mcpValidation.js'
+import {
+  parseTargetOptions,
+  validateEnvKey,
+  validateEnvValueForShell,
+  validateHeaderKey,
+  validateServerName
+} from '../src/core/mcpValidation.js'
 
 describe('mcp validation', () => {
   it('validates environment variable keys', () => {
@@ -36,5 +42,12 @@ describe('mcp validation', () => {
   it('parses target options including windsurf and opencode', () => {
     const targets = parseTargetOptions(['windsurf,opencode'])
     expect(targets).toEqual(['windsurf', 'opencode'])
+  })
+
+  it('rejects reserved server names', () => {
+    expect(() => validateServerName('docs')).not.toThrow()
+    expect(() => validateServerName('__proto__')).toThrow(/reserved object property/)
+    expect(() => validateServerName('prototype')).toThrow(/reserved object property/)
+    expect(() => validateServerName('constructor')).toThrow(/reserved object property/)
   })
 })

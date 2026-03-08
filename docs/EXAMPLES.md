@@ -47,7 +47,8 @@ git push
 **New member onboards:**
 ```bash
 git pull
-agents start  # Prompts for API_TOKEN
+agents start  # Preserves team config and syncs local tool files
+# Add local secrets in .agents/local.json if needed
 # ✅ Done in 30 seconds
 ```
 
@@ -60,7 +61,7 @@ agents start  # Prompts for API_TOKEN
 cd ~/projects/frontend-app
 agents init
 agents connect --llm cursor
-agents mcp add eslint-mcp --command "npx eslint-mcp-server"
+agents mcp add eslint-mcp --command npx --arg eslint-mcp-server
 agents sync
 ```
 
@@ -69,7 +70,7 @@ agents sync
 cd ~/projects/api-server
 agents init
 agents connect --llm claude,gemini
-agents mcp add database-schema --command "db-mcp-server"
+agents mcp add database-schema --command db-mcp-server
 agents sync
 ```
 
@@ -90,7 +91,7 @@ agents mcp add company-auth --url "https://auth.company.com/mcp"
 ```bash
 cd packages/frontend
 agents init
-agents mcp add design-system --command "design-mcp-server"
+agents mcp add design-system --command design-mcp-server
 ```
 
 **Result:** Inherit root config + add package-specific servers.

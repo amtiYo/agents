@@ -41,9 +41,7 @@ export async function writeTextAtomic(filePath: string, content: string): Promis
 }
 
 export async function removeIfExists(filePath: string): Promise<void> {
-  if (await pathExists(filePath)) {
-    await rm(filePath, { recursive: true, force: true })
-  }
+  await rm(filePath, { recursive: true, force: true })
 }
 
 export async function isDirectory(dirPath: string): Promise<boolean> {

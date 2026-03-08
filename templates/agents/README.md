@@ -2,6 +2,13 @@
 
 Project-local standard for AGENTS.md + MCP + SKILLS.
 
+## Quick workflow
+- `agents status` to inspect enabled integrations and MCP state.
+- `agents mcp add <url-or-name>` to add one server for all selected tools.
+- `agents mcp test --runtime` to validate connectivity.
+- `agents sync` to materialize generated configuration.
+- `agents sync --check` for CI-safe drift detection.
+
 ## Source files (commit these)
 - `agents.json`: selected integrations + MCP servers + workspace behavior
 - `skills/*/SKILL.md`: project skills

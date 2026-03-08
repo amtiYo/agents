@@ -5,18 +5,23 @@ const SERVER_NAME_PATTERN = /^[a-zA-Z0-9_\-:.]+$/
 const TRANSPORTS: McpTransportType[] = ['stdio', 'http', 'sse']
 const ENV_KEY_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/
 const HEADER_KEY_PATTERN = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/
+const FORBIDDEN_SERVER_NAMES = new Set(['__proto__', 'prototype', 'constructor'])
 
 export function validateServerName(name: string): void {
-  if (!name.trim()) {
+  const trimmed = name.trim()
+  if (!trimmed) {
     throw new Error('MCP server name cannot be empty.')
   }
-  if (!SERVER_NAME_PATTERN.test(name)) {
+  if (!SERVER_NAME_PATTERN.test(trimmed)) {
     throw new Error(
       `Invalid server name "${name}": must contain only alphanumeric characters, hyphens, underscores, colons, and dots`,
     )
   }
-  if (name.includes('..')) {
+  if (trimmed.includes('..')) {
     throw new Error(`Invalid server name "${name}": cannot contain ".."`)
+  }
+  if (FORBIDDEN_SERVER_NAMES.has(trimmed.toLowerCase())) {
+    throw new Error(`Invalid server name "${name}": reserved object property name is not allowed`)
   }
 }
 

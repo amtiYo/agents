@@ -56,6 +56,7 @@ git checkout -b fix/your-bug-fix
 npm run build
 npm test
 npm run lint
+agents sync --check
 ```
 
 All must pass.
@@ -105,6 +106,7 @@ Update docs if needed:
 - README for user-facing changes
 - Code comments for complex logic
 - CHANGELOG.md (maintainers will handle)
+- If MCP/skills/instructions behavior changed, update the related example in `docs/EXAMPLES.md`
 
 ## Code Style
 

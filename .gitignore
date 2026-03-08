@@ -13,6 +13,9 @@ coverage/
 .claude/skills
 .cursor/
 .antigravity/
-
 # Internal documentation (maintainer only)
 .docs-internal/
+CLAUDE.md
+.windsurf/
+.opencode/
+opencode.json

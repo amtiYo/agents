@@ -73,6 +73,10 @@ export async function runDoctor(options: DoctorOptions): Promise<void> {
     process.exitCode = 1
     return
   }
+  const antigravityGlobalSyncEnabled = config.integrations.options.antigravityGlobalSync !== false
+  const enabledForMaterialization = antigravityGlobalSyncEnabled
+    ? config.integrations.enabled
+    : config.integrations.enabled.filter((integration) => integration !== 'antigravity')
 
   try {
     const resolved = await loadResolvedRegistry(options.projectRoot)
@@ -112,7 +116,7 @@ export async function runDoctor(options: DoctorOptions): Promise<void> {
 
   await validateManagedConfigSyntax(
     paths,
-    config.integrations.enabled,
+    enabledForMaterialization,
     antigravityGlobalMcpPath,
     windsurfGlobalMcpPath,
     issues,
@@ -244,7 +248,7 @@ export async function runDoctor(options: DoctorOptions): Promise<void> {
     fixSpin.stop('Fixes applied')
   }
 
-  if (enabled.has('antigravity') && !(await pathExists(antigravityGlobalMcpPath)) && !applyFixes) {
+  if (enabled.has('antigravity') && antigravityGlobalSyncEnabled && !(await pathExists(antigravityGlobalMcpPath)) && !applyFixes) {
     issues.push({
       level: 'warning',
       message: `Antigravity global MCP file missing: ${antigravityGlobalMcpPath} (run agents sync).`
