@@ -434,3 +434,11 @@ git push origin feature/my-feature
 ---
 
 **Remember:** The goal is to make multi-LLM development simple. Every feature should reduce friction, not add complexity.
+
+## Cursor Cloud specific instructions
+
+- **Single service:** This is a standalone CLI tool with no external services, databases, or Docker required. All development commands are in `package.json` scripts.
+- **Dev commands reference:** `npm run dev -- <command>` (run via tsx), `npm run build` (tsc), `npm test` (vitest), `npm run lint` (eslint). See `AGENTS.md` "Development Commands" section above for full list.
+- **`npm link`** makes the built CLI available globally as `agents`. Run `npm run build` first if testing from `dist/`.
+- **Interactive prompts:** Several commands (`agents start`, `agents mcp add`) use `@clack/prompts` interactive pickers that require TTY input. Avoid these in non-interactive contexts; prefer non-interactive alternatives like `agents init`, `agents connect --llm <tool>`, `agents mcp list`, `agents status --fast`, etc.
+- **External CLIs optional:** The tool gracefully skips integrations when target CLIs (Codex, Claude, Cursor) are not installed — warnings like "Cursor CLI not found" are expected and non-blocking.
