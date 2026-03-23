@@ -30,6 +30,9 @@ export function renderCodexToml(servers: ResolvedMcpServer[]): RenderResult {
       lines.push(
         `args = [${(server.args ?? []).map((arg) => `"${escapeToml(arg)}"`).join(', ')}]`,
       )
+      if (server.cwd) {
+        lines.push(`cwd = "${escapeToml(server.cwd)}"`)
+      }
     } else {
       if (!server.url) {
         warnings.push(`Server "${server.name}" has no url; skipped in Codex output.`)
@@ -86,6 +89,7 @@ export function renderGeminiServers(servers: ResolvedMcpServer[]): {
         type: 'stdio',
         command: server.command,
         args: server.args ?? [],
+        ...(server.cwd ? { cwd: server.cwd } : {}),
         ...(server.env ? { env: server.env } : {})
       }
       continue
@@ -122,6 +126,7 @@ export function renderVscodeMcp(servers: ResolvedMcpServer[]): {
         type: 'stdio',
         command: server.command,
         args: server.args ?? [],
+        ...(server.cwd ? { cwd: server.cwd } : {}),
         ...(server.env ? { env: server.env } : {})
       }
       continue
@@ -157,6 +162,7 @@ export function renderWindsurfMcp(servers: ResolvedMcpServer[]): {
       out[server.name] = {
         command: server.command,
         args: server.args ?? [],
+        ...(server.cwd ? { cwd: server.cwd } : {}),
         ...(server.env ? { env: server.env } : {})
       }
       continue
@@ -192,6 +198,7 @@ export function renderOpencodeMcp(servers: ResolvedMcpServer[]): {
         type: 'local',
         enabled: true,
         command: [server.command, ...(server.args ?? [])],
+        ...(server.cwd ? { cwd: server.cwd } : {}),
         ...(server.env ? { environment: server.env } : {})
       }
       continue
@@ -210,4 +217,39 @@ export function renderOpencodeMcp(servers: ResolvedMcpServer[]): {
   }
 
   return { mcp: out, warnings }
+}
+
+export function renderJunieMcp(servers: ResolvedMcpServer[]): {
+  mcpServers: Record<string, unknown>
+  warnings: string[]
+} {
+  const warnings: string[] = []
+  const out: Record<string, unknown> = {}
+
+  for (const server of servers) {
+    if (server.transport === 'stdio') {
+      if (!server.command) {
+        warnings.push(`Server "${server.name}" has no command; skipped in Junie output.`)
+        continue
+      }
+      out[server.name] = {
+        command: server.command,
+        args: server.args ?? [],
+        ...(server.cwd ? { cwd: server.cwd } : {}),
+        ...(server.env ? { env: server.env } : {})
+      }
+      continue
+    }
+
+    if (!server.url) {
+      warnings.push(`Server "${server.name}" has no url; skipped in Junie output.`)
+      continue
+    }
+    out[server.name] = {
+      url: server.url,
+      ...(server.headers ? { headers: server.headers } : {})
+    }
+  }
+
+  return { mcpServers: out, warnings }
 }

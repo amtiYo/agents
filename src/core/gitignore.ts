@@ -14,7 +14,9 @@ const SOURCE_ONLY_ENTRIES = [
   '.antigravity/',
   '.windsurf/',
   '.opencode/',
-  'opencode.json'
+  'opencode.json',
+  '.junie/mcp/',
+  '.junie/skills'
 ]
 
 export async function ensureProjectGitignore(projectRoot: string, syncMode: SyncMode): Promise<boolean> {

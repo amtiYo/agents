@@ -3,6 +3,7 @@ import TOML from '@iarna/toml'
 import {
   renderCodexToml,
   renderGeminiServers,
+  renderJunieMcp,
   renderOpencodeMcp,
   renderVscodeMcp,
   renderWindsurfMcp
@@ -113,6 +114,103 @@ describe('renderers', () => {
         enabled: true,
         url: 'https://example.com/sse'
       }
+    })
+  })
+
+  it('renders junie mcp payload', () => {
+    const rendered = renderJunieMcp(servers)
+    expect(rendered.mcpServers).toMatchObject({
+      filesystem: {
+        command: 'npx'
+      },
+      'http-tools': {
+        url: 'https://example.com/mcp'
+      },
+      'sse-tools': {
+        url: 'https://example.com/sse'
+      }
+    })
+    expect(rendered.mcpServers['filesystem']).not.toHaveProperty('type')
+  })
+
+  describe('cwd propagation', () => {
+    const serversWithCwd: ResolvedMcpServer[] = [
+      {
+        name: 'project-server',
+        transport: 'stdio',
+        command: 'pnpx',
+        args: ['xcodebuildmcp@latest', 'mcp'],
+        cwd: '/abs/path/to/project'
+      }
+    ]
+
+    it('codex toml includes cwd for stdio server', () => {
+      const rendered = renderCodexToml(serversWithCwd)
+      expect(rendered.content).toContain('cwd = "/abs/path/to/project"')
+      expect(() => TOML.parse(rendered.content)).not.toThrow()
+    })
+
+    it('gemini includes cwd for stdio server', () => {
+      const rendered = renderGeminiServers(serversWithCwd)
+      expect(rendered.mcpServers['project-server']).toMatchObject({
+        type: 'stdio',
+        command: 'pnpx',
+        cwd: '/abs/path/to/project'
+      })
+    })
+
+    it('vscode includes cwd for stdio server', () => {
+      const rendered = renderVscodeMcp(serversWithCwd)
+      expect(rendered.servers['project-server']).toMatchObject({
+        type: 'stdio',
+        command: 'pnpx',
+        cwd: '/abs/path/to/project'
+      })
+    })
+
+    it('windsurf includes cwd for stdio server', () => {
+      const rendered = renderWindsurfMcp(serversWithCwd)
+      expect(rendered.mcpServers['project-server']).toMatchObject({
+        command: 'pnpx',
+        cwd: '/abs/path/to/project'
+      })
+    })
+
+    it('opencode includes cwd for stdio server', () => {
+      const rendered = renderOpencodeMcp(serversWithCwd)
+      expect(rendered.mcp['project-server']).toMatchObject({
+        type: 'local',
+        command: ['pnpx', 'xcodebuildmcp@latest', 'mcp'],
+        cwd: '/abs/path/to/project'
+      })
+    })
+
+    it('junie includes cwd for stdio server', () => {
+      const rendered = renderJunieMcp(serversWithCwd)
+      expect(rendered.mcpServers['project-server']).toMatchObject({
+        command: 'pnpx',
+        cwd: '/abs/path/to/project'
+      })
+    })
+
+    it('omits cwd when not set', () => {
+      const codex = renderCodexToml(servers)
+      expect(codex.content).not.toMatch(/^\s*cwd\s*=/m)
+
+      const gemini = renderGeminiServers(servers)
+      expect(gemini.mcpServers['filesystem']).not.toHaveProperty('cwd')
+
+      const vscode = renderVscodeMcp(servers)
+      expect(vscode.servers['filesystem']).not.toHaveProperty('cwd')
+
+      const windsurf = renderWindsurfMcp(servers)
+      expect(windsurf.mcpServers['filesystem']).not.toHaveProperty('cwd')
+
+      const opencode = renderOpencodeMcp(servers)
+      expect(opencode.mcp['filesystem']).not.toHaveProperty('cwd')
+
+      const junie = renderJunieMcp(servers)
+      expect(junie.mcpServers['filesystem']).not.toHaveProperty('cwd')
     })
   })
 })

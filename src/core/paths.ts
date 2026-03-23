@@ -39,6 +39,11 @@ export interface ProjectPaths {
   windsurfDir: string
   opencodeDir: string
   claudeDir: string
+  generatedJunie: string
+  junieDir: string
+  junieMcpDir: string
+  junieMcp: string
+  junieSkillsBridge: string
   geminiSkillsBridge: string
   claudeSkillsBridge: string
   cursorSkillsBridge: string
@@ -89,6 +94,11 @@ export function getProjectPaths(projectRoot: string): ProjectPaths {
     windsurfDir: path.join(root, '.windsurf'),
     opencodeDir: path.join(root, '.opencode'),
     claudeDir: path.join(root, '.claude'),
+    generatedJunie: path.join(generatedDir, 'junie.mcp.json'),
+    junieDir: path.join(root, '.junie'),
+    junieMcpDir: path.join(root, '.junie', 'mcp'),
+    junieMcp: path.join(root, '.junie', 'mcp', 'mcp.json'),
+    junieSkillsBridge: path.join(root, '.junie', 'skills'),
     geminiSkillsBridge: path.join(root, '.gemini', 'skills'),
     claudeSkillsBridge: path.join(root, '.claude', 'skills'),
     cursorSkillsBridge: path.join(root, '.cursor', 'skills'),

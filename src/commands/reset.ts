@@ -50,7 +50,8 @@ export async function runReset(options: ResetOptions): Promise<void> {
         paths.opencodeConfig,
         legacyAgentDir,
         paths.vscodeMcp,
-        paths.claudeDir
+        paths.claudeDir,
+        paths.junieDir
       ]
     : options.localOnly
       ? [
@@ -64,7 +65,9 @@ export async function runReset(options: ResetOptions): Promise<void> {
           legacyAgentDir,
           paths.vscodeMcp,
           paths.claudeSkillsBridge,
-          paths.cursorSkillsBridge
+          paths.cursorSkillsBridge,
+          paths.junieMcpDir,
+          paths.junieSkillsBridge
         ]
       : [
           paths.generatedDir,
@@ -78,7 +81,9 @@ export async function runReset(options: ResetOptions): Promise<void> {
           legacyAgentDir,
           paths.vscodeMcp,
           paths.claudeSkillsBridge,
-          paths.cursorSkillsBridge
+          paths.cursorSkillsBridge,
+          paths.junieMcpDir,
+          paths.junieSkillsBridge
         ]
 
   for (const target of targets) {

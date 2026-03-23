@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - No changes yet.
 
+## [0.8.7] - 2026-03-22
+
+### Added
+
+- New integration: **Junie** (JetBrains) — MCP servers synced to `.junie/mcp/mcp.json`, skills bridged to `.junie/skills/`.
+
+### Fixed
+
+- Fixed `agents sync` dropping `cwd` from generated MCP configs for all tools (Codex, Gemini, VS Code, Cursor, Copilot, Antigravity, Windsurf, OpenCode, Junie). Closes #11.
+
 ## [0.8.6] - 2026-03-07
 
 ### Added

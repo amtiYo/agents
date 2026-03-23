@@ -18,7 +18,8 @@ const ALL_INTEGRATIONS: IntegrationName[] = [
   'cursor',
   'antigravity',
   'windsurf',
-  'opencode'
+  'opencode',
+  'junie'
 ]
 const LEGACY_EXPAND_SETS: IntegrationName[][] = [
   ['codex', 'claude', 'gemini', 'copilot_vscode'],
@@ -66,7 +67,8 @@ export function resolveFromConfigAndLocal(input: {
     cursor: [],
     antigravity: [],
     windsurf: [],
-    opencode: []
+    opencode: [],
+    junie: []
   }
 
   const selectedServerNames: string[] = []
