@@ -310,7 +310,9 @@ export const INTEGRATION_SYNC_HOOKS: IntegrationSyncHook[] = [
       }
     },
     materialize: async (context) => {
-      await ensureDir(context.paths.junieMcpDir)
+      if (!context.check) {
+        await ensureDir(context.paths.junieMcpDir)
+      }
       await writeManagedFile({
         absolutePath: context.paths.junieMcp,
         content: context.generatedByIntegration.junie ?? '{}',

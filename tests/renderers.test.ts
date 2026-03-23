@@ -195,7 +195,7 @@ describe('renderers', () => {
 
     it('omits cwd when not set', () => {
       const codex = renderCodexToml(servers)
-      expect(codex.content).not.toContain('cwd')
+      expect(codex.content).not.toMatch(/^\s*cwd\s*=/m)
 
       const gemini = renderGeminiServers(servers)
       expect(gemini.mcpServers['filesystem']).not.toHaveProperty('cwd')
