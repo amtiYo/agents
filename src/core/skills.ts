@@ -71,6 +71,18 @@ export async function syncSkills(args: {
     warnings
   })
 
+  await syncToolSkillsBridge({
+    enabled: enabledIntegrations.includes('junie') && hasSkills,
+    projectRoot,
+    parentDir: paths.junieDir,
+    bridgePath: paths.junieSkillsBridge,
+    sourcePath: paths.agentsSkillsDir,
+    label: '.junie/skills',
+    check,
+    changed,
+    warnings
+  })
+
   await cleanupLegacyAntigravityBridge({
     projectRoot,
     check,

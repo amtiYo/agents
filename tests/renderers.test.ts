@@ -3,6 +3,7 @@ import TOML from '@iarna/toml'
 import {
   renderCodexToml,
   renderGeminiServers,
+  renderJunieMcp,
   renderOpencodeMcp,
   renderVscodeMcp,
   renderWindsurfMcp
@@ -116,6 +117,22 @@ describe('renderers', () => {
     })
   })
 
+  it('renders junie mcp payload', () => {
+    const rendered = renderJunieMcp(servers)
+    expect(rendered.mcpServers).toMatchObject({
+      filesystem: {
+        command: 'npx'
+      },
+      'http-tools': {
+        url: 'https://example.com/mcp'
+      },
+      'sse-tools': {
+        url: 'https://example.com/sse'
+      }
+    })
+    expect(rendered.mcpServers['filesystem']).not.toHaveProperty('type')
+  })
+
   describe('cwd propagation', () => {
     const serversWithCwd: ResolvedMcpServer[] = [
       {
@@ -168,6 +185,14 @@ describe('renderers', () => {
       })
     })
 
+    it('junie includes cwd for stdio server', () => {
+      const rendered = renderJunieMcp(serversWithCwd)
+      expect(rendered.mcpServers['project-server']).toMatchObject({
+        command: 'pnpx',
+        cwd: '/abs/path/to/project'
+      })
+    })
+
     it('omits cwd when not set', () => {
       const codex = renderCodexToml(servers)
       expect(codex.content).not.toContain('cwd')
@@ -183,6 +208,9 @@ describe('renderers', () => {
 
       const opencode = renderOpencodeMcp(servers)
       expect(opencode.mcp['filesystem']).not.toHaveProperty('cwd')
+
+      const junie = renderJunieMcp(servers)
+      expect(junie.mcpServers['filesystem']).not.toHaveProperty('cwd')
     })
   })
 })

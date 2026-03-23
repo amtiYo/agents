@@ -9,6 +9,7 @@ export type IntegrationName =
   | 'antigravity'
   | 'windsurf'
   | 'opencode'
+  | 'junie'
 export type SyncMode = 'source-only' | 'commit-generated'
 
 export type McpTransportType = 'stdio' | 'http' | 'sse'

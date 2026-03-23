@@ -1,5 +1,5 @@
 import path from 'node:path'
-import { pathExists, readJson, removeIfExists } from '../core/fs.js'
+import { ensureDir, pathExists, readJson, removeIfExists } from '../core/fs.js'
 import { toChangedEntry, writeManagedFile } from '../core/managedFiles.js'
 import { getAntigravityGlobalMcpPath, normalizeAntigravityMcpPayload, readAntigravityMcp } from '../core/antigravity.js'
 import { getWindsurfGlobalMcpPath, normalizeWindsurfMcpPayload } from '../core/windsurf.js'
@@ -12,6 +12,7 @@ import { buildCursorPayload } from './cursor.js'
 import { buildGeminiPayload } from './gemini.js'
 import { buildOpencodePayload } from './opencode.js'
 import { buildWindsurfPayload } from './windsurf.js'
+import { buildJuniePayload } from './junie.js'
 import type { ProjectPaths } from '../core/paths.js'
 import type { AgentsConfig, IntegrationName, ResolvedMcpServer } from '../types.js'
 
@@ -292,6 +293,27 @@ export const INTEGRATION_SYNC_HOOKS: IntegrationSyncHook[] = [
       await writeManagedFile({
         absolutePath: targetPath,
         content: `${JSON.stringify(merged, null, 2)}\n`,
+        projectRoot: context.projectRoot,
+        check: context.check,
+        changed: context.changed
+      })
+    }
+  },
+  {
+    id: 'junie',
+    generatedPath: (paths) => paths.generatedJunie,
+    buildGenerated: (servers) => {
+      const junie = buildJuniePayload(servers)
+      return {
+        content: `${JSON.stringify(junie.payload, null, 2)}\n`,
+        warnings: junie.warnings
+      }
+    },
+    materialize: async (context) => {
+      await ensureDir(context.paths.junieMcpDir)
+      await writeManagedFile({
+        absolutePath: context.paths.junieMcp,
+        content: context.generatedByIntegration.junie ?? '{}',
         projectRoot: context.projectRoot,
         check: context.check,
         changed: context.changed

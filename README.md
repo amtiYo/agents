@@ -26,11 +26,11 @@
 
 Every AI coding tool wants its own config format:
 
-| | Codex | Claude | Gemini | Cursor | Copilot | Antigravity | Windsurf | OpenCode |
-|:--|:-----:|:------:|:------:|:------:|:-------:|:-----------:|:--------:|:--------:|
-| **Config** | `.codex/config.toml` | CLI commands | `.gemini/settings.json` | `.cursor/mcp.json` | `.vscode/mcp.json` | Global `mcp.json` | Global `mcp_config.json` | `opencode.json` |
-| **Instructions** | `AGENTS.md` | `CLAUDE.md` | `AGENTS.md` | `.cursorrules` | — | `AGENTS.md` | `AGENTS.md` | `AGENTS.md` |
-| **Format** | TOML | JSON (via CLI) | JSON | JSON | JSON | JSON | JSON | JSON |
+| | Codex | Claude | Gemini | Cursor | Copilot | Antigravity | Windsurf | OpenCode | Junie |
+|:--|:-----:|:------:|:------:|:------:|:-------:|:-----------:|:--------:|:--------:|:-----:|
+| **Config** | `.codex/config.toml` | CLI commands | `.gemini/settings.json` | `.cursor/mcp.json` | `.vscode/mcp.json` | Global `mcp.json` | Global `mcp_config.json` | `opencode.json` | `.junie/mcp/mcp.json` |
+| **Instructions** | `AGENTS.md` | `CLAUDE.md` | `AGENTS.md` | `.cursorrules` | — | `AGENTS.md` | `AGENTS.md` | `AGENTS.md` | `AGENTS.md` |
+| **Format** | TOML | JSON (via CLI) | JSON | JSON | JSON | JSON | JSON | JSON | JSON |
 
 > **Result:** Duplicated configs, team drift, painful onboarding.
 
@@ -148,6 +148,13 @@ Add a server once in `.agents/agents.json`, then run `agents sync` to materializ
     <td align="center">✅</td>
     <td>Writes project <code>opencode.json</code> (<code>mcp</code> block)</td>
   </tr>
+  <tr>
+    <td><strong>Junie</strong></td>
+    <td align="center">✅</td>
+    <td align="center">✅</td>
+    <td align="center">✅</td>
+    <td>Writes <code>.junie/mcp/mcp.json</code> + skills bridge <code>.junie/skills</code></td>
+  </tr>
 </table>
 
 ---
@@ -257,12 +264,15 @@ your-project/
 │                                        │          Global     │
 │                                        ├────────→ Windsurf   │
 │                                        │          Global MCP │
-│                                        └────────→ OpenCode   │
-│                                                   opencode.json │
+│                                        ├────────→ OpenCode   │
+│                                        │          opencode.json │
+│                                        └────────→ Junie      │
+│                                                   .junie/mcp/ │
 │                                                              │
 │   .agents/skills/ ── symlink ──→ .claude/skills              │
 │                                  .cursor/skills              │
 │                                  .gemini/skills              │
+│                                  .junie/skills               │
 │                                  .windsurf/skills            │
 └──────────────────────────────────────────────────────────────┘
 ```
