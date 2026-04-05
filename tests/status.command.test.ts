@@ -11,6 +11,7 @@ import * as shell from '../src/core/shell.js'
 const tempDirs: string[] = []
 let previousWindsurfMcpPath: string | undefined
 let previousAntigravityMcpPath: string | undefined
+let previousClaudeDesktopConfigPath: string | undefined
 
 afterEach(async () => {
   vi.restoreAllMocks()
@@ -23,6 +24,11 @@ afterEach(async () => {
     delete process.env.AGENTS_ANTIGRAVITY_MCP_PATH
   } else {
     process.env.AGENTS_ANTIGRAVITY_MCP_PATH = previousAntigravityMcpPath
+  }
+  if (previousClaudeDesktopConfigPath === undefined) {
+    delete process.env.AGENTS_CLAUDE_DESKTOP_CONFIG_PATH
+  } else {
+    process.env.AGENTS_CLAUDE_DESKTOP_CONFIG_PATH = previousClaudeDesktopConfigPath
   }
   for (const dir of tempDirs.splice(0, tempDirs.length)) {
     await rm(dir, { recursive: true, force: true })
@@ -167,6 +173,37 @@ describe('status command', () => {
     const parsedAfterCustom = JSON.parse(outputAfterCustom) as { files: Record<string, boolean> }
     expect(parsedAfterCustom.files['CLAUDE.md']).toBe(true)
   }, 15000)
+
+  it('includes Claude Desktop file state when enabled', async () => {
+    const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-status-'))
+    const desktopDir = await mkdtemp(path.join(os.tmpdir(), 'agents-claude-desktop-status-'))
+    tempDirs.push(projectRoot, desktopDir)
+    previousClaudeDesktopConfigPath = process.env.AGENTS_CLAUDE_DESKTOP_CONFIG_PATH
+    process.env.AGENTS_CLAUDE_DESKTOP_CONFIG_PATH = path.join(desktopDir, 'claude_desktop_config.json')
+
+    await runInit({ projectRoot, force: true })
+    const config = await loadAgentsConfig(projectRoot)
+    config.integrations.enabled = ['claude_desktop']
+    await saveAgentsConfig(projectRoot, config)
+    await performSync({
+      projectRoot,
+      check: false,
+      verbose: false
+    })
+
+    const output = await captureStdout(async () => {
+      await runStatus({
+        projectRoot,
+        json: true,
+        verbose: false,
+        fast: false
+      })
+    })
+
+    const parsed = JSON.parse(output) as { files: Record<string, boolean>; probes: Record<string, string> }
+    expect(Object.keys(parsed.files).some((key) => key.includes('claude_desktop_config.json'))).toBe(true)
+    expect(parsed.probes.claude_desktop).toContain('managed server(s) configured')
+  })
 
   it('omits Antigravity global file checks when global sync option is disabled', async () => {
     const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-status-'))

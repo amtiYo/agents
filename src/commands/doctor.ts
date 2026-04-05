@@ -1,6 +1,10 @@
 import TOML from '@iarna/toml'
 import { loadAgentsConfig } from '../core/config.js'
 import { getClaudeInstructionsHealth } from '../core/claudeInstructions.js'
+import {
+  getClaudeDesktopConfigPath,
+  getClaudeDesktopConfigUnavailableDetail
+} from '../core/claudeDesktop.js'
 import { pathExists, readJson, readTextOrEmpty } from '../core/fs.js'
 import { loadResolvedRegistry } from '../core/mcp.js'
 import { getProjectPaths } from '../core/paths.js'
@@ -40,6 +44,7 @@ export async function runDoctor(options: DoctorOptions): Promise<void> {
 
   const paths = getProjectPaths(options.projectRoot)
   const antigravityGlobalMcpPath = getAntigravityGlobalMcpPath()
+  const claudeDesktopConfigPath = getClaudeDesktopConfigPath()
   const windsurfGlobalMcpPath = getWindsurfGlobalMcpPath()
   const issues: Issue[] = []
   const actions: string[] = []
@@ -118,6 +123,7 @@ export async function runDoctor(options: DoctorOptions): Promise<void> {
     paths,
     enabledForMaterialization,
     antigravityGlobalMcpPath,
+    claudeDesktopConfigPath,
     windsurfGlobalMcpPath,
     issues,
   )
@@ -180,6 +186,12 @@ export async function runDoctor(options: DoctorOptions): Promise<void> {
         message: 'Custom root CLAUDE.md detected. agents will preserve it and stop managing Claude instructions for this project.'
       })
     }
+  }
+  if (enabled.has('claude_desktop') && !claudeDesktopConfigPath) {
+    issues.push({
+      level: 'warning',
+      message: getClaudeDesktopConfigUnavailableDetail()
+    })
   }
   const trackedChecks = config.syncMode === 'source-only'
     ? [
@@ -252,6 +264,13 @@ export async function runDoctor(options: DoctorOptions): Promise<void> {
     issues.push({
       level: 'warning',
       message: `Antigravity global MCP file missing: ${antigravityGlobalMcpPath} (run agents sync).`
+    })
+  }
+
+  if (enabled.has('claude_desktop') && claudeDesktopConfigPath && !(await pathExists(claudeDesktopConfigPath)) && !applyFixes) {
+    issues.push({
+      level: 'warning',
+      message: `Claude Desktop config missing: ${claudeDesktopConfigPath} (run agents sync).`
     })
   }
 
@@ -522,6 +541,7 @@ async function validateManagedConfigSyntax(
   paths: ProjectPaths,
   enabledIntegrations: IntegrationName[],
   antigravityGlobalMcpPath: string,
+  claudeDesktopConfigPath: string | undefined,
   windsurfGlobalMcpPath: string,
   issues: Issue[],
 ): Promise<void> {
@@ -533,6 +553,7 @@ async function validateManagedConfigSyntax(
   await validateJsonIfExists(paths.generatedWindsurf, '.agents/generated/windsurf.mcp.json', issues)
   await validateJsonIfExists(paths.generatedOpencode, '.agents/generated/opencode.json', issues)
   await validateJsonIfExists(paths.generatedClaude, '.agents/generated/claude.mcp.json', issues)
+  await validateJsonIfExists(paths.generatedClaudeDesktop, '.agents/generated/claude-desktop.mcp.json', issues)
 
   if (enabledIntegrations.includes('codex')) {
     await validateTomlIfExists(paths.codexConfig, '.codex/config.toml', issues)
@@ -550,6 +571,13 @@ async function validateManagedConfigSyntax(
     await validateJsonIfExists(
       antigravityGlobalMcpPath,
       `Antigravity global MCP (${antigravityGlobalMcpPath})`,
+      issues,
+    )
+  }
+  if (enabledIntegrations.includes('claude_desktop') && claudeDesktopConfigPath) {
+    await validateJsonIfExists(
+      claudeDesktopConfigPath,
+      `Claude Desktop config (${claudeDesktopConfigPath})`,
       issues,
     )
   }

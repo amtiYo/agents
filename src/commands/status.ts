@@ -7,6 +7,13 @@ import { listDirNames, pathExists, readJson } from '../core/fs.js'
 import { loadResolvedRegistry } from '../core/mcp.js'
 import { getProjectPaths } from '../core/paths.js'
 import { getAntigravityGlobalMcpPath } from '../core/antigravity.js'
+import {
+  getClaudeDesktopConfigPath,
+  getClaudeDesktopConfigUnavailableDetail,
+  listClaudeDesktopManagedServerNames,
+  readClaudeDesktopConfig,
+  toManagedClaudeDesktopName
+} from '../core/claudeDesktop.js'
 import { getWindsurfGlobalMcpPath } from '../core/windsurf.js'
 import { commandExists, runCommand } from '../core/shell.js'
 import { getCodexTrustState } from '../core/trust.js'
@@ -55,9 +62,12 @@ export async function runStatus(options: StatusOptions): Promise<void> {
   const antigravityGlobalSyncEnabled = config.integrations.options.antigravityGlobalSync !== false
   const antigravityGlobalPath = getAntigravityGlobalMcpPath()
   const antigravityGlobalLabel = toHomeRelativePath(antigravityGlobalPath)
+  const claudeDesktopConfigPath = getClaudeDesktopConfigPath()
+  const claudeDesktopConfigLabel = claudeDesktopConfigPath ? toHomeRelativePath(claudeDesktopConfigPath) : undefined
   const windsurfGlobalPath = getWindsurfGlobalMcpPath()
   const windsurfGlobalLabel = toHomeRelativePath(windsurfGlobalPath)
   const expectedCodexServers = resolved.serversByTarget.codex.map((server) => server.name)
+  const expectedClaudeDesktopServers = resolved.serversByTarget.claude_desktop.map((server) => toManagedClaudeDesktopName(options.projectRoot, server.name))
   const expectedCursorServers = resolved.serversByTarget.cursor.map((server) => server.name)
   const expectedWindsurfServers = resolved.serversByTarget.windsurf.map((server) => server.name)
   const expectedOpencodeServers = resolved.serversByTarget.opencode.map((server) => server.name)
@@ -84,6 +94,9 @@ export async function runStatus(options: StatusOptions): Promise<void> {
   if (enabled.has('antigravity') && antigravityGlobalSyncEnabled) {
     files[antigravityGlobalLabel] = await pathExists(antigravityGlobalPath)
   }
+  if (enabled.has('claude_desktop') && claudeDesktopConfigPath && claudeDesktopConfigLabel) {
+    files[claudeDesktopConfigLabel] = await pathExists(claudeDesktopConfigPath)
+  }
   if (enabled.has('windsurf')) {
     files[windsurfGlobalLabel] = await pathExists(windsurfGlobalPath)
   }
@@ -109,6 +122,16 @@ export async function runStatus(options: StatusOptions): Promise<void> {
     if (enabled.has('codex')) probes.codex = probeCodex(options.projectRoot, expectedCodexServers)
     if (enabled.has('codex')) probes.codex_trust = await probeCodexTrust(options.projectRoot)
     if (enabled.has('claude')) probes.claude = probeClaude(options.projectRoot)
+    if (enabled.has('claude_desktop')) {
+      probes.claude_desktop = claudeDesktopConfigPath && claudeDesktopConfigLabel
+        ? await probeClaudeDesktop(
+          options.projectRoot,
+          claudeDesktopConfigPath,
+          claudeDesktopConfigLabel,
+          expectedClaudeDesktopServers,
+        )
+        : getClaudeDesktopConfigUnavailableDetail()
+    }
     if (enabled.has('gemini')) probes.gemini = probeGemini(options.projectRoot)
     if (enabled.has('copilot_vscode')) probes.copilot_vscode = await probeCopilot(paths.vscodeMcp)
     if (enabled.has('cursor')) probes.cursor = probeCursor(options.projectRoot, expectedCursorServers)
@@ -165,7 +188,7 @@ export async function runStatus(options: StatusOptions): Promise<void> {
     ui.keyValue('MCP', `${output.mcp.configured} configured, ${output.mcp.localOverrides} local override(s)`)
     ui.keyValue('Selected MCP', ui.formatList(output.selectedMcpServers))
 
-    const compactProbeOrder = ['codex', 'claude', 'gemini', 'copilot_vscode', 'cursor', 'antigravity', 'windsurf', 'opencode']
+    const compactProbeOrder = ['codex', 'claude', 'claude_desktop', 'gemini', 'copilot_vscode', 'cursor', 'antigravity', 'windsurf', 'opencode']
     const compactProbes = compactProbeOrder
       .filter((name) => Boolean(output.probes[name]))
       .map((name) => `${name}: ${output.probes[name]}`)
@@ -318,6 +341,27 @@ async function probeWindsurf(globalPath: string, label: string, expectedServerNa
       return `${names.length} server(s) configured (${names.join(', ') || 'none'}); missing expected: ${missing.join(', ')}`
     }
     return `${names.length} server(s) configured`
+  } catch {
+    return `invalid ${label}`
+  }
+}
+
+async function probeClaudeDesktop(
+  projectRoot: string,
+  configPath: string,
+  label: string,
+  expectedServerNames: string[],
+): Promise<string> {
+  if (!(await pathExists(configPath))) return `missing ${label}`
+
+  try {
+    const parsed = await readClaudeDesktopConfig(configPath)
+    const names = parsed ? listClaudeDesktopManagedServerNames(parsed, projectRoot) : []
+    const missing = expectedServerNames.filter((name) => !names.includes(name))
+    if (missing.length > 0) {
+      return `${names.length} managed server(s) configured (${names.join(', ') || 'none'}); missing expected: ${missing.join(', ')}`
+    }
+    return `${names.length} managed server(s) configured`
   } catch {
     return `invalid ${label}`
   }

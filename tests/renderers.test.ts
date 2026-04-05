@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import TOML from '@iarna/toml'
 import {
+  renderClaudeDesktopMcp,
   renderCodexToml,
   renderGeminiServers,
   renderJunieMcp,
@@ -8,7 +9,10 @@ import {
   renderVscodeMcp,
   renderWindsurfMcp
 } from '../src/core/renderers.js'
+import { toManagedClaudeDesktopName } from '../src/core/claudeDesktop.js'
 import type { ResolvedMcpServer } from '../src/types.js'
+
+const projectRoot = '/tmp/agents-renderers'
 
 const servers: ResolvedMcpServer[] = [
   {
@@ -75,6 +79,24 @@ describe('renderers', () => {
         url: 'https://example.com/mcp'
       },
       'sse-tools': {
+        type: 'sse',
+        url: 'https://example.com/sse'
+      }
+    })
+  })
+
+  it('renders claude desktop mcp payload', () => {
+    const rendered = renderClaudeDesktopMcp(servers, projectRoot)
+    expect(rendered.mcpServers).toMatchObject({
+      [toManagedClaudeDesktopName(projectRoot, 'filesystem')]: {
+        type: 'stdio',
+        command: 'npx'
+      },
+      [toManagedClaudeDesktopName(projectRoot, 'http-tools')]: {
+        type: 'http',
+        url: 'https://example.com/mcp'
+      },
+      [toManagedClaudeDesktopName(projectRoot, 'sse-tools')]: {
         type: 'sse',
         url: 'https://example.com/sse'
       }
@@ -168,6 +190,16 @@ describe('renderers', () => {
       })
     })
 
+    it('claude desktop includes cwd and warns to prefer absolute paths', () => {
+      const rendered = renderClaudeDesktopMcp(serversWithCwd, projectRoot)
+      expect(rendered.mcpServers[toManagedClaudeDesktopName(projectRoot, 'project-server')]).toMatchObject({
+        type: 'stdio',
+        command: 'pnpx',
+        cwd: '/abs/path/to/project'
+      })
+      expect(rendered.warnings.join(' ')).toContain('Claude Desktop may launch MCP servers')
+    })
+
     it('windsurf includes cwd for stdio server', () => {
       const rendered = renderWindsurfMcp(serversWithCwd)
       expect(rendered.mcpServers['project-server']).toMatchObject({
@@ -202,6 +234,9 @@ describe('renderers', () => {
 
       const vscode = renderVscodeMcp(servers)
       expect(vscode.servers['filesystem']).not.toHaveProperty('cwd')
+
+      const claudeDesktop = renderClaudeDesktopMcp(servers, projectRoot)
+      expect(claudeDesktop.mcpServers[toManagedClaudeDesktopName(projectRoot, 'filesystem')]).not.toHaveProperty('cwd')
 
       const windsurf = renderWindsurfMcp(servers)
       expect(windsurf.mcpServers['filesystem']).not.toHaveProperty('cwd')

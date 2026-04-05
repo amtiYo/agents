@@ -1,4 +1,5 @@
 import type { ResolvedMcpServer } from '../types.js'
+import { toManagedClaudeDesktopName } from './claudeDesktop.js'
 
 function escapeToml(value: string): string {
   return value.replaceAll('\\', '\\\\').replaceAll('"', '\\"')
@@ -144,6 +145,51 @@ export function renderVscodeMcp(servers: ResolvedMcpServer[]): {
   }
 
   return { servers: out, warnings }
+}
+
+export function renderClaudeDesktopMcp(servers: ResolvedMcpServer[], projectRoot: string): {
+  mcpServers: Record<string, unknown>
+  warnings: string[]
+} {
+  const warnings: string[] = []
+  const out: Record<string, unknown> = {}
+
+  for (const server of servers) {
+    const name = toManagedClaudeDesktopName(projectRoot, server.name)
+    if (server.transport === 'stdio') {
+      if (!server.command) {
+        warnings.push(`Server "${server.name}" has no command; skipped in Claude Desktop output.`)
+        continue
+      }
+      out[name] = {
+        type: 'stdio',
+        command: server.command,
+        args: server.args ?? [],
+        ...(server.cwd ? { cwd: server.cwd } : {}),
+        ...(server.env ? { env: server.env } : {})
+      }
+    } else {
+      if (!server.url) {
+        warnings.push(`Server "${server.name}" has no url; skipped in Claude Desktop output.`)
+        continue
+      }
+      out[name] = {
+        type: server.transport,
+        url: server.url,
+        ...(server.headers ? { headers: server.headers } : {})
+      }
+    }
+
+    if (!server.cwd) continue
+    warnings.push(
+      `Server "${server.name}" sets cwd. Claude Desktop may launch MCP servers with an undefined working directory; prefer absolute paths in command/args/env.`,
+    )
+  }
+
+  return {
+    mcpServers: out,
+    warnings
+  }
 }
 
 export function renderWindsurfMcp(servers: ResolvedMcpServer[]): {

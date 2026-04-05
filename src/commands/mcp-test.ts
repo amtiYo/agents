@@ -9,6 +9,7 @@ import type { IntegrationName, McpServerDefinition } from '../types.js'
 const ALL_INTEGRATIONS: IntegrationName[] = [
   'codex',
   'claude',
+  'claude_desktop',
   'gemini',
   'copilot_vscode',
   'cursor',
@@ -243,6 +244,7 @@ function runRuntimeChecks(entries: McpServerEntry[], projectRoot: string, timeou
       if (
         integration === 'codex'
         || integration === 'copilot_vscode'
+        || integration === 'claude_desktop'
         || integration === 'antigravity'
         || integration === 'windsurf'
         || integration === 'opencode'

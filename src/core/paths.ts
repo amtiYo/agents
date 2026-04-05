@@ -18,6 +18,7 @@ export interface ProjectPaths {
   generatedWindsurf: string
   generatedOpencode: string
   generatedClaude: string
+  generatedClaudeDesktop: string
   generatedClaudeState: string
   generatedClaudeInstructionsState: string
   generatedCursorState: string
@@ -73,6 +74,7 @@ export function getProjectPaths(projectRoot: string): ProjectPaths {
     generatedWindsurf: path.join(generatedDir, 'windsurf.mcp.json'),
     generatedOpencode: path.join(generatedDir, 'opencode.json'),
     generatedClaude: path.join(generatedDir, 'claude.mcp.json'),
+    generatedClaudeDesktop: path.join(generatedDir, 'claude-desktop.mcp.json'),
     generatedClaudeState: path.join(generatedDir, 'claude.state.json'),
     generatedClaudeInstructionsState: path.join(generatedDir, 'claude.instructions.state.json'),
     generatedCursorState: path.join(generatedDir, 'cursor.state.json'),

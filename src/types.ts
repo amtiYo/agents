@@ -3,6 +3,7 @@ export const AGENTS_SCHEMA_VERSION = 3
 export type IntegrationName =
   | 'codex'
   | 'claude'
+  | 'claude_desktop'
   | 'gemini'
   | 'copilot_vscode'
   | 'cursor'

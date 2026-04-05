@@ -9,6 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - No changes yet.
 
+## [0.8.8] - 2026-04-05
+
+### Added
+
+- New integration: **Claude Desktop** (`claude_desktop`) — MCP servers synced to Claude Desktop's global `claude_desktop_config.json`.
+- New generated artifact: `.agents/generated/claude-desktop.mcp.json`.
+- New `AGENTS_CLAUDE_DESKTOP_CONFIG_PATH` override for custom/testing Claude Desktop config paths.
+
+### Changed
+
+- MCP default targets and legacy full-target expansion now include `claude_desktop`.
+- `agents status`, `agents doctor`, and `agents mcp test --runtime` now recognize Claude Desktop.
+
+### Fixed
+
+- Claude Desktop sync now preserves user-owned top-level config and non-agents MCP servers while reconciling only `agents__*` entries.
+- Claude Desktop sync now warns when stdio servers rely on `cwd`, because Desktop may launch MCP servers with an undefined working directory.
+
 ## [0.8.7] - 2026-03-22
 
 ### Added

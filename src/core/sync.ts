@@ -10,10 +10,19 @@ import { INTEGRATION_SYNC_HOOKS } from '../integrations/syncHooks.js'
 import { ensureProjectGitignore } from './gitignore.js'
 import { syncSkills } from './skills.js'
 import { syncClaudeInstructions } from './claudeInstructions.js'
+import {
+  getClaudeDesktopConfigPath,
+  getClaudeDesktopConfigUnavailableDetail,
+  listClaudeDesktopManagedServerNames,
+  mergeClaudeDesktopConfig,
+  readClaudeDesktopConfig,
+  toManagedClaudeDesktopName
+} from './claudeDesktop.js'
 import { computeSharedSourceFingerprint } from './sourceFingerprint.js'
 import { syncVscodeSettings } from './vscodeSettings.js'
 import { listCursorMcpStatuses } from './cursorCli.js'
 import { listClaudeManagedServerNames } from './claudeCli.js'
+import { renderClaudeDesktopMcp } from './renderers.js'
 import { validateEnvKey, validateEnvValueForShell, validateHeaderKey, validateServerName } from './mcpValidation.js'
 import { acquireSyncLock } from './syncLock.js'
 import * as ui from './ui.js'
@@ -69,6 +78,17 @@ export async function performSync(options: SyncOptions): Promise<SyncResult> {
       })
     }
 
+    const claudeDesktopGenerated = renderClaudeDesktopMcp(resolved.serversByTarget.claude_desktop, projectRoot)
+    warnings.push(...claudeDesktopGenerated.warnings)
+    generatedByIntegration.claude_desktop = `${JSON.stringify({ mcpServers: claudeDesktopGenerated.mcpServers }, null, 2)}\n`
+    await writeManagedFile({
+      absolutePath: paths.generatedClaudeDesktop,
+      content: generatedByIntegration.claude_desktop,
+      projectRoot,
+      check,
+      changed
+    })
+
     const enabled = new Set(config.integrations.enabled)
     for (const hook of INTEGRATION_SYNC_HOOKS) {
       if (!hook.materialize) continue
@@ -91,6 +111,15 @@ export async function performSync(options: SyncOptions): Promise<SyncResult> {
       projectRoot,
       servers: resolved.serversByTarget.claude,
       statePath: paths.generatedClaudeState,
+      changed,
+      warnings
+    })
+
+    await syncClaudeDesktop({
+      enabled: enabled.has('claude_desktop'),
+      check,
+      projectRoot,
+      generatedContent: generatedByIntegration.claude_desktop ?? '',
       changed,
       warnings
     })
@@ -165,6 +194,76 @@ export async function performSync(options: SyncOptions): Promise<SyncResult> {
   }
 }
 
+async function syncClaudeDesktop(args: {
+  enabled: boolean
+  check: boolean
+  projectRoot: string
+  generatedContent: string
+  changed: string[]
+  warnings: string[]
+}): Promise<void> {
+  const { enabled, check, projectRoot, generatedContent, changed, warnings } = args
+  const configPath = getClaudeDesktopConfigPath()
+
+  if (!configPath) {
+    if (enabled) {
+      warnings.push(getClaudeDesktopConfigUnavailableDetail())
+    }
+    return
+  }
+
+  let existing: Record<string, unknown> | undefined
+  try {
+    existing = await readClaudeDesktopConfig(configPath) as Record<string, unknown> | undefined
+  } catch (error) {
+    warnings.push(
+      `Failed reading Claude Desktop config at ${configPath}; skipped Claude Desktop sync. ${error instanceof Error ? error.message : String(error)}`,
+    )
+    return
+  }
+
+  let managedServers: Record<string, unknown> = {}
+  if (enabled) {
+    try {
+      const parsed = generatedContent.trim().length > 0
+        ? JSON.parse(generatedContent) as { mcpServers?: Record<string, unknown> }
+        : {}
+      managedServers = typeof parsed.mcpServers === 'object' && parsed.mcpServers !== null && !Array.isArray(parsed.mcpServers)
+        ? parsed.mcpServers
+        : {}
+    } catch (error) {
+      warnings.push(`Failed parsing generated Claude Desktop config: ${error instanceof Error ? error.message : String(error)}`)
+      return
+    }
+  }
+
+  if (!enabled && !existing) {
+    return
+  }
+
+  const merged = mergeClaudeDesktopConfig({
+    projectRoot,
+    existing,
+    managedServers
+  })
+
+  const existingManaged = existing
+    ? listClaudeDesktopManagedServerNames(existing, projectRoot)
+    : []
+
+  if (!enabled && existingManaged.length === 0) {
+    return
+  }
+
+  await writeManagedFile({
+    absolutePath: configPath,
+    content: `${JSON.stringify(merged, null, 2)}\n`,
+    projectRoot,
+    check,
+    changed
+  })
+}
+
 async function syncClaude(args: {
   enabled: boolean
   check: boolean
@@ -198,7 +297,7 @@ async function syncClaude(args: {
   }
 
   if (enabled) {
-    const listed = listClaudeManagedServerNames(projectRoot)
+    const listed = listClaudeManagedServerNames(projectRoot, 'agents__', 5000)
     if (listed.ok) {
       currentNames = listed.names
     } else {

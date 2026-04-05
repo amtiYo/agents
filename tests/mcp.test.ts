@@ -110,6 +110,7 @@ describe('loadResolvedRegistry', () => {
     await writeFile(path.join(dir, '.agents', 'local.json'), JSON.stringify({ mcpServers: {} }, null, 2))
 
     const resolved = await loadResolvedRegistry(dir)
+    expect(resolved.serversByTarget.claude_desktop.map((server) => server.name)).toContain('docs')
     expect(resolved.serversByTarget.windsurf.map((server) => server.name)).toContain('docs')
     expect(resolved.serversByTarget.opencode.map((server) => server.name)).toContain('docs')
   })

@@ -4,7 +4,7 @@ Real-world scenarios.
 
 ## Solo Developer
 
-**Scenario:** You use Cursor + Claude Code
+**Scenario:** You use Cursor + Claude Code + Claude Desktop
 
 ```bash
 cd ~/my-project
@@ -134,6 +134,13 @@ agents mcp add claude-artifacts \
   --url "https://artifacts.anthropic.com/mcp" \
   --target claude
 
+# Claude Desktop-only server
+agents mcp add desktop-files \
+  --command npx \
+  --arg @modelcontextprotocol/server-filesystem \
+  --arg /absolute/path/to/project \
+  --target claude_desktop
+
 # Universal server
 agents mcp add context7 \
   --url "https://context7.com/mcp"
@@ -143,6 +150,7 @@ agents sync
 
 **Result:**
 - Claude: `claude-artifacts` + `context7`
+- Claude Desktop: `desktop-files` + `context7`
 - Cursor: `context7` only
 
 ---

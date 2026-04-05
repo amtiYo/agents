@@ -308,6 +308,10 @@ async function resolveIntegrationAccess(args: {
     summaries.antigravity = integrationOptions.antigravityGlobalSync ? 'global user profile' : 'disabled'
   }
 
+  if (selectedIntegrations.includes('claude_desktop')) {
+    summaries.claude_desktop = 'global Claude Desktop config'
+  }
+
   if (selectedIntegrations.includes('windsurf')) {
     summaries.windsurf = 'global MCP + workspace skills bridge'
   }
@@ -326,6 +330,7 @@ async function resolveIntegrationAccess(args: {
 function formatSummaryKey(key: string): string {
   const labels: Record<string, string> = {
     codex: 'Codex trust',
+    claude_desktop: 'Claude Desktop sync',
     cursor: 'Cursor approval',
     antigravity: 'Antigravity sync',
     windsurf: 'Windsurf sync',

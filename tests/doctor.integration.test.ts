@@ -8,9 +8,15 @@ import { loadAgentsConfig, saveAgentsConfig } from '../src/core/config.js'
 import { performSync } from '../src/core/sync.js'
 
 const tempDirs: string[] = []
+let previousClaudeDesktopConfigPath: string | undefined
 
 afterEach(async () => {
   process.exitCode = undefined
+  if (previousClaudeDesktopConfigPath === undefined) {
+    delete process.env.AGENTS_CLAUDE_DESKTOP_CONFIG_PATH
+  } else {
+    process.env.AGENTS_CLAUDE_DESKTOP_CONFIG_PATH = previousClaudeDesktopConfigPath
+  }
   for (const dir of tempDirs.splice(0, tempDirs.length)) {
     await rm(dir, { recursive: true, force: true })
   }
@@ -88,7 +94,13 @@ describe('doctor command', () => {
     const config = await loadAgentsConfig(projectRoot)
     config.integrations.enabled = ['claude']
     await saveAgentsConfig(projectRoot, config)
-    await performSync({ projectRoot, check: false, verbose: false })
+    const previousPath = process.env.PATH
+    process.env.PATH = ''
+    try {
+      await performSync({ projectRoot, check: false, verbose: false })
+    } finally {
+      process.env.PATH = previousPath
+    }
 
     await unlink(path.join(projectRoot, 'CLAUDE.md'))
 
@@ -132,6 +144,49 @@ describe('doctor command', () => {
     })
 
     expect(output).not.toContain('Antigravity global MCP file missing')
+  }, 15000)
+
+  it('reports missing Claude Desktop config when integration is enabled', async () => {
+    const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-doctor-'))
+    const desktopDir = await mkdtemp(path.join(os.tmpdir(), 'agents-doctor-claude-desktop-'))
+    tempDirs.push(projectRoot, desktopDir)
+    previousClaudeDesktopConfigPath = process.env.AGENTS_CLAUDE_DESKTOP_CONFIG_PATH
+    process.env.AGENTS_CLAUDE_DESKTOP_CONFIG_PATH = path.join(desktopDir, 'claude_desktop_config.json')
+
+    await runInit({ projectRoot, force: true })
+    const config = await loadAgentsConfig(projectRoot)
+    config.integrations.enabled = ['claude_desktop']
+    await saveAgentsConfig(projectRoot, config)
+
+    const output = await captureStdout(async () => {
+      await runDoctor({ projectRoot, fix: false })
+    })
+
+    expect(output).toContain('Claude Desktop config missing')
+  }, 15000)
+
+  it('reports invalid JSON in Claude Desktop config as error', async () => {
+    const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-doctor-'))
+    const desktopDir = await mkdtemp(path.join(os.tmpdir(), 'agents-doctor-claude-desktop-'))
+    tempDirs.push(projectRoot, desktopDir)
+    previousClaudeDesktopConfigPath = process.env.AGENTS_CLAUDE_DESKTOP_CONFIG_PATH
+    const desktopConfigPath = path.join(desktopDir, 'claude_desktop_config.json')
+    process.env.AGENTS_CLAUDE_DESKTOP_CONFIG_PATH = desktopConfigPath
+
+    await runInit({ projectRoot, force: true })
+    const config = await loadAgentsConfig(projectRoot)
+    config.integrations.enabled = ['claude_desktop']
+    await saveAgentsConfig(projectRoot, config)
+    await performSync({ projectRoot, check: false, verbose: false })
+
+    await writeFile(desktopConfigPath, '{invalid\n', 'utf8')
+
+    const output = await captureStdout(async () => {
+      await runDoctor({ projectRoot, fix: false })
+    })
+
+    expect(output).toContain('Invalid JSON in Claude Desktop config')
+    expect(process.exitCode).toBe(1)
   }, 15000)
 })
 

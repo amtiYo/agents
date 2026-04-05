@@ -13,6 +13,7 @@ import { getProjectPaths } from './paths.js'
 const ALL_INTEGRATIONS: IntegrationName[] = [
   'codex',
   'claude',
+  'claude_desktop',
   'gemini',
   'copilot_vscode',
   'cursor',
@@ -62,6 +63,7 @@ export function resolveFromConfigAndLocal(input: {
   const serversByTarget: Record<IntegrationName, ResolvedMcpServer[]> = {
     codex: [],
     claude: [],
+    claude_desktop: [],
     gemini: [],
     copilot_vscode: [],
     cursor: [],
