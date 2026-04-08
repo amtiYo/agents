@@ -248,4 +248,49 @@ describe('renderers', () => {
       expect(junie.mcpServers['filesystem']).not.toHaveProperty('cwd')
     })
   })
+
+  describe('skip and warn for missing required fields', () => {
+    it('skips stdio server missing command in renderClaudeDesktopMcp', () => {
+      const serversWithMissingCommand: ResolvedMcpServer[] = [
+        {
+          name: 'filesystem',
+          transport: 'stdio',
+          args: ['-y', '@modelcontextprotocol/server-filesystem', '/tmp/project']
+        } as ResolvedMcpServer
+      ]
+
+      const rendered = renderClaudeDesktopMcp(serversWithMissingCommand, projectRoot)
+      expect(rendered.mcpServers[toManagedClaudeDesktopName(projectRoot, 'filesystem')]).toBeUndefined()
+      expect(rendered.warnings).toContain('Server "filesystem" has no command; skipped in Claude Desktop output.')
+    })
+
+    it('skips http server missing url in renderClaudeDesktopMcp', () => {
+      const serversWithMissingUrl: ResolvedMcpServer[] = [
+        {
+          name: 'http-tools',
+          transport: 'http',
+          headers: {
+            Authorization: 'Bearer token'
+          }
+        } as ResolvedMcpServer
+      ]
+
+      const rendered = renderClaudeDesktopMcp(serversWithMissingUrl, projectRoot)
+      expect(rendered.mcpServers[toManagedClaudeDesktopName(projectRoot, 'http-tools')]).toBeUndefined()
+      expect(rendered.warnings).toContain('Server "http-tools" has no url; skipped in Claude Desktop output.')
+    })
+
+    it('skips sse server missing url in renderClaudeDesktopMcp', () => {
+      const serversWithMissingUrl: ResolvedMcpServer[] = [
+        {
+          name: 'sse-tools',
+          transport: 'sse'
+        } as ResolvedMcpServer
+      ]
+
+      const rendered = renderClaudeDesktopMcp(serversWithMissingUrl, projectRoot)
+      expect(rendered.mcpServers[toManagedClaudeDesktopName(projectRoot, 'sse-tools')]).toBeUndefined()
+      expect(rendered.warnings).toContain('Server "sse-tools" has no url; skipped in Claude Desktop output.')
+    })
+  })
 })
