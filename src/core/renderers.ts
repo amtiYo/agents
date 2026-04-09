@@ -168,6 +168,11 @@ export function renderClaudeDesktopMcp(servers: ResolvedMcpServer[], projectRoot
         ...(server.cwd ? { cwd: server.cwd } : {}),
         ...(server.env ? { env: server.env } : {})
       }
+      if (server.cwd) {
+        warnings.push(
+          `Server "${server.name}" sets cwd. Claude Desktop may launch MCP servers with an undefined working directory; prefer absolute paths in command/args/env.`,
+        )
+      }
     } else {
       if (!server.url) {
         warnings.push(`Server "${server.name}" has no url; skipped in Claude Desktop output.`)
@@ -179,11 +184,6 @@ export function renderClaudeDesktopMcp(servers: ResolvedMcpServer[], projectRoot
         ...(server.headers ? { headers: server.headers } : {})
       }
     }
-
-    if (!server.cwd) continue
-    warnings.push(
-      `Server "${server.name}" sets cwd. Claude Desktop may launch MCP servers with an undefined working directory; prefer absolute paths in command/args/env.`,
-    )
   }
 
   return {

@@ -212,56 +212,65 @@ async function syncClaudeDesktop(args: {
     return
   }
 
-  let existing: Record<string, unknown> | undefined
+  // Acquire global lock for Claude Desktop config to prevent race conditions across repos
+  const claudeDesktopLockPath = path.join(path.dirname(configPath), '.claude_desktop_config.lock')
+  const releaseLock = check ? null : await acquireSyncLock(claudeDesktopLockPath)
   try {
-    existing = await readClaudeDesktopConfig(configPath) as Record<string, unknown> | undefined
-  } catch (error) {
-    warnings.push(
-      `Failed reading Claude Desktop config at ${configPath}; skipped Claude Desktop sync. ${error instanceof Error ? error.message : String(error)}`,
-    )
-    return
-  }
-
-  let managedServers: Record<string, unknown> = {}
-  if (enabled) {
+    let existing: Record<string, unknown> | undefined
     try {
-      const parsed = generatedContent.trim().length > 0
-        ? JSON.parse(generatedContent) as { mcpServers?: Record<string, unknown> }
-        : {}
-      managedServers = typeof parsed.mcpServers === 'object' && parsed.mcpServers !== null && !Array.isArray(parsed.mcpServers)
-        ? parsed.mcpServers
-        : {}
+      existing = await readClaudeDesktopConfig(configPath) as Record<string, unknown> | undefined
     } catch (error) {
-      warnings.push(`Failed parsing generated Claude Desktop config: ${error instanceof Error ? error.message : String(error)}`)
+      warnings.push(
+        `Failed reading Claude Desktop config at ${configPath}; skipped Claude Desktop sync. ${error instanceof Error ? error.message : String(error)}`,
+      )
       return
     }
+
+    let managedServers: Record<string, unknown> = {}
+    if (enabled) {
+      try {
+        const parsed = generatedContent.trim().length > 0
+          ? JSON.parse(generatedContent) as { mcpServers?: Record<string, unknown> }
+          : {}
+        managedServers = typeof parsed.mcpServers === 'object' && parsed.mcpServers !== null && !Array.isArray(parsed.mcpServers)
+          ? parsed.mcpServers
+          : {}
+      } catch (error) {
+        warnings.push(`Failed parsing generated Claude Desktop config: ${error instanceof Error ? error.message : String(error)}`)
+        return
+      }
+    }
+
+    if (!enabled && !existing) {
+      return
+    }
+
+    const merged = mergeClaudeDesktopConfig({
+      projectRoot,
+      existing,
+      managedServers
+    })
+
+    const existingManaged = existing
+      ? listClaudeDesktopManagedServerNames(existing, projectRoot)
+      : []
+
+    if (!enabled && existingManaged.length === 0) {
+      return
+    }
+
+    await writeManagedFile({
+      absolutePath: configPath,
+      content: `${JSON.stringify(merged, null, 2)}\n`,
+      projectRoot,
+      check,
+      changed
+    })
+  } finally {
+    if (releaseLock) {
+      await releaseLock()
+    }
   }
-
-  if (!enabled && !existing) {
-    return
-  }
-
-  const merged = mergeClaudeDesktopConfig({
-    projectRoot,
-    existing,
-    managedServers
-  })
-
-  const existingManaged = existing
-    ? listClaudeDesktopManagedServerNames(existing, projectRoot)
-    : []
-
-  if (!enabled && existingManaged.length === 0) {
-    return
-  }
-
-  await writeManagedFile({
-    absolutePath: configPath,
-    content: `${JSON.stringify(merged, null, 2)}\n`,
-    projectRoot,
-    check,
-    changed
-  })
 }
 
 async function syncClaude(args: {
