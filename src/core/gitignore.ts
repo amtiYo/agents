@@ -8,6 +8,7 @@ const SOURCE_ONLY_ENTRIES = [
   'CLAUDE.md',
   '.codex/',
   '.gemini/',
+  '.mcp.json',
   '.vscode/mcp.json',
   '.claude/skills',
   '.cursor/',

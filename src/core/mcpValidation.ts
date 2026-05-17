@@ -26,10 +26,11 @@ export function validateServerName(name: string): void {
 }
 
 export function validateTransport(transport: string): McpTransportType {
-  if (!TRANSPORTS.includes(transport as McpTransportType)) {
+  const normalized = transport === 'streamable-http' ? 'http' : transport
+  if (!TRANSPORTS.includes(normalized as McpTransportType)) {
     throw new Error(`Unsupported MCP transport "${transport}". Allowed: ${TRANSPORTS.join(', ')}`)
   }
-  return transport as McpTransportType
+  return normalized as McpTransportType
 }
 
 export function parseKeyValue(input: string, label: string): { key: string; value: string } {
@@ -88,7 +89,7 @@ export function resolveDefaultTargets(config: AgentsConfig): {
   }
   return {
     targets: [...INTEGRATION_IDS],
-    warning: 'No integrations are enabled; defaulting MCP targets to all integrations.'
+    warning: 'No integrations are enabled; targetless MCP servers remain universal and materialize when integrations are enabled.'
   }
 }
 

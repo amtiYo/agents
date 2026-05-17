@@ -3,6 +3,7 @@ import { cleanupManagedGitignore } from '../core/gitignore.js'
 import { getProjectPaths } from '../core/paths.js'
 import { pathExists, removeIfExists } from '../core/fs.js'
 import { cleanupManagedClaudeInstructions } from '../core/claudeInstructions.js'
+import { cleanupManagedClaudeDesktopConfig } from '../core/claudeDesktop.js'
 import { cleanupVscodeSettingsIfManaged } from '../core/vscodeSettings.js'
 import * as ui from '../core/ui.js'
 
@@ -21,6 +22,15 @@ export async function runReset(options: ResetOptions): Promise<void> {
   spin.start('Cleaning up...')
 
   const removed: string[] = []
+  const warnings: string[] = []
+  const claudeDesktopCleanup = await cleanupManagedClaudeDesktopConfig(projectRoot)
+  if (claudeDesktopCleanup.changed && claudeDesktopCleanup.path) {
+    removed.push(claudeDesktopCleanup.path)
+  }
+  if (claudeDesktopCleanup.warning) {
+    warnings.push(claudeDesktopCleanup.warning)
+  }
+
   if (options.hard) {
     const vscodeSettingsRemoved = await cleanupVscodeSettingsIfManaged({
       settingsPath: paths.vscodeSettings,
@@ -50,6 +60,7 @@ export async function runReset(options: ResetOptions): Promise<void> {
         paths.opencodeConfig,
         legacyAgentDir,
         paths.vscodeMcp,
+        paths.copilotCliMcp,
         paths.claudeDir,
         paths.junieDir
       ]
@@ -64,6 +75,7 @@ export async function runReset(options: ResetOptions): Promise<void> {
           paths.opencodeConfig,
           legacyAgentDir,
           paths.vscodeMcp,
+          paths.copilotCliMcp,
           paths.claudeSkillsBridge,
           paths.cursorSkillsBridge,
           paths.junieMcpDir,
@@ -80,6 +92,7 @@ export async function runReset(options: ResetOptions): Promise<void> {
           paths.opencodeConfig,
           legacyAgentDir,
           paths.vscodeMcp,
+          paths.copilotCliMcp,
           paths.claudeSkillsBridge,
           paths.cursorSkillsBridge,
           paths.junieMcpDir,
@@ -100,6 +113,10 @@ export async function runReset(options: ResetOptions): Promise<void> {
   }
 
   spin.stop('Cleanup complete')
+
+  for (const warning of warnings) {
+    ui.warning(warning)
+  }
 
   if (removed.length === 0) {
     ui.info('Reset: nothing to clean')

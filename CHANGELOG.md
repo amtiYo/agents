@@ -9,6 +9,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - No changes yet.
 
+## [0.8.8] - 2026-05-17
+
+### Added
+
+- New integration: **Claude Desktop** (`claude_desktop`) — MCP servers synced to Claude Desktop's global `claude_desktop_config.json`.
+- New integration: **Copilot CLI** (`copilot_cli`) — MCP servers synced to project `.mcp.json`; `AGENTS.md` and `.agents/skills` are used natively by Copilot CLI.
+- New generated artifact: `.agents/generated/claude-desktop.mcp.json`.
+- New generated artifact: `.agents/generated/copilot.cli.mcp.json`.
+- New `AGENTS_CLAUDE_DESKTOP_CONFIG_PATH` override for custom/testing Claude Desktop config paths.
+
+### Changed
+
+- MCP default targets now include every supported integration, including `claude_desktop`, `copilot_cli`, and `junie`.
+- Legacy full-target expansion is now exact-match only so explicit partial target lists are not silently broadened.
+- `agents status`, `agents doctor`, and `agents mcp test --runtime` now recognize Claude Desktop, Copilot CLI, and Junie where applicable.
+- Gemini HTTP MCP rendering now uses `httpUrl` for Streamable HTTP and keeps `url` for SSE.
+- `agents mcp add` and `agents mcp import` no longer pin currently enabled integrations when no `--target` is provided; targetless servers remain universal for future integrations.
+- MCP import now accepts common current fields: `httpUrl`, `serverUrl`, and `type: "streamable-http"`.
+
+### Fixed
+
+- Claude Desktop sync now preserves user-owned top-level config and non-agents MCP servers while reconciling only `agents__*` entries.
+- Claude Desktop sync is now stdio-only for local JSON and skips HTTP/SSE with a connector guidance warning.
+- Disabled Claude Desktop sync no longer touches the real global Desktop config unless this project previously managed Desktop entries.
+- Antigravity and Windsurf global sync now preserve unmanaged and other-project MCP entries, use global config locks, and clean up only this project's previously managed entries when disabled.
+- `agents reset` now removes this project's managed Claude Desktop MCP entries from the global `claude_desktop_config.json` while preserving manual and other-project entries.
+- MCP add/import/remove source writes are now locked to avoid concurrent updates losing `.agents/agents.json` or `.agents/local.json` changes.
+- `agents mcp add` now rejects transport-specific fields that would otherwise be dropped, such as headers on stdio servers or env vars on remote servers.
+- Docs now distinguish Copilot VS Code from Copilot CLI and use safe token-rotation examples.
+
 ## [0.8.7] - 2026-03-22
 
 ### Added

@@ -48,6 +48,31 @@ describe('parseImportedServers', () => {
     expect(out[0]?.server.url).toBe('https://example.com/mcp')
   })
 
+  it('parses current httpUrl and streamable-http aliases', () => {
+    const payload = JSON.stringify({
+      mcpServers: {
+        docs: {
+          type: 'streamable-http',
+          httpUrl: 'https://example.com/mcp'
+        },
+        search: {
+          serverUrl: 'https://example.com/search-mcp'
+        }
+      }
+    })
+
+    const out = parseImportedServers(payload)
+    expect(out).toHaveLength(2)
+    expect(out.find((entry) => entry.name === 'docs')?.server).toMatchObject({
+      transport: 'http',
+      url: 'https://example.com/mcp'
+    })
+    expect(out.find((entry) => entry.name === 'search')?.server).toMatchObject({
+      transport: 'http',
+      url: 'https://example.com/search-mcp'
+    })
+  })
+
   it('parses single server object with explicit name override', () => {
     const payload = JSON.stringify({
       command: 'uvx',

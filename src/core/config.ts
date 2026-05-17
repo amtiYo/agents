@@ -12,8 +12,24 @@ export const DEFAULT_VSCODE_HIDDEN_PATHS = [
   '**/.antigravity',
   '**/.windsurf',
   '**/.opencode',
+  '**/.junie',
+  '**/.mcp.json',
   '**/opencode.json',
   '**/.agents/generated'
+]
+
+const DEFAULT_TARGETS: IntegrationName[] = [
+  'codex',
+  'claude',
+  'claude_desktop',
+  'gemini',
+  'copilot_vscode',
+  'copilot_cli',
+  'cursor',
+  'antigravity',
+  'windsurf',
+  'opencode',
+  'junie'
 ]
 
 const DEFAULT_MCP_SERVERS: Record<string, McpServerDefinition> = {
@@ -23,7 +39,7 @@ const DEFAULT_MCP_SERVERS: Record<string, McpServerDefinition> = {
     transport: 'stdio',
     command: 'npx',
     args: ['-y', '@modelcontextprotocol/server-filesystem', '${PROJECT_ROOT}'],
-    targets: ['codex', 'claude', 'gemini', 'copilot_vscode', 'cursor', 'antigravity', 'windsurf', 'opencode'],
+    targets: DEFAULT_TARGETS,
     enabled: true
   },
   fetch: {
@@ -35,7 +51,7 @@ const DEFAULT_MCP_SERVERS: Record<string, McpServerDefinition> = {
     env: {
       FASTMCP_LOG_LEVEL: 'ERROR'
     },
-    targets: ['codex', 'claude', 'gemini', 'copilot_vscode', 'cursor', 'antigravity', 'windsurf', 'opencode'],
+    targets: DEFAULT_TARGETS,
     enabled: true
   },
   git: {
@@ -47,7 +63,7 @@ const DEFAULT_MCP_SERVERS: Record<string, McpServerDefinition> = {
     env: {
       FASTMCP_LOG_LEVEL: 'ERROR'
     },
-    targets: ['codex', 'claude', 'gemini', 'copilot_vscode', 'cursor', 'antigravity', 'windsurf', 'opencode'],
+    targets: DEFAULT_TARGETS,
     enabled: true
   }
 }

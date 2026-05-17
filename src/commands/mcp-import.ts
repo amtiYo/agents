@@ -44,7 +44,7 @@ export async function runMcpImport(options: McpImportOptions): Promise<void> {
   const targetOverride = parseTargetOptions(options.targets)
   const defaultTargets = resolveDefaultTargets(config)
   const warnings: string[] = []
-  if (targetOverride.length === 0 && defaultTargets.warning) {
+  if (targetOverride.length === 0 && config.integrations.enabled.length === 0 && defaultTargets.warning) {
     warnings.push(defaultTargets.warning)
   }
 
@@ -55,10 +55,9 @@ export async function runMcpImport(options: McpImportOptions): Promise<void> {
   const updates = []
   for (const entry of imported) {
     validateServerName(entry.name)
-    const baseServer: McpServerDefinition = {
-      ...entry.server,
-      targets: resolveTargets(entry.server.targets, targetOverride, defaultTargets.targets)
-    }
+    const targets = resolveTargets(entry.server.targets, targetOverride, defaultTargets.targets)
+    const baseServer: McpServerDefinition = { ...entry.server }
+    if (targets && targets.length > 0) baseServer.targets = targets
 
     const secretEnv = inferSecretKeyValues(baseServer.env)
     const secretEnvKeys = new Set<string>(Object.keys(secretEnv))
@@ -145,10 +144,11 @@ function resolveTargets(
   existing: IntegrationName[] | undefined,
   override: IntegrationName[],
   defaults: IntegrationName[],
-): IntegrationName[] {
+): IntegrationName[] | undefined {
   if (override.length > 0) return override
   if (existing && existing.length > 0) return existing
-  return defaults
+  void defaults
+  return undefined
 }
 
 interface PromptSecretsArgs {

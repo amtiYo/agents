@@ -165,6 +165,9 @@ describe.sequential('mcp test runtime mode', () => {
       nonInteractive: true
     })
 
+    previousPathEnv = process.env.PATH
+    process.env.PATH = ''
+
     const out = await captureStdout(async () => {
       await runMcpTest({
         projectRoot,
@@ -192,6 +195,48 @@ describe.sequential('mcp test runtime mode', () => {
       runtime?: { timeoutMs: number }
     }
     expect(payloadZero.runtime?.timeoutMs).toBe(8000)
+  })
+
+  it('reports Claude Desktop runtime checks as unsupported', async () => {
+    const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-mcp-runtime-'))
+    tempDirs.push(projectRoot)
+
+    await runInit({ projectRoot, force: true })
+    await runMcpAdd({
+      projectRoot,
+      name: 'docs',
+      transport: 'http',
+      url: 'https://example.com/mcp',
+      targets: ['claude_desktop'],
+      args: [],
+      env: [],
+      headers: [],
+      secretEnv: [],
+      secretHeaders: [],
+      secretArgs: [],
+      disabled: false,
+      replace: false,
+      noSync: true,
+      nonInteractive: true
+    })
+
+    const out = await captureStdout(async () => {
+      await runMcpTest({
+        projectRoot,
+        name: 'docs',
+        json: true,
+        runtime: true,
+        runtimeTimeoutMs: 2000
+      })
+    })
+
+    const payload = JSON.parse(out) as {
+      errors: number
+      results: Array<{ runtime?: Record<string, { status: string; message: string }> }>
+    }
+    expect(payload.errors).toBe(0)
+    expect(payload.results[0]?.runtime?.claude_desktop?.status).toBe('unsupported')
+    expect(payload.results[0]?.runtime?.claude_desktop?.message).toContain('not supported')
   })
 })
 

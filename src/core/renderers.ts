@@ -1,4 +1,5 @@
 import type { ResolvedMcpServer } from '../types.js'
+import { toManagedClaudeDesktopName } from './claudeDesktop.js'
 
 function escapeToml(value: string): string {
   return value.replaceAll('\\', '\\\\').replaceAll('"', '\\"')
@@ -100,8 +101,9 @@ export function renderGeminiServers(servers: ResolvedMcpServer[]): {
       continue
     }
     out[server.name] = {
-      type: server.transport,
-      url: server.url,
+      ...(server.transport === 'http'
+        ? { httpUrl: server.url }
+        : { url: server.url }),
       ...(server.headers ? { headers: server.headers } : {})
     }
   }
@@ -144,6 +146,94 @@ export function renderVscodeMcp(servers: ResolvedMcpServer[]): {
   }
 
   return { servers: out, warnings }
+}
+
+/**
+ * Render Copilot CLI's project MCP config.
+ *
+ * @param servers Resolved MCP servers from the shared registry.
+ * @returns A Copilot CLI `mcpServers` map plus warnings for skipped entries.
+ * Stdio servers without commands and remote servers without URLs are omitted.
+ */
+export function renderCopilotCliMcp(servers: ResolvedMcpServer[]): {
+  mcpServers: Record<string, unknown>
+  warnings: string[]
+} {
+  const warnings: string[] = []
+  const out: Record<string, unknown> = {}
+
+  for (const server of servers) {
+    if (server.transport === 'stdio') {
+      if (!server.command) {
+        warnings.push(`Server "${server.name}" has no command; skipped in Copilot CLI MCP output.`)
+        continue
+      }
+      out[server.name] = {
+        type: 'stdio',
+        command: server.command,
+        args: server.args ?? [],
+        tools: ['*'],
+        ...(server.cwd ? { cwd: server.cwd } : {}),
+        ...(server.env ? { env: server.env } : {})
+      }
+      continue
+    }
+
+    if (!server.url) {
+      warnings.push(`Server "${server.name}" has no url; skipped in Copilot CLI MCP output.`)
+      continue
+    }
+    out[server.name] = {
+      type: server.transport,
+      url: server.url,
+      tools: ['*'],
+      ...(server.headers ? { headers: server.headers } : {})
+    }
+  }
+
+  return { mcpServers: out, warnings }
+}
+
+/**
+ * Render Claude Desktop's local JSON config. Claude Desktop remote MCP servers
+ * are account/UI-managed connectors, so only local stdio servers are emitted.
+ */
+export function renderClaudeDesktopMcp(servers: ResolvedMcpServer[], projectRoot: string): {
+  mcpServers: Record<string, unknown>
+  warnings: string[]
+} {
+  const warnings: string[] = []
+  const out: Record<string, unknown> = {}
+
+  for (const server of servers) {
+    const name = toManagedClaudeDesktopName(projectRoot, server.name)
+    if (server.transport === 'stdio') {
+      if (!server.command) {
+        warnings.push(`Server "${server.name}" has no command; skipped in Claude Desktop output.`)
+        continue
+      }
+      out[name] = {
+        type: 'stdio',
+        command: server.command,
+        args: server.args ?? [],
+        ...(server.env ? { env: server.env } : {})
+      }
+      if (server.cwd) {
+        warnings.push(
+          `Server "${server.name}" sets cwd, but Claude Desktop claude_desktop_config.json does not document cwd support; prefer absolute paths in command/args/env.`,
+        )
+      }
+    } else {
+      warnings.push(
+        `Server "${server.name}" uses ${server.transport} transport; skipped in Claude Desktop output. Remote MCP servers are managed as Claude custom connectors, not in claude_desktop_config.json.`,
+      )
+    }
+  }
+
+  return {
+    mcpServers: out,
+    warnings
+  }
 }
 
 export function renderWindsurfMcp(servers: ResolvedMcpServer[]): {

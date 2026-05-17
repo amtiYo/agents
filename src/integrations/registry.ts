@@ -9,8 +9,10 @@ export interface IntegrationDefinition {
 export const INTEGRATIONS: IntegrationDefinition[] = [
   { id: 'codex', label: 'Codex', requiredBinary: 'codex' },
   { id: 'claude', label: 'Claude Code', requiredBinary: 'claude' },
+  { id: 'claude_desktop', label: 'Claude Desktop' },
   { id: 'gemini', label: 'Gemini CLI', requiredBinary: 'gemini' },
   { id: 'copilot_vscode', label: 'Copilot VS Code', requiredBinary: 'code' },
+  { id: 'copilot_cli', label: 'Copilot CLI', requiredBinary: 'copilot' },
   { id: 'cursor', label: 'Cursor', requiredBinary: 'cursor-agent' },
   { id: 'antigravity', label: 'Antigravity', requiredBinary: 'antigravity' },
   { id: 'windsurf', label: 'Windsurf' },

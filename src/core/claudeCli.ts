@@ -25,8 +25,12 @@ export function parseClaudeManagedServerNames(output: string, prefix = 'agents__
   return [...names].sort((a, b) => a.localeCompare(b))
 }
 
-export function listClaudeManagedServerNames(projectRoot: string, prefix = 'agents__'): ClaudeMcpListResult {
-  const result = runCommand('claude', ['mcp', 'list'], projectRoot)
+export function listClaudeManagedServerNames(
+  projectRoot: string,
+  prefix = 'agents__',
+  timeoutMs?: number,
+): ClaudeMcpListResult {
+  const result = runCommand('claude', ['mcp', 'list'], projectRoot, timeoutMs)
   if (!result.ok) {
     return {
       ok: false,
@@ -41,4 +45,3 @@ export function listClaudeManagedServerNames(projectRoot: string, prefix = 'agen
     stderr: result.stderr
   }
 }
-

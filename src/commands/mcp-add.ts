@@ -1,5 +1,5 @@
 import type { Option } from '@clack/prompts'
-import type { IntegrationName, McpServerDefinition, McpTransportType } from '../types.js'
+import type { McpServerDefinition, McpTransportType } from '../types.js'
 import { loadAgentsConfig } from '../core/config.js'
 import { CancelledError } from '../core/errors.js'
 import { upsertMcpServers } from '../core/mcpCrud.js'
@@ -116,7 +116,6 @@ export async function runMcpAdd(options: McpAddOptions): Promise<void> {
 
   const parsedTargets = parseTargetOptions(options.targets)
   const defaultTargets = resolveDefaultTargets(config)
-  const targets: IntegrationName[] = parsedTargets.length > 0 ? parsedTargets : defaultTargets.targets
 
   const envMap = toMap(options.env, 'env', (key) => validateEnvKey(key, 'environment variable'))
   const headerMap = toMap(options.headers, 'header', (key) => validateHeaderKey(key, 'header'))
@@ -124,15 +123,28 @@ export async function runMcpAdd(options: McpAddOptions): Promise<void> {
   const explicitSecretHeaders = toMap(options.secretHeaders, 'secret header', (key) => validateHeaderKey(key, 'secret header'))
   const explicitSecretArgs = (options.secretArgs ?? []).map(parseSecretArg)
 
+  if (finalTransport === 'stdio' && (Object.keys(headerMap).length > 0 || Object.keys(explicitSecretHeaders).length > 0)) {
+    throw new Error('Headers are only supported for http/sse MCP transports.')
+  }
+  if (finalTransport === 'stdio' && url) {
+    throw new Error('URL is only supported for http/sse MCP transports.')
+  }
+  if (finalTransport !== 'stdio' && (Object.keys(envMap).length > 0 || Object.keys(explicitSecretEnv).length > 0)) {
+    throw new Error('Environment variables are only supported for stdio MCP transports.')
+  }
+  if (finalTransport !== 'stdio' && (command || args.length > 0 || explicitSecretArgs.length > 0)) {
+    throw new Error('Command and args are only supported for stdio MCP transport.')
+  }
+
   if (explicitSecretArgs.length > 0 && args.length === 0) {
     throw new Error('Cannot use --secret-arg without --arg values.')
   }
 
   const baseServer: McpServerDefinition = {
     transport: finalTransport,
-    enabled: !options.disabled,
-    targets
+    enabled: !options.disabled
   }
+  if (parsedTargets.length > 0) baseServer.targets = parsedTargets
   if (options.description?.trim()) {
     baseServer.description = options.description.trim()
   }
@@ -176,7 +188,7 @@ export async function runMcpAdd(options: McpAddOptions): Promise<void> {
   })
 
   const warnings: string[] = []
-  if (!parsedTargets.length && defaultTargets.warning) {
+  if (!parsedTargets.length && config.integrations.enabled.length === 0 && defaultTargets.warning) {
     warnings.push(defaultTargets.warning)
   }
 

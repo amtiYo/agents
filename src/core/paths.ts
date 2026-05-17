@@ -13,11 +13,16 @@ export interface ProjectPaths {
   generatedCodex: string
   generatedGemini: string
   generatedCopilot: string
+  generatedCopilotCli: string
   generatedCursor: string
   generatedAntigravity: string
+  generatedAntigravityState: string
   generatedWindsurf: string
+  generatedWindsurfState: string
   generatedOpencode: string
   generatedClaude: string
+  generatedClaudeDesktop: string
+  generatedClaudeDesktopState: string
   generatedClaudeState: string
   generatedClaudeInstructionsState: string
   generatedCursorState: string
@@ -27,6 +32,7 @@ export interface ProjectPaths {
   codexConfig: string
   geminiSettings: string
   vscodeMcp: string
+  copilotCliMcp: string
   vscodeSettings: string
   cursorMcp: string
   antigravityProjectMcp: string
@@ -68,11 +74,16 @@ export function getProjectPaths(projectRoot: string): ProjectPaths {
     generatedCodex: path.join(generatedDir, 'codex.config.toml'),
     generatedGemini: path.join(generatedDir, 'gemini.settings.json'),
     generatedCopilot: path.join(generatedDir, 'copilot.vscode.mcp.json'),
+    generatedCopilotCli: path.join(generatedDir, 'copilot.cli.mcp.json'),
     generatedCursor: path.join(generatedDir, 'cursor.mcp.json'),
     generatedAntigravity: path.join(generatedDir, 'antigravity.mcp.json'),
+    generatedAntigravityState: path.join(generatedDir, 'antigravity.state.json'),
     generatedWindsurf: path.join(generatedDir, 'windsurf.mcp.json'),
+    generatedWindsurfState: path.join(generatedDir, 'windsurf.state.json'),
     generatedOpencode: path.join(generatedDir, 'opencode.json'),
     generatedClaude: path.join(generatedDir, 'claude.mcp.json'),
+    generatedClaudeDesktop: path.join(generatedDir, 'claude-desktop.mcp.json'),
+    generatedClaudeDesktopState: path.join(generatedDir, 'claude-desktop.state.json'),
     generatedClaudeState: path.join(generatedDir, 'claude.state.json'),
     generatedClaudeInstructionsState: path.join(generatedDir, 'claude.instructions.state.json'),
     generatedCursorState: path.join(generatedDir, 'cursor.state.json'),
@@ -82,6 +93,7 @@ export function getProjectPaths(projectRoot: string): ProjectPaths {
     codexConfig: path.join(root, '.codex', 'config.toml'),
     geminiSettings: path.join(root, '.gemini', 'settings.json'),
     vscodeMcp: path.join(root, '.vscode', 'mcp.json'),
+    copilotCliMcp: path.join(root, '.mcp.json'),
     vscodeSettings: path.join(root, '.vscode', 'settings.json'),
     cursorMcp: path.join(root, '.cursor', 'mcp.json'),
     antigravityProjectMcp: path.join(root, '.antigravity', 'mcp.json'),

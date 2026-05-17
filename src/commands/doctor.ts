@@ -1,6 +1,10 @@
 import TOML from '@iarna/toml'
 import { loadAgentsConfig } from '../core/config.js'
 import { getClaudeInstructionsHealth } from '../core/claudeInstructions.js'
+import {
+  getClaudeDesktopConfigPath,
+  getClaudeDesktopConfigUnavailableDetail
+} from '../core/claudeDesktop.js'
 import { pathExists, readJson, readTextOrEmpty } from '../core/fs.js'
 import { loadResolvedRegistry } from '../core/mcp.js'
 import { getProjectPaths } from '../core/paths.js'
@@ -40,6 +44,7 @@ export async function runDoctor(options: DoctorOptions): Promise<void> {
 
   const paths = getProjectPaths(options.projectRoot)
   const antigravityGlobalMcpPath = getAntigravityGlobalMcpPath()
+  const claudeDesktopConfigPath = getClaudeDesktopConfigPath()
   const windsurfGlobalMcpPath = getWindsurfGlobalMcpPath()
   const issues: Issue[] = []
   const actions: string[] = []
@@ -118,6 +123,7 @@ export async function runDoctor(options: DoctorOptions): Promise<void> {
     paths,
     enabledForMaterialization,
     antigravityGlobalMcpPath,
+    claudeDesktopConfigPath,
     windsurfGlobalMcpPath,
     issues,
   )
@@ -181,17 +187,25 @@ export async function runDoctor(options: DoctorOptions): Promise<void> {
       })
     }
   }
+  if (enabled.has('claude_desktop') && !claudeDesktopConfigPath) {
+    issues.push({
+      level: 'warning',
+      message: getClaudeDesktopConfigUnavailableDetail()
+    })
+  }
   const trackedChecks = config.syncMode === 'source-only'
     ? [
         ...(enabled.has('claude') ? ['CLAUDE.md'] : []),
         ...(enabled.has('codex') ? ['.codex/config.toml'] : []),
         ...(enabled.has('gemini') ? ['.gemini/settings.json'] : []),
         ...(enabled.has('copilot_vscode') ? ['.vscode/mcp.json'] : []),
+        ...(enabled.has('copilot_cli') ? ['.mcp.json'] : []),
         ...(enabled.has('cursor') ? ['.cursor/mcp.json'] : []),
         ...(enabled.has('claude') ? ['.claude/skills'] : []),
         ...(enabled.has('cursor') ? ['.cursor/skills'] : []),
         ...(enabled.has('windsurf') ? ['.windsurf/skills'] : []),
         ...((enabled.has('gemini') || enabled.has('antigravity')) ? ['.gemini/skills'] : []),
+        ...(enabled.has('junie') ? ['.junie/mcp/mcp.json', '.junie/skills'] : []),
         ...(enabled.has('antigravity') ? ['.antigravity/mcp.json'] : []),
         ...(enabled.has('opencode') ? ['opencode.json'] : [])
       ]
@@ -252,6 +266,13 @@ export async function runDoctor(options: DoctorOptions): Promise<void> {
     issues.push({
       level: 'warning',
       message: `Antigravity global MCP file missing: ${antigravityGlobalMcpPath} (run agents sync).`
+    })
+  }
+
+  if (enabled.has('claude_desktop') && claudeDesktopConfigPath && !(await pathExists(claudeDesktopConfigPath)) && !applyFixes) {
+    issues.push({
+      level: 'warning',
+      message: `Claude Desktop config missing: ${claudeDesktopConfigPath} (run agents sync).`
     })
   }
 
@@ -522,17 +543,21 @@ async function validateManagedConfigSyntax(
   paths: ProjectPaths,
   enabledIntegrations: IntegrationName[],
   antigravityGlobalMcpPath: string,
+  claudeDesktopConfigPath: string | undefined,
   windsurfGlobalMcpPath: string,
   issues: Issue[],
 ): Promise<void> {
   await validateTomlIfExists(paths.generatedCodex, '.agents/generated/codex.config.toml', issues)
   await validateJsonIfExists(paths.generatedGemini, '.agents/generated/gemini.settings.json', issues)
   await validateJsonIfExists(paths.generatedCopilot, '.agents/generated/copilot.vscode.mcp.json', issues)
+  await validateJsonIfExists(paths.generatedCopilotCli, '.agents/generated/copilot.cli.mcp.json', issues)
   await validateJsonIfExists(paths.generatedCursor, '.agents/generated/cursor.mcp.json', issues)
   await validateJsonIfExists(paths.generatedAntigravity, '.agents/generated/antigravity.mcp.json', issues)
   await validateJsonIfExists(paths.generatedWindsurf, '.agents/generated/windsurf.mcp.json', issues)
   await validateJsonIfExists(paths.generatedOpencode, '.agents/generated/opencode.json', issues)
   await validateJsonIfExists(paths.generatedClaude, '.agents/generated/claude.mcp.json', issues)
+  await validateJsonIfExists(paths.generatedClaudeDesktop, '.agents/generated/claude-desktop.mcp.json', issues)
+  await validateJsonIfExists(paths.generatedJunie, '.agents/generated/junie.mcp.json', issues)
 
   if (enabledIntegrations.includes('codex')) {
     await validateTomlIfExists(paths.codexConfig, '.codex/config.toml', issues)
@@ -543,6 +568,9 @@ async function validateManagedConfigSyntax(
   if (enabledIntegrations.includes('copilot_vscode')) {
     await validateJsonIfExists(paths.vscodeMcp, '.vscode/mcp.json', issues)
   }
+  if (enabledIntegrations.includes('copilot_cli')) {
+    await validateJsonIfExists(paths.copilotCliMcp, '.mcp.json', issues)
+  }
   if (enabledIntegrations.includes('cursor')) {
     await validateJsonIfExists(paths.cursorMcp, '.cursor/mcp.json', issues)
   }
@@ -550,6 +578,13 @@ async function validateManagedConfigSyntax(
     await validateJsonIfExists(
       antigravityGlobalMcpPath,
       `Antigravity global MCP (${antigravityGlobalMcpPath})`,
+      issues,
+    )
+  }
+  if (enabledIntegrations.includes('claude_desktop') && claudeDesktopConfigPath) {
+    await validateJsonIfExists(
+      claudeDesktopConfigPath,
+      `Claude Desktop config (${claudeDesktopConfigPath})`,
       issues,
     )
   }
@@ -562,6 +597,9 @@ async function validateManagedConfigSyntax(
   }
   if (enabledIntegrations.includes('opencode')) {
     await validateJsonIfExists(paths.opencodeConfig, 'opencode.json', issues)
+  }
+  if (enabledIntegrations.includes('junie')) {
+    await validateJsonIfExists(paths.junieMcp, '.junie/mcp/mcp.json', issues)
   }
 }
 

@@ -3,19 +3,11 @@ import { listMcpEntries, loadMcpState, type McpServerEntry } from '../core/mcpCr
 import { commandExists, runCommand } from '../core/shell.js'
 import { listCursorMcpStatuses, type CursorServerState } from '../core/cursorCli.js'
 import { toManagedClaudeName } from '../integrations/claude.js'
+import { INTEGRATION_IDS } from '../integrations/registry.js'
 import * as ui from '../core/ui.js'
 import type { IntegrationName, McpServerDefinition } from '../types.js'
 
-const ALL_INTEGRATIONS: IntegrationName[] = [
-  'codex',
-  'claude',
-  'gemini',
-  'copilot_vscode',
-  'cursor',
-  'antigravity',
-  'windsurf',
-  'opencode'
-]
+const ALL_INTEGRATIONS: IntegrationName[] = INTEGRATION_IDS
 
 const DEFAULT_RUNTIME_TIMEOUT_MS = 8000
 
@@ -243,9 +235,12 @@ function runRuntimeChecks(entries: McpServerEntry[], projectRoot: string, timeou
       if (
         integration === 'codex'
         || integration === 'copilot_vscode'
+        || integration === 'copilot_cli'
+        || integration === 'claude_desktop'
         || integration === 'antigravity'
         || integration === 'windsurf'
         || integration === 'opencode'
+        || integration === 'junie'
       ) {
         runtimeByIntegration[integration] = {
           status: 'unsupported',

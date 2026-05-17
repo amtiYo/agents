@@ -30,7 +30,20 @@ describe('windsurf + opencode sync', () => {
     const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-wo-'))
     const windsurfGlobalDir = await mkdtemp(path.join(os.tmpdir(), 'agents-ws-global-'))
     tempDirs.push(projectRoot, windsurfGlobalDir)
-    process.env.AGENTS_WINDSURF_MCP_PATH = path.join(windsurfGlobalDir, 'mcp_config.json')
+    const windsurfPath = path.join(windsurfGlobalDir, 'mcp_config.json')
+    process.env.AGENTS_WINDSURF_MCP_PATH = windsurfPath
+    await writeFile(
+      windsurfPath,
+      JSON.stringify({
+        theme: 'custom',
+        mcpServers: {
+          manual: {
+            command: 'manual-server'
+          }
+        }
+      }, null, 2),
+      'utf8',
+    )
 
     await runInit({ projectRoot, force: true })
 
@@ -45,9 +58,10 @@ describe('windsurf + opencode sync', () => {
     })
 
     const windsurfGlobal = JSON.parse(
-      await readFile(path.join(windsurfGlobalDir, 'mcp_config.json'), 'utf8'),
+      await readFile(windsurfPath, 'utf8'),
     ) as { mcpServers?: Record<string, unknown> }
     expect(Object.keys(windsurfGlobal.mcpServers ?? {})).toContain('filesystem')
+    expect(Object.keys(windsurfGlobal.mcpServers ?? {})).toContain('manual')
 
     const opencode = JSON.parse(await readFile(path.join(projectRoot, 'opencode.json'), 'utf8')) as {
       mcp?: Record<string, { type?: string; command?: string[] }>
@@ -64,6 +78,53 @@ describe('windsurf + opencode sync', () => {
       verbose: false
     })
     expect(check.changed).toHaveLength(0)
+  })
+
+  it('removes only project-managed windsurf entries when integration is disabled', async () => {
+    const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-wo-'))
+    const windsurfGlobalDir = await mkdtemp(path.join(os.tmpdir(), 'agents-ws-global-'))
+    const windsurfPath = path.join(windsurfGlobalDir, 'mcp_config.json')
+    tempDirs.push(projectRoot, windsurfGlobalDir)
+    process.env.AGENTS_WINDSURF_MCP_PATH = windsurfPath
+
+    await runInit({ projectRoot, force: true })
+
+    const config = await loadAgentsConfig(projectRoot)
+    config.integrations.enabled = ['windsurf']
+    await saveAgentsConfig(projectRoot, config)
+
+    await performSync({
+      projectRoot,
+      check: false,
+      verbose: false
+    })
+
+    const synced = JSON.parse(await readFile(windsurfPath, 'utf8')) as { mcpServers?: Record<string, unknown> }
+    await writeFile(
+      windsurfPath,
+      JSON.stringify({
+        mcpServers: {
+          manual: {
+            command: 'manual-server'
+          },
+          ...(synced.mcpServers ?? {})
+        }
+      }, null, 2),
+      'utf8',
+    )
+
+    const disabled = await loadAgentsConfig(projectRoot)
+    disabled.integrations.enabled = []
+    await saveAgentsConfig(projectRoot, disabled)
+
+    await performSync({
+      projectRoot,
+      check: false,
+      verbose: false
+    })
+
+    const cleaned = JSON.parse(await readFile(windsurfPath, 'utf8')) as { mcpServers?: Record<string, unknown> }
+    expect(Object.keys(cleaned.mcpServers ?? {})).toEqual(['manual'])
   })
 
   it('preserves non-MCP opencode settings while updating managed MCP block', async () => {

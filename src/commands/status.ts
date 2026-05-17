@@ -7,6 +7,13 @@ import { listDirNames, pathExists, readJson } from '../core/fs.js'
 import { loadResolvedRegistry } from '../core/mcp.js'
 import { getProjectPaths } from '../core/paths.js'
 import { getAntigravityGlobalMcpPath } from '../core/antigravity.js'
+import {
+  getClaudeDesktopConfigPath,
+  getClaudeDesktopConfigUnavailableDetail,
+  listClaudeDesktopManagedServerNames,
+  readClaudeDesktopConfig,
+  toManagedClaudeDesktopName
+} from '../core/claudeDesktop.js'
 import { getWindsurfGlobalMcpPath } from '../core/windsurf.js'
 import { commandExists, runCommand } from '../core/shell.js'
 import { getCodexTrustState } from '../core/trust.js'
@@ -55,12 +62,17 @@ export async function runStatus(options: StatusOptions): Promise<void> {
   const antigravityGlobalSyncEnabled = config.integrations.options.antigravityGlobalSync !== false
   const antigravityGlobalPath = getAntigravityGlobalMcpPath()
   const antigravityGlobalLabel = toHomeRelativePath(antigravityGlobalPath)
+  const claudeDesktopConfigPath = getClaudeDesktopConfigPath()
+  const claudeDesktopConfigLabel = claudeDesktopConfigPath ? toHomeRelativePath(claudeDesktopConfigPath) : undefined
   const windsurfGlobalPath = getWindsurfGlobalMcpPath()
   const windsurfGlobalLabel = toHomeRelativePath(windsurfGlobalPath)
   const expectedCodexServers = resolved.serversByTarget.codex.map((server) => server.name)
+  const expectedClaudeDesktopServers = resolved.serversByTarget.claude_desktop.map((server) => toManagedClaudeDesktopName(options.projectRoot, server.name))
+  const expectedCopilotCliServers = resolved.serversByTarget.copilot_cli.map((server) => server.name)
   const expectedCursorServers = resolved.serversByTarget.cursor.map((server) => server.name)
   const expectedWindsurfServers = resolved.serversByTarget.windsurf.map((server) => server.name)
   const expectedOpencodeServers = resolved.serversByTarget.opencode.map((server) => server.name)
+  const expectedJunieServers = resolved.serversByTarget.junie.map((server) => server.name)
 
   const files: Record<string, boolean> = {
     '.agents/agents.json': await pathExists(paths.agentsConfig),
@@ -78,17 +90,27 @@ export async function runStatus(options: StatusOptions): Promise<void> {
   if (enabled.has('copilot_vscode')) {
     files['.vscode/mcp.json'] = await pathExists(paths.vscodeMcp)
   }
+  if (enabled.has('copilot_cli')) {
+    files['.mcp.json'] = await pathExists(paths.copilotCliMcp)
+  }
   if (enabled.has('cursor')) {
     files['.cursor/mcp.json'] = await pathExists(paths.cursorMcp)
   }
   if (enabled.has('antigravity') && antigravityGlobalSyncEnabled) {
     files[antigravityGlobalLabel] = await pathExists(antigravityGlobalPath)
   }
+  if (enabled.has('claude_desktop') && claudeDesktopConfigPath && claudeDesktopConfigLabel) {
+    files[claudeDesktopConfigLabel] = await pathExists(claudeDesktopConfigPath)
+  }
   if (enabled.has('windsurf')) {
     files[windsurfGlobalLabel] = await pathExists(windsurfGlobalPath)
   }
   if (enabled.has('opencode')) {
     files['opencode.json'] = await pathExists(paths.opencodeConfig)
+  }
+  if (enabled.has('junie')) {
+    files['.junie/mcp/mcp.json'] = await pathExists(paths.junieMcp)
+    files['.junie/skills'] = await pathExists(paths.junieSkillsBridge)
   }
   if (enabled.has('claude')) {
     files['CLAUDE.md'] = await pathExists(paths.rootClaudeMd)
@@ -109,8 +131,19 @@ export async function runStatus(options: StatusOptions): Promise<void> {
     if (enabled.has('codex')) probes.codex = probeCodex(options.projectRoot, expectedCodexServers)
     if (enabled.has('codex')) probes.codex_trust = await probeCodexTrust(options.projectRoot)
     if (enabled.has('claude')) probes.claude = probeClaude(options.projectRoot)
+    if (enabled.has('claude_desktop')) {
+      probes.claude_desktop = claudeDesktopConfigPath && claudeDesktopConfigLabel
+        ? await probeClaudeDesktop(
+          options.projectRoot,
+          claudeDesktopConfigPath,
+          claudeDesktopConfigLabel,
+          expectedClaudeDesktopServers,
+        )
+        : getClaudeDesktopConfigUnavailableDetail()
+    }
     if (enabled.has('gemini')) probes.gemini = probeGemini(options.projectRoot)
     if (enabled.has('copilot_vscode')) probes.copilot_vscode = await probeCopilot(paths.vscodeMcp)
+    if (enabled.has('copilot_cli')) probes.copilot_cli = await probeMcpServersFile(paths.copilotCliMcp, '.mcp.json', 'mcpServers', expectedCopilotCliServers)
     if (enabled.has('cursor')) probes.cursor = probeCursor(options.projectRoot, expectedCursorServers)
     if (enabled.has('antigravity') && antigravityGlobalSyncEnabled) {
       probes.antigravity = await probeAntigravity(antigravityGlobalPath, antigravityGlobalLabel)
@@ -122,6 +155,9 @@ export async function runStatus(options: StatusOptions): Promise<void> {
     }
     if (enabled.has('opencode')) {
       probes.opencode = await probeOpencode(paths.opencodeConfig, expectedOpencodeServers)
+    }
+    if (enabled.has('junie')) {
+      probes.junie = await probeMcpServersFile(paths.junieMcp, '.junie/mcp/mcp.json', 'mcpServers', expectedJunieServers)
     }
     probes.skills = await probeSkills(paths.agentsSkillsDir)
     probes.vscode_hidden = await probeVscodeHidden(paths.vscodeSettings)
@@ -165,7 +201,7 @@ export async function runStatus(options: StatusOptions): Promise<void> {
     ui.keyValue('MCP', `${output.mcp.configured} configured, ${output.mcp.localOverrides} local override(s)`)
     ui.keyValue('Selected MCP', ui.formatList(output.selectedMcpServers))
 
-    const compactProbeOrder = ['codex', 'claude', 'gemini', 'copilot_vscode', 'cursor', 'antigravity', 'windsurf', 'opencode']
+    const compactProbeOrder = ['codex', 'claude', 'claude_desktop', 'gemini', 'copilot_vscode', 'copilot_cli', 'cursor', 'antigravity', 'windsurf', 'opencode', 'junie']
     const compactProbes = compactProbeOrder
       .filter((name) => Boolean(output.probes[name]))
       .map((name) => `${name}: ${output.probes[name]}`)
@@ -275,6 +311,26 @@ async function probeCopilot(vscodeMcpPath: string): Promise<string> {
   }
 }
 
+async function probeMcpServersFile(
+  filePath: string,
+  label: string,
+  key: 'mcpServers' | 'servers',
+  expectedServerNames: string[],
+): Promise<string> {
+  if (!(await pathExists(filePath))) return `missing ${label}`
+  try {
+    const parsed = await readJson<Record<string, Record<string, unknown> | undefined>>(filePath)
+    const names = Object.keys(parsed[key] ?? {})
+    const missing = expectedServerNames.filter((name) => !names.includes(name))
+    if (missing.length > 0) {
+      return `${names.length} server(s) configured (${names.join(', ') || 'none'}); missing expected: ${missing.join(', ')}`
+    }
+    return `${names.length} server(s) configured`
+  } catch {
+    return `invalid ${label}`
+  }
+}
+
 function probeCursor(projectRoot: string, expectedServerNames: string[]): string {
   if (!commandExists('cursor-agent')) return 'cursor-agent CLI not found'
   const listed = listCursorMcpStatuses(projectRoot)
@@ -318,6 +374,27 @@ async function probeWindsurf(globalPath: string, label: string, expectedServerNa
       return `${names.length} server(s) configured (${names.join(', ') || 'none'}); missing expected: ${missing.join(', ')}`
     }
     return `${names.length} server(s) configured`
+  } catch {
+    return `invalid ${label}`
+  }
+}
+
+async function probeClaudeDesktop(
+  projectRoot: string,
+  configPath: string,
+  label: string,
+  expectedServerNames: string[],
+): Promise<string> {
+  if (!(await pathExists(configPath))) return `missing ${label}`
+
+  try {
+    const parsed = await readClaudeDesktopConfig(configPath)
+    const names = parsed ? listClaudeDesktopManagedServerNames(parsed, projectRoot) : []
+    const missing = expectedServerNames.filter((name) => !names.includes(name))
+    if (missing.length > 0) {
+      return `${names.length} managed server(s) configured (${names.join(', ') || 'none'}); missing expected: ${missing.join(', ')}`
+    }
+    return `${names.length} managed server(s) configured`
   } catch {
     return `invalid ${label}`
   }

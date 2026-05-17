@@ -2,6 +2,7 @@ import { loadAgentsConfig, saveAgentsConfig } from './config.js'
 import { pathExists, readJson, writeJsonAtomic } from './fs.js'
 import { deepMerge } from './objectUtils.js'
 import { getProjectPaths } from './paths.js'
+import { acquireSyncLock } from './syncLock.js'
 import type { AgentsConfig, LocalOverridesFile, McpServerDefinition } from '../types.js'
 
 export interface McpState {
@@ -52,39 +53,44 @@ export async function upsertMcpServers(args: {
   updates: McpServerUpsertInput[]
   replace: boolean
 }): Promise<{ created: string[]; updated: string[] }> {
-  const state = await loadMcpState(args.projectRoot)
-  const created: string[] = []
-  const updated: string[] = []
+  const releaseLock = await acquireMcpSourceLock(args.projectRoot)
+  try {
+    const state = await loadMcpState(args.projectRoot)
+    const created: string[] = []
+    const updated: string[] = []
 
-  for (const update of args.updates) {
-    const exists = Object.prototype.hasOwnProperty.call(state.config.mcp.servers, update.name)
-    if (exists && !args.replace) {
-      throw new Error(`MCP server "${update.name}" already exists. Use --replace to overwrite.`)
-    }
-  }
-
-  for (const update of args.updates) {
-    const exists = Object.prototype.hasOwnProperty.call(state.config.mcp.servers, update.name)
-    state.config.mcp.servers[update.name] = update.server
-
-    if (hasMeaningfulOverride(update.localOverride)) {
-      state.local.mcpServers[update.name] = update.localOverride as Partial<McpServerDefinition>
-    } else {
-      delete state.local.mcpServers[update.name]
+    for (const update of args.updates) {
+      const exists = Object.prototype.hasOwnProperty.call(state.config.mcp.servers, update.name)
+      if (exists && !args.replace) {
+        throw new Error(`MCP server "${update.name}" already exists. Use --replace to overwrite.`)
+      }
     }
 
-    if (exists) {
-      updated.push(update.name)
-    } else {
-      created.push(update.name)
+    for (const update of args.updates) {
+      const exists = Object.prototype.hasOwnProperty.call(state.config.mcp.servers, update.name)
+      state.config.mcp.servers[update.name] = update.server
+
+      if (hasMeaningfulOverride(update.localOverride)) {
+        state.local.mcpServers[update.name] = update.localOverride as Partial<McpServerDefinition>
+      } else {
+        delete state.local.mcpServers[update.name]
+      }
+
+      if (exists) {
+        updated.push(update.name)
+      } else {
+        created.push(update.name)
+      }
     }
-  }
 
-  await saveMcpState(args.projectRoot, state)
+    await saveMcpState(args.projectRoot, state)
 
-  return {
-    created: created.sort((a, b) => a.localeCompare(b)),
-    updated: updated.sort((a, b) => a.localeCompare(b))
+    return {
+      created: created.sort((a, b) => a.localeCompare(b)),
+      updated: updated.sort((a, b) => a.localeCompare(b))
+    }
+  } finally {
+    await releaseLock()
   }
 }
 
@@ -93,17 +99,22 @@ export async function removeMcpServer(args: {
   name: string
   ignoreMissing: boolean
 }): Promise<boolean> {
-  const state = await loadMcpState(args.projectRoot)
-  const exists = Object.prototype.hasOwnProperty.call(state.config.mcp.servers, args.name)
-  if (!exists) {
-    if (args.ignoreMissing) return false
-    throw new Error(`MCP server "${args.name}" does not exist.`)
-  }
+  const releaseLock = await acquireMcpSourceLock(args.projectRoot)
+  try {
+    const state = await loadMcpState(args.projectRoot)
+    const exists = Object.prototype.hasOwnProperty.call(state.config.mcp.servers, args.name)
+    if (!exists) {
+      if (args.ignoreMissing) return false
+      throw new Error(`MCP server "${args.name}" does not exist.`)
+    }
 
-  delete state.config.mcp.servers[args.name]
-  delete state.local.mcpServers[args.name]
-  await saveMcpState(args.projectRoot, state)
-  return true
+    delete state.config.mcp.servers[args.name]
+    delete state.local.mcpServers[args.name]
+    await saveMcpState(args.projectRoot, state)
+    return true
+  } finally {
+    await releaseLock()
+  }
 }
 
 export function listMcpEntries(state: McpState): McpServerEntry[] {
@@ -131,4 +142,9 @@ export function mergeServerWithLocal(
 function hasMeaningfulOverride(value: Partial<McpServerDefinition> | undefined): boolean {
   if (!value || typeof value !== 'object') return false
   return Object.entries(value).some(([, entry]) => entry !== undefined)
+}
+
+async function acquireMcpSourceLock(projectRoot: string): Promise<() => Promise<void>> {
+  const paths = getProjectPaths(projectRoot)
+  return acquireSyncLock(paths.generatedSyncLock)
 }

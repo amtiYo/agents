@@ -308,12 +308,24 @@ async function resolveIntegrationAccess(args: {
     summaries.antigravity = integrationOptions.antigravityGlobalSync ? 'global user profile' : 'disabled'
   }
 
+  if (selectedIntegrations.includes('claude_desktop')) {
+    summaries.claude_desktop = 'global Claude Desktop config'
+  }
+
+  if (selectedIntegrations.includes('copilot_cli')) {
+    summaries.copilot_cli = 'project .mcp.json'
+  }
+
   if (selectedIntegrations.includes('windsurf')) {
     summaries.windsurf = 'global MCP + workspace skills bridge'
   }
 
   if (selectedIntegrations.includes('opencode')) {
     summaries.opencode = 'project opencode.json'
+  }
+
+  if (selectedIntegrations.includes('junie')) {
+    summaries.junie = 'project .junie/mcp/mcp.json + skills bridge'
   }
 
   return {
@@ -326,10 +338,13 @@ async function resolveIntegrationAccess(args: {
 function formatSummaryKey(key: string): string {
   const labels: Record<string, string> = {
     codex: 'Codex trust',
+    claude_desktop: 'Claude Desktop sync',
+    copilot_cli: 'Copilot CLI sync',
     cursor: 'Cursor approval',
     antigravity: 'Antigravity sync',
     windsurf: 'Windsurf sync',
-    opencode: 'OpenCode sync'
+    opencode: 'OpenCode sync',
+    junie: 'Junie sync'
   }
   return labels[key] ?? key
 }
@@ -369,10 +384,13 @@ async function shouldOfferCleanup(projectRoot: string): Promise<boolean> {
     paths.opencodeConfig,
     legacyAgentDir,
     paths.vscodeMcp,
+    paths.copilotCliMcp,
     paths.claudeSkillsBridge,
     paths.cursorSkillsBridge,
     paths.geminiSkillsBridge,
-    paths.windsurfSkillsBridge
+    paths.windsurfSkillsBridge,
+    paths.junieMcpDir,
+    paths.junieSkillsBridge
   ]
   for (const candidate of candidates) {
     if (await pathExists(candidate)) return true
