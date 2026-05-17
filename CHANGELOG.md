@@ -7,9 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed
-
-- `agents reset` now removes this project's managed Claude Desktop MCP entries from the global `claude_desktop_config.json` while preserving manual and other-project entries.
+- No changes yet.
 
 ## [0.8.8] - 2026-05-17
 
@@ -36,6 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Claude Desktop sync is now stdio-only for local JSON and skips HTTP/SSE with a connector guidance warning.
 - Disabled Claude Desktop sync no longer touches the real global Desktop config unless this project previously managed Desktop entries.
 - Antigravity and Windsurf global sync now preserve unmanaged and other-project MCP entries, use global config locks, and clean up only this project's previously managed entries when disabled.
+- `agents reset` now removes this project's managed Claude Desktop MCP entries from the global `claude_desktop_config.json` while preserving manual and other-project entries.
 - MCP add/import/remove source writes are now locked to avoid concurrent updates losing `.agents/agents.json` or `.agents/local.json` changes.
 - `agents mcp add` now rejects transport-specific fields that would otherwise be dropped, such as headers on stdio servers or env vars on remote servers.
 - Docs now distinguish Copilot VS Code from Copilot CLI and use safe token-rotation examples.
