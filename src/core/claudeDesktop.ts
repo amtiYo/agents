@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 import os from 'node:os'
 import path from 'node:path'
 import { pathExists, readJson, writeJsonAtomic } from './fs.js'
+import { acquireSyncLock } from './syncLock.js'
 import { MANAGED_CLAUDE_NAME_PREFIX } from '../integrations/claude.js'
 
 export interface ClaudeDesktopConfigPayload {
@@ -109,6 +110,53 @@ export function listClaudeDesktopManagedServerNames(
   return Object.keys(normalizeClaudeDesktopConfig(payload).mcpServers ?? {})
     .filter((name) => name.startsWith(prefix))
     .sort((a, b) => a.localeCompare(b))
+}
+
+/** Remove this project's managed Desktop MCP servers while preserving all other entries. */
+export async function cleanupManagedClaudeDesktopConfig(projectRoot: string): Promise<{
+  changed: boolean
+  path?: string
+  warning?: string
+}> {
+  const configPath = getClaudeDesktopConfigPath()
+  if (!configPath) {
+    return { changed: false }
+  }
+  if (!(await pathExists(configPath))) {
+    return { changed: false, path: configPath }
+  }
+
+  const releaseLock = await acquireSyncLock(path.join(path.dirname(configPath), '.claude_desktop_config.lock'))
+  try {
+    let existing: ClaudeDesktopConfigPayload
+    try {
+      existing = await readClaudeDesktopConfig(configPath) ?? {}
+    } catch (error) {
+      return {
+        changed: false,
+        path: configPath,
+        warning: `Failed reading Claude Desktop config at ${configPath}; skipped Claude Desktop cleanup. ${error instanceof Error ? error.message : String(error)}`
+      }
+    }
+
+    const normalized = normalizeClaudeDesktopConfig(existing)
+    const nextServers = Object.fromEntries(
+      Object.entries(normalized.mcpServers ?? {})
+        .filter(([name]) => !isManagedClaudeDesktopNameForProject(projectRoot, name)),
+    )
+
+    if (Object.keys(nextServers).length === Object.keys(normalized.mcpServers ?? {}).length) {
+      return { changed: false, path: configPath }
+    }
+
+    await writeJsonAtomic(configPath, {
+      ...normalized,
+      mcpServers: nextServers
+    })
+    return { changed: true, path: configPath }
+  } finally {
+    await releaseLock()
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

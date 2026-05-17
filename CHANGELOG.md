@@ -7,7 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-- No changes yet.
+### Fixed
+
+- `agents reset` now removes this project's managed Claude Desktop MCP entries from the global `claude_desktop_config.json` while preserving manual and other-project entries.
 
 ## [0.8.8] - 2026-05-17
 
