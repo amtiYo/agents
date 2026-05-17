@@ -265,6 +265,42 @@ describe('renderers', () => {
   })
 
   describe('skip and warn for missing required fields', () => {
+    it('skips stdio server missing command in renderCopilotCliMcp', () => {
+      const serversWithMissingCommand: ResolvedMcpServer[] = [
+        {
+          name: 'filesystem',
+          transport: 'stdio',
+          args: ['server']
+        } as ResolvedMcpServer
+      ]
+
+      const rendered = renderCopilotCliMcp(serversWithMissingCommand)
+      expect(rendered.mcpServers.filesystem).toBeUndefined()
+      expect(rendered.warnings).toContain('Server "filesystem" has no command; skipped in Copilot CLI MCP output.')
+    })
+
+    it('skips remote server missing url in renderCopilotCliMcp', () => {
+      const remoteServers: ResolvedMcpServer[] = [
+        {
+          name: 'http-tools',
+          transport: 'http',
+          headers: {
+            Authorization: 'Bearer token'
+          }
+        } as ResolvedMcpServer,
+        {
+          name: 'sse-tools',
+          transport: 'sse'
+        } as ResolvedMcpServer
+      ]
+
+      const rendered = renderCopilotCliMcp(remoteServers)
+      expect(rendered.mcpServers['http-tools']).toBeUndefined()
+      expect(rendered.mcpServers['sse-tools']).toBeUndefined()
+      expect(rendered.warnings).toContain('Server "http-tools" has no url; skipped in Copilot CLI MCP output.')
+      expect(rendered.warnings).toContain('Server "sse-tools" has no url; skipped in Copilot CLI MCP output.')
+    })
+
     it('skips stdio server missing command in renderClaudeDesktopMcp', () => {
       const serversWithMissingCommand: ResolvedMcpServer[] = [
         {

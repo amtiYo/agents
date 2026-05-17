@@ -1,4 +1,5 @@
 import path from 'node:path'
+import { readFile } from 'node:fs/promises'
 import { ensureDir, pathExists, readJson, writeJsonAtomic } from './fs.js'
 import { loadAgentsConfig, saveAgentsConfig } from './config.js'
 import { loadResolvedRegistry } from './mcp.js'
@@ -13,6 +14,7 @@ import { syncClaudeInstructions } from './claudeInstructions.js'
 import {
   getClaudeDesktopConfigPath,
   getClaudeDesktopConfigUnavailableDetail,
+  getClaudeDesktopManagedPrefix,
   listClaudeDesktopManagedServerNames,
   mergeClaudeDesktopConfig,
   readClaudeDesktopConfig,
@@ -212,10 +214,6 @@ async function syncClaudeDesktop(args: {
 }): Promise<void> {
   const { enabled, check, projectRoot, generatedContent, statePath, changed, warnings } = args
   const state = await readClaudeDesktopState(statePath)
-  if (!enabled && state.managedNames.length === 0) {
-    return
-  }
-
   const configPath = getClaudeDesktopConfigPath()
 
   if (!configPath) {
@@ -223,6 +221,20 @@ async function syncClaudeDesktop(args: {
       warnings.push(getClaudeDesktopConfigUnavailableDetail())
     }
     return
+  }
+  if (!enabled && state.managedNames.length === 0) {
+    if (!(await pathExists(configPath))) {
+      return
+    }
+    try {
+      const existingText = await readFile(configPath, 'utf8')
+      if (!existingText.includes(getClaudeDesktopManagedPrefix(projectRoot))) {
+        return
+      }
+    } catch {
+      // Fall through to the locked read below so malformed or unreadable config
+      // produces the same warning path as normal Claude Desktop sync.
+    }
   }
 
   // Acquire global lock for Claude Desktop config to prevent race conditions across repos
@@ -270,6 +282,10 @@ async function syncClaudeDesktop(args: {
     const existingManaged = existing
       ? listClaudeDesktopManagedServerNames(existing, projectRoot)
       : []
+
+    if (!enabled && state.managedNames.length === 0 && existingManaged.length === 0) {
+      return
+    }
 
     if (!enabled && existingManaged.length === 0) {
       if (!check) {

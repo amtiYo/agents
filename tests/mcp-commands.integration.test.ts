@@ -334,6 +334,27 @@ describe('mcp command integration', () => {
     await expect(
       runMcpAdd({
         projectRoot,
+        name: 'stdio-with-url',
+        transport: 'stdio',
+        command: 'npx',
+        url: 'https://example.com/mcp',
+        args: ['server'],
+        env: [],
+        headers: [],
+        secretEnv: [],
+        secretHeaders: [],
+        secretArgs: [],
+        targets: [],
+        disabled: false,
+        replace: false,
+        noSync: true,
+        nonInteractive: true
+      }),
+    ).rejects.toThrow(/URL is only supported/)
+
+    await expect(
+      runMcpAdd({
+        projectRoot,
         name: 'remote-with-env',
         transport: 'http',
         url: 'https://example.com/mcp',
@@ -350,6 +371,27 @@ describe('mcp command integration', () => {
         nonInteractive: true
       }),
     ).rejects.toThrow(/Environment variables are only supported/)
+
+    await expect(
+      runMcpAdd({
+        projectRoot,
+        name: 'remote-with-command',
+        transport: 'http',
+        command: 'npx',
+        url: 'https://example.com/mcp',
+        args: ['server', 'secret'],
+        env: [],
+        headers: [],
+        secretEnv: [],
+        secretHeaders: [],
+        secretArgs: ['1=secret'],
+        targets: [],
+        disabled: false,
+        replace: false,
+        noSync: true,
+        nonInteractive: true
+      }),
+    ).rejects.toThrow(/Command and args are only supported/)
   })
 
   it('rejects reserved server names in mcp add', async () => {

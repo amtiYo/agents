@@ -126,8 +126,14 @@ export async function runMcpAdd(options: McpAddOptions): Promise<void> {
   if (finalTransport === 'stdio' && (Object.keys(headerMap).length > 0 || Object.keys(explicitSecretHeaders).length > 0)) {
     throw new Error('Headers are only supported for http/sse MCP transports.')
   }
+  if (finalTransport === 'stdio' && url) {
+    throw new Error('URL is only supported for http/sse MCP transports.')
+  }
   if (finalTransport !== 'stdio' && (Object.keys(envMap).length > 0 || Object.keys(explicitSecretEnv).length > 0)) {
     throw new Error('Environment variables are only supported for stdio MCP transports.')
+  }
+  if (finalTransport !== 'stdio' && (command || args.length > 0 || explicitSecretArgs.length > 0)) {
+    throw new Error('Command and args are only supported for stdio MCP transport.')
   }
 
   if (explicitSecretArgs.length > 0 && args.length === 0) {

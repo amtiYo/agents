@@ -168,7 +168,7 @@ tmp=$(mktemp)
 trap 'rm -f "$tmp"' EXIT
 
 jq --arg token "$NEW_TOKEN" \
-  '.mcpServers.companyApi.headers.Authorization = ("Bearer " + $token)' \
+  '.mcpServers["company-api"].headers.Authorization = ("Bearer " + $token)' \
   .agents/local.json > "$tmp" && mv "$tmp" .agents/local.json
 
 agents sync

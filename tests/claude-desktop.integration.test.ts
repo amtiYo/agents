@@ -149,6 +149,44 @@ describe('claude desktop sync', () => {
     expect(Object.keys(desktopConfig.mcpServers ?? {})).not.toContain(managedFilesystem)
   })
 
+  it('cleans stale Claude Desktop entries when local state is missing', async () => {
+    const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-claude-desktop-'))
+    const desktopDir = await mkdtemp(path.join(os.tmpdir(), 'agents-claude-desktop-global-'))
+    const desktopConfigPath = path.join(desktopDir, 'claude_desktop_config.json')
+    tempDirs.push(projectRoot, desktopDir)
+    process.env.AGENTS_CLAUDE_DESKTOP_CONFIG_PATH = desktopConfigPath
+
+    await runInit({ projectRoot, force: true })
+
+    const config = await loadAgentsConfig(projectRoot)
+    config.integrations.enabled = ['claude_desktop']
+    await saveAgentsConfig(projectRoot, config)
+    const managedFilesystem = toManagedClaudeDesktopName(projectRoot, 'filesystem')
+
+    await performSync({
+      projectRoot,
+      check: false,
+      verbose: false
+    })
+
+    await rm(path.join(projectRoot, '.agents', 'generated', 'claude-desktop.state.json'), { force: true })
+
+    const disabled = await loadAgentsConfig(projectRoot)
+    disabled.integrations.enabled = []
+    await saveAgentsConfig(projectRoot, disabled)
+
+    await performSync({
+      projectRoot,
+      check: false,
+      verbose: false
+    })
+
+    const desktopConfig = JSON.parse(await readFile(desktopConfigPath, 'utf8')) as {
+      mcpServers?: Record<string, unknown>
+    }
+    expect(Object.keys(desktopConfig.mcpServers ?? {})).not.toContain(managedFilesystem)
+  })
+
   it('preserves managed Claude Desktop entries from other projects', async () => {
     const projectRootA = await mkdtemp(path.join(os.tmpdir(), 'agents-claude-desktop-a-'))
     const projectRootB = await mkdtemp(path.join(os.tmpdir(), 'agents-claude-desktop-b-'))

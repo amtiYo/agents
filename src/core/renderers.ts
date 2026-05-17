@@ -148,6 +148,13 @@ export function renderVscodeMcp(servers: ResolvedMcpServer[]): {
   return { servers: out, warnings }
 }
 
+/**
+ * Render Copilot CLI's project MCP config.
+ *
+ * @param servers Resolved MCP servers from the shared registry.
+ * @returns A Copilot CLI `mcpServers` map plus warnings for skipped entries.
+ * Stdio servers without commands and remote servers without URLs are omitted.
+ */
 export function renderCopilotCliMcp(servers: ResolvedMcpServer[]): {
   mcpServers: Record<string, unknown>
   warnings: string[]
