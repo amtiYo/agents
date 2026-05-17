@@ -1,6 +1,6 @@
 import os from 'node:os'
 import path from 'node:path'
-import { lstat, mkdtemp, readFile, rm, stat } from 'node:fs/promises'
+import { lstat, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { runInit } from '../src/commands/init.js'
 import { loadAgentsConfig, saveAgentsConfig } from '../src/core/config.js'
@@ -59,7 +59,7 @@ describe('cursor + antigravity sync', () => {
     await expect(lstat(path.join(projectRoot, '.gemini', 'skills'))).resolves.toBeTruthy()
   }, 15000)
 
-  it('removes stale antigravity global config when global sync is disabled', async () => {
+  it('removes only project-managed antigravity entries when global sync is disabled', async () => {
     const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-ca-'))
     const antigravityGlobalDir = await mkdtemp(path.join(os.tmpdir(), 'agents-ag-global-'))
     const globalPath = path.join(antigravityGlobalDir, 'mcp.json')
@@ -80,6 +80,32 @@ describe('cursor + antigravity sync', () => {
     })
     await expect(stat(globalPath)).resolves.toBeTruthy()
 
+    const synced = JSON.parse(await readFile(globalPath, 'utf8')) as {
+      servers?: Record<string, unknown>
+      mcpServers?: Record<string, unknown>
+    }
+    await writeFile(
+      globalPath,
+      JSON.stringify({
+        theme: 'dark',
+        servers: {
+          manual: {
+            type: 'stdio',
+            command: 'manual-server'
+          },
+          ...(synced.servers ?? {})
+        },
+        mcpServers: {
+          manual: {
+            type: 'stdio',
+            command: 'manual-server'
+          },
+          ...(synced.mcpServers ?? {})
+        }
+      }, null, 2),
+      'utf8',
+    )
+
     const disabled = await loadAgentsConfig(projectRoot)
     disabled.integrations.options.antigravityGlobalSync = false
     await saveAgentsConfig(projectRoot, disabled)
@@ -96,7 +122,14 @@ describe('cursor + antigravity sync', () => {
       check: false,
       verbose: false
     })
-    await expect(stat(globalPath)).rejects.toThrow()
+    const cleaned = JSON.parse(await readFile(globalPath, 'utf8')) as {
+      theme?: string
+      servers?: Record<string, unknown>
+      mcpServers?: Record<string, unknown>
+    }
+    expect(cleaned.theme).toBe('dark')
+    expect(Object.keys(cleaned.servers ?? {})).toEqual(['manual'])
+    expect(Object.keys(cleaned.mcpServers ?? {})).toEqual(['manual'])
 
     const generatedAntigravity = JSON.parse(
       await readFile(path.join(projectRoot, '.agents', 'generated', 'antigravity.mcp.json'), 'utf8'),

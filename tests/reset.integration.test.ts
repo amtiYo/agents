@@ -35,6 +35,7 @@ describe('reset command', () => {
       await writeFile(path.join(projectRoot, '.opencode', 'agent', 'sample.md'), 'x\n')
       await writeFile(path.join(projectRoot, 'opencode.json'), '{}\n')
       await writeFile(path.join(projectRoot, '.vscode', 'mcp.json'), '{}\n')
+      await writeFile(path.join(projectRoot, '.mcp.json'), '{}\n')
 
       await runReset({ projectRoot, localOnly: true, hard: false })
 
@@ -47,6 +48,7 @@ describe('reset command', () => {
       expect(await exists(path.join(projectRoot, '.opencode'))).toBe(false)
       expect(await exists(path.join(projectRoot, 'opencode.json'))).toBe(false)
       expect(await exists(path.join(projectRoot, '.vscode', 'mcp.json'))).toBe(false)
+      expect(await exists(path.join(projectRoot, '.mcp.json'))).toBe(false)
     } finally {
       await rm(projectRoot, { recursive: true, force: true })
     }

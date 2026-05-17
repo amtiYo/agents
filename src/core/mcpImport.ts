@@ -19,6 +19,8 @@ const SERVER_FIELD_HINTS = new Set([
   'args',
   'arguments',
   'url',
+  'httpUrl',
+  'serverUrl',
   'headers',
   'env',
   'cwd',
@@ -122,6 +124,8 @@ function normalizeServerDefinition(value: unknown, serverName: string): McpServe
   }
 
   const url = readOptionalString(value.url, `${serverName}.url`)
+    ?? readOptionalString(value.httpUrl, `${serverName}.httpUrl`)
+    ?? readOptionalString(value.serverUrl, `${serverName}.serverUrl`)
 
   const transportRaw = readOptionalString(value.transport, `${serverName}.transport`)
     ?? readOptionalString(value.type, `${serverName}.type`)

@@ -9,19 +9,9 @@ import { loadAgentsConfig } from './config.js'
 import { pathExists, readJson } from './fs.js'
 import { deepMerge } from './objectUtils.js'
 import { getProjectPaths } from './paths.js'
+import { INTEGRATION_IDS } from '../integrations/registry.js'
 
-const ALL_INTEGRATIONS: IntegrationName[] = [
-  'codex',
-  'claude',
-  'claude_desktop',
-  'gemini',
-  'copilot_vscode',
-  'cursor',
-  'antigravity',
-  'windsurf',
-  'opencode',
-  'junie'
-]
+const ALL_INTEGRATIONS: IntegrationName[] = INTEGRATION_IDS
 const LEGACY_EXPAND_SETS: IntegrationName[][] = [
   ['codex', 'claude', 'gemini', 'copilot_vscode'],
   ['codex', 'claude', 'gemini', 'copilot_vscode', 'cursor', 'antigravity']
@@ -66,6 +56,7 @@ export function resolveFromConfigAndLocal(input: {
     claude_desktop: [],
     gemini: [],
     copilot_vscode: [],
+    copilot_cli: [],
     cursor: [],
     antigravity: [],
     windsurf: [],
@@ -125,7 +116,7 @@ function normalizeTargets(targets: IntegrationName[] | undefined): IntegrationNa
   }
 
   const unique = [...new Set(targets)]
-  const hasLegacySet = LEGACY_EXPAND_SETS.some((set) => set.every((id) => unique.includes(id)))
+  const hasLegacySet = LEGACY_EXPAND_SETS.some((set) => sameSet(set, unique))
   if (!hasLegacySet) {
     return unique
   }
@@ -137,6 +128,12 @@ function normalizeTargets(targets: IntegrationName[] | undefined): IntegrationNa
     }
   }
   return out
+}
+
+function sameSet(a: IntegrationName[], b: IntegrationName[]): boolean {
+  if (a.length !== b.length) return false
+  const bSet = new Set(b)
+  return a.every((id) => bSet.has(id))
 }
 
 function resolveServer(

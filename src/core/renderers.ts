@@ -101,8 +101,9 @@ export function renderGeminiServers(servers: ResolvedMcpServer[]): {
       continue
     }
     out[server.name] = {
-      type: server.transport,
-      url: server.url,
+      ...(server.transport === 'http'
+        ? { httpUrl: server.url }
+        : { url: server.url }),
       ...(server.headers ? { headers: server.headers } : {})
     }
   }
@@ -147,6 +148,49 @@ export function renderVscodeMcp(servers: ResolvedMcpServer[]): {
   return { servers: out, warnings }
 }
 
+export function renderCopilotCliMcp(servers: ResolvedMcpServer[]): {
+  mcpServers: Record<string, unknown>
+  warnings: string[]
+} {
+  const warnings: string[] = []
+  const out: Record<string, unknown> = {}
+
+  for (const server of servers) {
+    if (server.transport === 'stdio') {
+      if (!server.command) {
+        warnings.push(`Server "${server.name}" has no command; skipped in Copilot CLI MCP output.`)
+        continue
+      }
+      out[server.name] = {
+        type: 'stdio',
+        command: server.command,
+        args: server.args ?? [],
+        tools: ['*'],
+        ...(server.cwd ? { cwd: server.cwd } : {}),
+        ...(server.env ? { env: server.env } : {})
+      }
+      continue
+    }
+
+    if (!server.url) {
+      warnings.push(`Server "${server.name}" has no url; skipped in Copilot CLI MCP output.`)
+      continue
+    }
+    out[server.name] = {
+      type: server.transport,
+      url: server.url,
+      tools: ['*'],
+      ...(server.headers ? { headers: server.headers } : {})
+    }
+  }
+
+  return { mcpServers: out, warnings }
+}
+
+/**
+ * Render Claude Desktop's local JSON config. Claude Desktop remote MCP servers
+ * are account/UI-managed connectors, so only local stdio servers are emitted.
+ */
 export function renderClaudeDesktopMcp(servers: ResolvedMcpServer[], projectRoot: string): {
   mcpServers: Record<string, unknown>
   warnings: string[]
@@ -165,24 +209,17 @@ export function renderClaudeDesktopMcp(servers: ResolvedMcpServer[], projectRoot
         type: 'stdio',
         command: server.command,
         args: server.args ?? [],
-        ...(server.cwd ? { cwd: server.cwd } : {}),
         ...(server.env ? { env: server.env } : {})
       }
       if (server.cwd) {
         warnings.push(
-          `Server "${server.name}" sets cwd. Claude Desktop may launch MCP servers with an undefined working directory; prefer absolute paths in command/args/env.`,
+          `Server "${server.name}" sets cwd, but Claude Desktop claude_desktop_config.json does not document cwd support; prefer absolute paths in command/args/env.`,
         )
       }
     } else {
-      if (!server.url) {
-        warnings.push(`Server "${server.name}" has no url; skipped in Claude Desktop output.`)
-        continue
-      }
-      out[name] = {
-        type: server.transport,
-        url: server.url,
-        ...(server.headers ? { headers: server.headers } : {})
-      }
+      warnings.push(
+        `Server "${server.name}" uses ${server.transport} transport; skipped in Claude Desktop output. Remote MCP servers are managed as Claude custom connectors, not in claude_desktop_config.json.`,
+      )
     }
   }
 

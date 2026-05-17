@@ -1,7 +1,7 @@
 import os from 'node:os'
 import path from 'node:path'
 import { mkdtemp, rm, unlink, writeFile } from 'node:fs/promises'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { runInit } from '../src/commands/init.js'
 import { runDoctor } from '../src/commands/doctor.js'
 import { loadAgentsConfig, saveAgentsConfig } from '../src/core/config.js'
@@ -9,6 +9,11 @@ import { performSync } from '../src/core/sync.js'
 
 const tempDirs: string[] = []
 let previousClaudeDesktopConfigPath: string | undefined
+
+beforeEach(() => {
+  process.exitCode = undefined
+  previousClaudeDesktopConfigPath = process.env.AGENTS_CLAUDE_DESKTOP_CONFIG_PATH
+})
 
 afterEach(async () => {
   process.exitCode = undefined

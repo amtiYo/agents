@@ -67,13 +67,15 @@ project/
 |:-----|:-----------------|
 | **Codex** | `.codex/config.toml` |
 | **Claude Code** | `claude mcp add -s local` (CLI) + root `CLAUDE.md` wrapper |
-| **Claude Desktop** | Global `claude_desktop_config.json` (preserves non-agents MCP entries) |
+| **Claude Desktop** | Global `claude_desktop_config.json` for local stdio MCP (preserves non-agents MCP entries) |
 | **Gemini** | `.gemini/settings.json` |
 | **Cursor** | `.cursor/mcp.json` + CLI enable |
-| **Copilot** | `.vscode/mcp.json` |
-| **Antigravity** | Global user profile `mcp.json` (not project-local) |
-| **Windsurf** | Global user profile `~/.codeium/windsurf/mcp_config.json` |
+| **Copilot VS Code** | `.vscode/mcp.json` |
+| **Copilot CLI** | `.mcp.json` |
+| **Antigravity** | Global user profile `mcp.json` (not project-local, preserves unmanaged entries) |
+| **Windsurf** | Global user profile `~/.codeium/windsurf/mcp_config.json` (preserves unmanaged entries) |
 | **OpenCode** | `opencode.json` (`mcp` block) |
+| **Junie** | `.junie/mcp/mcp.json` |
 
 ## Claude Instructions
 
@@ -89,6 +91,7 @@ project/
 ## Claude Desktop Caveat
 
 - Claude Desktop sync is MCP-only; it does not manage skills or instruction files.
+- Claude Desktop local JSON sync is stdio-only. HTTP/SSE MCP servers are skipped because Claude manages remote MCP as custom connectors.
 - Claude Desktop may launch stdio MCP servers with an undefined working directory.
 - Prefer absolute paths in Desktop-targeted `command`/`args` values and avoid relying on `cwd`.
 
@@ -105,6 +108,8 @@ project/
     "**/.antigravity": true,
     "**/.windsurf": true,
     "**/.opencode": true,
+    "**/.junie": true,
+    "**/.mcp.json": true,
     "**/opencode.json": true,
     "**/.agents/generated": true
   }
@@ -124,7 +129,9 @@ project/
 | **Gemini** | Symlink to `.gemini/skills/` |
 | **Antigravity** | Reuses `.gemini/skills/` bridge |
 | **Windsurf** | Symlink to `.windsurf/skills/` |
+| **Copilot CLI** | Reads `.agents/skills/` directly |
 | **OpenCode** | Reads `.agents/skills/` directly |
+| **Junie** | Symlink to `.junie/skills/` |
 
 **Validation:** `agents doctor` checks frontmatter (`name`, `description`)
 
@@ -183,8 +190,8 @@ project/
 {
   "transport": "http",
   "url": "https://api.example.com/mcp",
-  "env": {
-    "API_KEY": "{{API_KEY}}"  // Prompt for value
+  "headers": {
+    "Authorization": "Bearer ${API_TOKEN}"
   }
 }
 ```
@@ -201,7 +208,7 @@ project/
 - ❌ `.agents/local.json`
 - ❌ `.agents/generated/`
 - ❌ `.codex/`, `.claude/`, `.cursor/`, `.gemini/`
-- ❌ `.windsurf/`, `.opencode/`, `opencode.json`
+- ❌ `.windsurf/`, `.opencode/`, `.junie/`, `.mcp.json`, `opencode.json`
 - ❌ legacy `.antigravity/` (if present from older versions)
 
 ---

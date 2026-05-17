@@ -9,6 +9,7 @@ export interface ClaudeDesktopConfigPayload {
   [key: string]: unknown
 }
 
+/** Resolve Claude Desktop's MCP config path, including the test/user override. */
 export function getClaudeDesktopConfigPath(): string | undefined {
   const override = process.env.AGENTS_CLAUDE_DESKTOP_CONFIG_PATH
   if (override && override.trim().length > 0) {
@@ -29,29 +30,35 @@ export function getClaudeDesktopConfigPath(): string | undefined {
   return undefined
 }
 
+/** Explain why Claude Desktop sync cannot use an implicit platform path. */
 export function getClaudeDesktopConfigUnavailableDetail(): string {
   return 'Claude Desktop config path is only known on macOS and Windows. Set AGENTS_CLAUDE_DESKTOP_CONFIG_PATH to override.'
 }
 
+/** Build the stable project-specific prefix used for managed Desktop server names. */
 export function getClaudeDesktopManagedPrefix(projectRoot: string): string {
   const normalizedRoot = path.resolve(projectRoot)
   const hash = createHash('sha1').update(normalizedRoot).digest('hex').slice(0, 12)
   return `${MANAGED_CLAUDE_NAME_PREFIX}${hash}__`
 }
 
+/** Convert a source MCP server name into the project-scoped Claude Desktop name. */
 export function toManagedClaudeDesktopName(projectRoot: string, serverName: string): string {
   return `${getClaudeDesktopManagedPrefix(projectRoot)}${serverName}`
 }
 
+/** Return true when a Desktop MCP server name belongs to this project. */
 export function isManagedClaudeDesktopNameForProject(projectRoot: string, serverName: string): boolean {
   return serverName.startsWith(getClaudeDesktopManagedPrefix(projectRoot))
 }
 
+/** Read Claude Desktop config without creating it. */
 export async function readClaudeDesktopConfig(pathToRead: string): Promise<ClaudeDesktopConfigPayload | undefined> {
   if (!(await pathExists(pathToRead))) return undefined
   return readJson<ClaudeDesktopConfigPayload>(pathToRead)
 }
 
+/** Write Claude Desktop config after normalizing the MCP server container. */
 export async function writeClaudeDesktopConfig(
   pathToWrite: string,
   payload: ClaudeDesktopConfigPayload,
@@ -59,6 +66,7 @@ export async function writeClaudeDesktopConfig(
   await writeJsonAtomic(pathToWrite, normalizeClaudeDesktopConfig(payload))
 }
 
+/** Ensure the Desktop payload has an object-valued mcpServers container. */
 export function normalizeClaudeDesktopConfig(
   payload: ClaudeDesktopConfigPayload,
 ): ClaudeDesktopConfigPayload {
@@ -68,6 +76,7 @@ export function normalizeClaudeDesktopConfig(
   }
 }
 
+/** Merge this project's managed Desktop MCP servers while preserving all other entries. */
 export function mergeClaudeDesktopConfig(args: {
   projectRoot: string
   existing?: ClaudeDesktopConfigPayload
@@ -91,6 +100,7 @@ export function mergeClaudeDesktopConfig(args: {
   }
 }
 
+/** List managed Claude Desktop server names, optionally scoped to one project. */
 export function listClaudeDesktopManagedServerNames(
   payload: ClaudeDesktopConfigPayload,
   projectRoot?: string,

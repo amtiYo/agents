@@ -3,6 +3,7 @@ import TOML from '@iarna/toml'
 import {
   renderClaudeDesktopMcp,
   renderCodexToml,
+  renderCopilotCliMcp,
   renderGeminiServers,
   renderJunieMcp,
   renderOpencodeMcp,
@@ -57,11 +58,9 @@ describe('renderers', () => {
         command: 'npx'
       },
       'http-tools': {
-        type: 'http',
-        url: 'https://example.com/mcp'
+        httpUrl: 'https://example.com/mcp'
       },
       'sse-tools': {
-        type: 'sse',
         url: 'https://example.com/sse'
       }
     })
@@ -85,22 +84,38 @@ describe('renderers', () => {
     })
   })
 
+  it('renders copilot cli mcp map', () => {
+    const rendered = renderCopilotCliMcp(servers)
+    expect(rendered.mcpServers).toMatchObject({
+      filesystem: {
+        type: 'stdio',
+        command: 'npx',
+        tools: ['*']
+      },
+      'http-tools': {
+        type: 'http',
+        url: 'https://example.com/mcp',
+        tools: ['*']
+      },
+      'sse-tools': {
+        type: 'sse',
+        url: 'https://example.com/sse',
+        tools: ['*']
+      }
+    })
+  })
+
   it('renders claude desktop mcp payload', () => {
     const rendered = renderClaudeDesktopMcp(servers, projectRoot)
     expect(rendered.mcpServers).toMatchObject({
       [toManagedClaudeDesktopName(projectRoot, 'filesystem')]: {
         type: 'stdio',
         command: 'npx'
-      },
-      [toManagedClaudeDesktopName(projectRoot, 'http-tools')]: {
-        type: 'http',
-        url: 'https://example.com/mcp'
-      },
-      [toManagedClaudeDesktopName(projectRoot, 'sse-tools')]: {
-        type: 'sse',
-        url: 'https://example.com/sse'
       }
     })
+    expect(rendered.mcpServers[toManagedClaudeDesktopName(projectRoot, 'http-tools')]).toBeUndefined()
+    expect(rendered.mcpServers[toManagedClaudeDesktopName(projectRoot, 'sse-tools')]).toBeUndefined()
+    expect(rendered.warnings.join(' ')).toContain('custom connectors')
   })
 
   it('renders windsurf mcp payload', () => {
@@ -190,14 +205,14 @@ describe('renderers', () => {
       })
     })
 
-    it('claude desktop includes cwd and warns to prefer absolute paths', () => {
+    it('claude desktop omits cwd and warns to prefer absolute paths', () => {
       const rendered = renderClaudeDesktopMcp(serversWithCwd, projectRoot)
       expect(rendered.mcpServers[toManagedClaudeDesktopName(projectRoot, 'project-server')]).toMatchObject({
         type: 'stdio',
-        command: 'pnpx',
-        cwd: '/abs/path/to/project'
+        command: 'pnpx'
       })
-      expect(rendered.warnings.join(' ')).toContain('Claude Desktop may launch MCP servers')
+      expect(rendered.mcpServers[toManagedClaudeDesktopName(projectRoot, 'project-server')]).not.toHaveProperty('cwd')
+      expect(rendered.warnings.join(' ')).toContain('does not document cwd support')
     })
 
     it('windsurf includes cwd for stdio server', () => {
@@ -264,33 +279,35 @@ describe('renderers', () => {
       expect(rendered.warnings).toContain('Server "filesystem" has no command; skipped in Claude Desktop output.')
     })
 
-    it('skips http server missing url in renderClaudeDesktopMcp', () => {
-      const serversWithMissingUrl: ResolvedMcpServer[] = [
+    it('skips http server in renderClaudeDesktopMcp', () => {
+      const remoteServers: ResolvedMcpServer[] = [
         {
           name: 'http-tools',
           transport: 'http',
+          url: 'https://example.com/mcp',
           headers: {
             Authorization: 'Bearer token'
           }
         } as ResolvedMcpServer
       ]
 
-      const rendered = renderClaudeDesktopMcp(serversWithMissingUrl, projectRoot)
+      const rendered = renderClaudeDesktopMcp(remoteServers, projectRoot)
       expect(rendered.mcpServers[toManagedClaudeDesktopName(projectRoot, 'http-tools')]).toBeUndefined()
-      expect(rendered.warnings).toContain('Server "http-tools" has no url; skipped in Claude Desktop output.')
+      expect(rendered.warnings.join(' ')).toContain('custom connectors')
     })
 
-    it('skips sse server missing url in renderClaudeDesktopMcp', () => {
-      const serversWithMissingUrl: ResolvedMcpServer[] = [
+    it('skips sse server in renderClaudeDesktopMcp', () => {
+      const remoteServers: ResolvedMcpServer[] = [
         {
           name: 'sse-tools',
-          transport: 'sse'
+          transport: 'sse',
+          url: 'https://example.com/sse'
         } as ResolvedMcpServer
       ]
 
-      const rendered = renderClaudeDesktopMcp(serversWithMissingUrl, projectRoot)
+      const rendered = renderClaudeDesktopMcp(remoteServers, projectRoot)
       expect(rendered.mcpServers[toManagedClaudeDesktopName(projectRoot, 'sse-tools')]).toBeUndefined()
-      expect(rendered.warnings).toContain('Server "sse-tools" has no url; skipped in Claude Desktop output.')
+      expect(rendered.warnings.join(' ')).toContain('custom connectors')
     })
   })
 })

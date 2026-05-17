@@ -6,6 +6,7 @@ export type IntegrationName =
   | 'claude_desktop'
   | 'gemini'
   | 'copilot_vscode'
+  | 'copilot_cli'
   | 'cursor'
   | 'antigravity'
   | 'windsurf'

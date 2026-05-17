@@ -36,7 +36,7 @@ agents connect --llm codex,claude,gemini
 # Add company MCP servers
 agents mcp add company-api \
   --url "https://api.company.com/mcp" \
-  --secret-header "Authorization=Bearer {{API_TOKEN}}"
+  --secret-header "Authorization=Bearer YOUR_API_TOKEN"
 
 # Commit
 git add .agents/ AGENTS.md
@@ -105,12 +105,12 @@ agents mcp add design-system --command design-mcp-server
 ```bash
 agents mcp add complex-api \
   --url "https://api.example.com/mcp" \
-  --secret-header "Authorization=Bearer {{OAUTH_TOKEN}}" \
-  --secret-header "X-API-Key={{API_KEY}}" \
+  --secret-header "Authorization=Bearer YOUR_OAUTH_TOKEN" \
+  --secret-header "X-API-Key=YOUR_API_KEY" \
   --header "X-Client-Version=1.0.0"
 ```
 
-Prompts for `OAUTH_TOKEN` and `API_KEY`. Stores in `.agents/local.json`.
+Explicit `--secret-header` values are stored in `.agents/local.json`; committed config receives generated placeholders.
 
 ### Test before committing
 
@@ -150,7 +150,7 @@ agents sync
 
 **Result:**
 - Claude: `claude-artifacts` + `context7`
-- Claude Desktop: `desktop-files` + `context7`
+- Claude Desktop: `desktop-files` only through local JSON; add remote `context7` in Claude custom connectors or wrap it with a stdio bridge
 - Cursor: `context7` only
 
 ---
@@ -164,10 +164,12 @@ agents sync
 # rotate-mcp-token.sh
 
 NEW_TOKEN=$(curl -s https://auth.company.com/token)
+tmp=$(mktemp)
+trap 'rm -f "$tmp"' EXIT
 
-jq ".mcpServers.companyApi.env.API_TOKEN = \"$NEW_TOKEN\"" \
-  .agents/local.json > .agents/local.json.tmp
-mv .agents/local.json.tmp .agents/local.json
+jq --arg token "$NEW_TOKEN" \
+  '.mcpServers.companyApi.headers.Authorization = ("Bearer " + $token)' \
+  .agents/local.json > "$tmp" && mv "$tmp" .agents/local.json
 
 agents sync
 ```

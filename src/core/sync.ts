@@ -36,6 +36,10 @@ interface CursorState {
   managedNames: string[]
 }
 
+interface ClaudeDesktopState {
+  managedNames: string[]
+}
+
 export async function performSync(options: SyncOptions): Promise<SyncResult> {
   const { projectRoot, check, verbose } = options
   const paths = getProjectPaths(projectRoot)
@@ -92,7 +96,8 @@ export async function performSync(options: SyncOptions): Promise<SyncResult> {
     const enabled = new Set(config.integrations.enabled)
     for (const hook of INTEGRATION_SYNC_HOOKS) {
       if (!hook.materialize) continue
-      if (!enabled.has(hook.id)) continue
+      const hookEnabled = enabled.has(hook.id)
+      if (!hookEnabled && !hook.materializeWhenDisabled) continue
       if (hook.shouldMaterialize && !hook.shouldMaterialize(config)) continue
       await hook.materialize({
         projectRoot,
@@ -101,7 +106,8 @@ export async function performSync(options: SyncOptions): Promise<SyncResult> {
         changed,
         warnings,
         config,
-        generatedByIntegration
+        generatedByIntegration,
+        enabled: hookEnabled
       })
     }
 
@@ -120,6 +126,7 @@ export async function performSync(options: SyncOptions): Promise<SyncResult> {
       check,
       projectRoot,
       generatedContent: generatedByIntegration.claude_desktop ?? '',
+      statePath: paths.generatedClaudeDesktopState,
       changed,
       warnings
     })
@@ -199,10 +206,16 @@ async function syncClaudeDesktop(args: {
   check: boolean
   projectRoot: string
   generatedContent: string
+  statePath: string
   changed: string[]
   warnings: string[]
 }): Promise<void> {
-  const { enabled, check, projectRoot, generatedContent, changed, warnings } = args
+  const { enabled, check, projectRoot, generatedContent, statePath, changed, warnings } = args
+  const state = await readClaudeDesktopState(statePath)
+  if (!enabled && state.managedNames.length === 0) {
+    return
+  }
+
   const configPath = getClaudeDesktopConfigPath()
 
   if (!configPath) {
@@ -242,6 +255,9 @@ async function syncClaudeDesktop(args: {
     }
 
     if (!enabled && !existing) {
+      if (!check) {
+        await writeClaudeDesktopState(statePath, [])
+      }
       return
     }
 
@@ -256,6 +272,9 @@ async function syncClaudeDesktop(args: {
       : []
 
     if (!enabled && existingManaged.length === 0) {
+      if (!check) {
+        await writeClaudeDesktopState(statePath, [])
+      }
       return
     }
 
@@ -266,11 +285,35 @@ async function syncClaudeDesktop(args: {
       check,
       changed
     })
+    if (!check) {
+      await writeClaudeDesktopState(statePath, enabled ? Object.keys(managedServers) : [])
+    }
   } finally {
     if (releaseLock) {
       await releaseLock()
     }
   }
+}
+
+async function readClaudeDesktopState(statePath: string): Promise<ClaudeDesktopState> {
+  if (!(await pathExists(statePath))) return { managedNames: [] }
+  try {
+    const parsed = await readJson<ClaudeDesktopState>(statePath)
+    return {
+      managedNames: Array.isArray(parsed.managedNames)
+        ? parsed.managedNames.filter((name): name is string => typeof name === 'string')
+        : []
+    }
+  } catch {
+    return { managedNames: [] }
+  }
+}
+
+async function writeClaudeDesktopState(statePath: string, managedNames: string[]): Promise<void> {
+  await ensureDir(path.dirname(statePath))
+  await writeJsonAtomic(statePath, {
+    managedNames: [...new Set(managedNames)].sort((a, b) => a.localeCompare(b))
+  })
 }
 
 async function syncClaude(args: {

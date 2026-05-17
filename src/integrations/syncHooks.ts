@@ -1,12 +1,14 @@
 import path from 'node:path'
-import { ensureDir, pathExists, readJson, removeIfExists } from '../core/fs.js'
-import { toChangedEntry, writeManagedFile } from '../core/managedFiles.js'
+import { ensureDir, pathExists, readJson, writeJsonAtomic } from '../core/fs.js'
+import { writeManagedFile } from '../core/managedFiles.js'
 import { getAntigravityGlobalMcpPath, normalizeAntigravityMcpPayload, readAntigravityMcp } from '../core/antigravity.js'
-import { getWindsurfGlobalMcpPath, normalizeWindsurfMcpPayload } from '../core/windsurf.js'
+import { getWindsurfGlobalMcpPath, normalizeWindsurfMcpPayload, readWindsurfMcp } from '../core/windsurf.js'
 import { normalizeOpencodeConfig } from '../core/opencode.js'
 import { renderVscodeMcp } from '../core/renderers.js'
+import { acquireSyncLock } from '../core/syncLock.js'
 import { buildAntigravityPayload } from './antigravity.js'
 import { buildCodexConfig } from './codex.js'
+import { buildCopilotCliPayload } from './copilotCli.js'
 import { buildVscodeMcpPayload } from './copilotVscode.js'
 import { buildCursorPayload } from './cursor.js'
 import { buildGeminiPayload } from './gemini.js'
@@ -29,6 +31,7 @@ interface HookContext {
   warnings: string[]
   config: AgentsConfig
   generatedByIntegration: Partial<Record<IntegrationName, string>>
+  enabled: boolean
 }
 
 export interface IntegrationSyncHook {
@@ -36,6 +39,7 @@ export interface IntegrationSyncHook {
   generatedPath: (paths: ProjectPaths) => string
   buildGenerated: (servers: ResolvedMcpServer[]) => BuildGeneratedResult
   shouldMaterialize?: (config: AgentsConfig) => boolean
+  materializeWhenDisabled?: boolean
   materialize?: (context: HookContext) => Promise<void>
 }
 
@@ -135,6 +139,28 @@ export const INTEGRATION_SYNC_HOOKS: IntegrationSyncHook[] = [
     }
   },
   {
+    id: 'copilot_cli',
+    generatedPath: (paths) => paths.generatedCopilotCli,
+    buildGenerated: (servers) => {
+      const copilot = buildCopilotCliPayload(servers)
+      return {
+        content: `${JSON.stringify(copilot.payload, null, 2)}\n`,
+        warnings: copilot.warnings
+      }
+    },
+    materialize: async (context) => {
+      const targetPath = context.paths.copilotCliMcp
+      const content = context.generatedByIntegration.copilot_cli ?? ''
+      await writeManagedFile({
+        absolutePath: targetPath,
+        content,
+        projectRoot: context.projectRoot,
+        check: context.check,
+        changed: context.changed
+      })
+    }
+  },
+  {
     id: 'cursor',
     generatedPath: (paths) => paths.generatedCursor,
     buildGenerated: (servers) => {
@@ -166,34 +192,20 @@ export const INTEGRATION_SYNC_HOOKS: IntegrationSyncHook[] = [
         warnings: antigravity.warnings
       }
     },
+    materializeWhenDisabled: true,
     materialize: async (context) => {
       const rawGenerated = context.generatedByIntegration.antigravity ?? ''
       const legacyProjectPath = context.paths.antigravityProjectMcp
       const globalPath = getAntigravityGlobalMcpPath()
       const globalSyncEnabled = context.config.integrations.options.antigravityGlobalSync !== false
 
-      if (!globalSyncEnabled) {
-        if (await pathExists(globalPath)) {
-          context.changed.push(toChangedEntry(context.projectRoot, globalPath))
-          if (!context.check) {
-            await removeIfExists(globalPath)
-          }
-        }
-        return
-      }
-
-      let normalized: Record<string, unknown> = {}
-      if (rawGenerated.trim().length > 0) {
-        normalized = normalizeAntigravityMcpPayload(parseJsonObject(rawGenerated, 'generated Antigravity config'))
-      }
-
       const legacyExists = await pathExists(legacyProjectPath)
       const globalExists = await pathExists(globalPath)
-      if (legacyExists && !globalExists) {
+      if (context.enabled && globalSyncEnabled && legacyExists && !globalExists) {
         context.warnings.push(`Found legacy .antigravity/mcp.json. Antigravity now uses global MCP at ${globalPath}.`)
       }
 
-      if (legacyExists && globalExists) {
+      if (context.enabled && globalSyncEnabled && legacyExists && globalExists) {
         try {
           const [legacy, global] = await Promise.all([
             readAntigravityMcp(legacyProjectPath),
@@ -213,12 +225,15 @@ export const INTEGRATION_SYNC_HOOKS: IntegrationSyncHook[] = [
         }
       }
 
-      await writeManagedFile({
-        absolutePath: globalPath,
-        content: `${JSON.stringify(normalized, null, 2)}\n`,
+      await syncManagedAntigravityGlobal({
+        enabled: context.enabled && globalSyncEnabled,
+        globalPath,
+        statePath: context.paths.generatedAntigravityState,
+        rawGenerated,
         projectRoot: context.projectRoot,
         check: context.check,
-        changed: context.changed
+        changed: context.changed,
+        warnings: context.warnings
       })
     }
   },
@@ -232,21 +247,20 @@ export const INTEGRATION_SYNC_HOOKS: IntegrationSyncHook[] = [
         warnings: windsurf.warnings
       }
     },
+    materializeWhenDisabled: true,
     materialize: async (context) => {
       const rawGenerated = context.generatedByIntegration.windsurf ?? ''
       const globalPath = getWindsurfGlobalMcpPath()
 
-      let normalized: Record<string, unknown> = {}
-      if (rawGenerated.trim().length > 0) {
-        normalized = normalizeWindsurfMcpPayload(parseJsonObject(rawGenerated, 'generated Windsurf config'))
-      }
-
-      await writeManagedFile({
-        absolutePath: globalPath,
-        content: `${JSON.stringify(normalized, null, 2)}\n`,
+      await syncManagedWindsurfGlobal({
+        enabled: context.enabled,
+        globalPath,
+        statePath: context.paths.generatedWindsurfState,
+        rawGenerated,
         projectRoot: context.projectRoot,
         check: context.check,
-        changed: context.changed
+        changed: context.changed,
+        warnings: context.warnings
       })
     }
   },
@@ -341,4 +355,160 @@ function parseJsonObject(raw: string, label: string): Record<string, unknown> {
   } catch (error) {
     throw new Error(`Failed to parse ${label}: ${error instanceof Error ? error.message : String(error)}`)
   }
+}
+
+interface ManagedGlobalState {
+  managedNames: string[]
+}
+
+async function syncManagedAntigravityGlobal(args: {
+  enabled: boolean
+  globalPath: string
+  statePath: string
+  rawGenerated: string
+  projectRoot: string
+  check: boolean
+  changed: string[]
+  warnings: string[]
+}): Promise<void> {
+  const previousNames = await readManagedGlobalNames(args.statePath)
+  if (!args.enabled && previousNames.length === 0) return
+
+  const lockPath = path.join(path.dirname(args.globalPath), '.agents-antigravity-mcp.lock')
+  const releaseLock = args.check ? null : await acquireSyncLock(lockPath)
+  try {
+    let existing: Record<string, unknown> = {}
+    if (await pathExists(args.globalPath)) {
+      try {
+        existing = normalizeAntigravityMcpPayload(await readAntigravityMcp(args.globalPath) ?? {})
+      } catch (error) {
+        args.warnings.push(
+          `Failed to read existing Antigravity MCP at ${args.globalPath}; skipped Antigravity global sync. ${error instanceof Error ? error.message : String(error)}`,
+        )
+        return
+      }
+    }
+
+    const generated = args.enabled && args.rawGenerated.trim().length > 0
+      ? normalizeAntigravityMcpPayload(parseJsonObject(args.rawGenerated, 'generated Antigravity config'))
+      : normalizeAntigravityMcpPayload({})
+    const managedServers = recordFrom(generated.servers)
+    const existingServers = recordFrom(existing.servers)
+    const nextServers = mergeManagedServers(existingServers, previousNames, managedServers)
+    const nextPayload = normalizeAntigravityMcpPayload({
+      ...existing,
+      servers: nextServers,
+      mcpServers: nextServers,
+      inputs: Array.isArray(existing.inputs) ? existing.inputs : Array.isArray(generated.inputs) ? generated.inputs : []
+    })
+
+    await writeManagedFile({
+      absolutePath: args.globalPath,
+      content: `${JSON.stringify(nextPayload, null, 2)}\n`,
+      projectRoot: args.projectRoot,
+      check: args.check,
+      changed: args.changed
+    })
+
+    if (!args.check) {
+      await writeManagedGlobalNames(args.statePath, args.enabled ? Object.keys(managedServers) : [])
+    }
+  } finally {
+    if (releaseLock) await releaseLock()
+  }
+}
+
+async function syncManagedWindsurfGlobal(args: {
+  enabled: boolean
+  globalPath: string
+  statePath: string
+  rawGenerated: string
+  projectRoot: string
+  check: boolean
+  changed: string[]
+  warnings: string[]
+}): Promise<void> {
+  const previousNames = await readManagedGlobalNames(args.statePath)
+  if (!args.enabled && previousNames.length === 0) return
+
+  const lockPath = path.join(path.dirname(args.globalPath), '.agents-windsurf-mcp.lock')
+  const releaseLock = args.check ? null : await acquireSyncLock(lockPath)
+  try {
+    let existing: Record<string, unknown> = {}
+    if (await pathExists(args.globalPath)) {
+      try {
+        existing = normalizeWindsurfMcpPayload(await readWindsurfMcp(args.globalPath) ?? {})
+      } catch (error) {
+        args.warnings.push(
+          `Failed to read existing Windsurf MCP at ${args.globalPath}; skipped Windsurf global sync. ${error instanceof Error ? error.message : String(error)}`,
+        )
+        return
+      }
+    }
+
+    const generated = args.enabled && args.rawGenerated.trim().length > 0
+      ? normalizeWindsurfMcpPayload(parseJsonObject(args.rawGenerated, 'generated Windsurf config'))
+      : normalizeWindsurfMcpPayload({})
+    const managedServers = recordFrom(generated.mcpServers)
+    const existingServers = recordFrom(existing.mcpServers)
+    const nextServers = mergeManagedServers(existingServers, previousNames, managedServers)
+    const nextPayload = normalizeWindsurfMcpPayload({
+      ...existing,
+      mcpServers: nextServers
+    })
+
+    await writeManagedFile({
+      absolutePath: args.globalPath,
+      content: `${JSON.stringify(nextPayload, null, 2)}\n`,
+      projectRoot: args.projectRoot,
+      check: args.check,
+      changed: args.changed
+    })
+
+    if (!args.check) {
+      await writeManagedGlobalNames(args.statePath, args.enabled ? Object.keys(managedServers) : [])
+    }
+  } finally {
+    if (releaseLock) await releaseLock()
+  }
+}
+
+async function readManagedGlobalNames(statePath: string): Promise<string[]> {
+  if (!(await pathExists(statePath))) return []
+  try {
+    const parsed = await readJson<ManagedGlobalState>(statePath)
+    return Array.isArray(parsed.managedNames)
+      ? parsed.managedNames.filter((name): name is string => typeof name === 'string')
+      : []
+  } catch {
+    return []
+  }
+}
+
+async function writeManagedGlobalNames(statePath: string, managedNames: string[]): Promise<void> {
+  await ensureDir(path.dirname(statePath))
+  await writeJsonAtomic(statePath, {
+    managedNames: [...new Set(managedNames)].sort((a, b) => a.localeCompare(b))
+  })
+}
+
+function mergeManagedServers(
+  existingServers: Record<string, unknown>,
+  previousManagedNames: string[],
+  nextManagedServers: Record<string, unknown>,
+): Record<string, unknown> {
+  const next = { ...existingServers }
+  for (const name of previousManagedNames) {
+    delete next[name]
+  }
+  for (const [name, server] of Object.entries(nextManagedServers)) {
+    next[name] = server
+  }
+  return next
+}
+
+function recordFrom(value: unknown): Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {}
 }

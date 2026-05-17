@@ -199,11 +199,13 @@ export async function runDoctor(options: DoctorOptions): Promise<void> {
         ...(enabled.has('codex') ? ['.codex/config.toml'] : []),
         ...(enabled.has('gemini') ? ['.gemini/settings.json'] : []),
         ...(enabled.has('copilot_vscode') ? ['.vscode/mcp.json'] : []),
+        ...(enabled.has('copilot_cli') ? ['.mcp.json'] : []),
         ...(enabled.has('cursor') ? ['.cursor/mcp.json'] : []),
         ...(enabled.has('claude') ? ['.claude/skills'] : []),
         ...(enabled.has('cursor') ? ['.cursor/skills'] : []),
         ...(enabled.has('windsurf') ? ['.windsurf/skills'] : []),
         ...((enabled.has('gemini') || enabled.has('antigravity')) ? ['.gemini/skills'] : []),
+        ...(enabled.has('junie') ? ['.junie/mcp/mcp.json', '.junie/skills'] : []),
         ...(enabled.has('antigravity') ? ['.antigravity/mcp.json'] : []),
         ...(enabled.has('opencode') ? ['opencode.json'] : [])
       ]
@@ -548,12 +550,14 @@ async function validateManagedConfigSyntax(
   await validateTomlIfExists(paths.generatedCodex, '.agents/generated/codex.config.toml', issues)
   await validateJsonIfExists(paths.generatedGemini, '.agents/generated/gemini.settings.json', issues)
   await validateJsonIfExists(paths.generatedCopilot, '.agents/generated/copilot.vscode.mcp.json', issues)
+  await validateJsonIfExists(paths.generatedCopilotCli, '.agents/generated/copilot.cli.mcp.json', issues)
   await validateJsonIfExists(paths.generatedCursor, '.agents/generated/cursor.mcp.json', issues)
   await validateJsonIfExists(paths.generatedAntigravity, '.agents/generated/antigravity.mcp.json', issues)
   await validateJsonIfExists(paths.generatedWindsurf, '.agents/generated/windsurf.mcp.json', issues)
   await validateJsonIfExists(paths.generatedOpencode, '.agents/generated/opencode.json', issues)
   await validateJsonIfExists(paths.generatedClaude, '.agents/generated/claude.mcp.json', issues)
   await validateJsonIfExists(paths.generatedClaudeDesktop, '.agents/generated/claude-desktop.mcp.json', issues)
+  await validateJsonIfExists(paths.generatedJunie, '.agents/generated/junie.mcp.json', issues)
 
   if (enabledIntegrations.includes('codex')) {
     await validateTomlIfExists(paths.codexConfig, '.codex/config.toml', issues)
@@ -563,6 +567,9 @@ async function validateManagedConfigSyntax(
   }
   if (enabledIntegrations.includes('copilot_vscode')) {
     await validateJsonIfExists(paths.vscodeMcp, '.vscode/mcp.json', issues)
+  }
+  if (enabledIntegrations.includes('copilot_cli')) {
+    await validateJsonIfExists(paths.copilotCliMcp, '.mcp.json', issues)
   }
   if (enabledIntegrations.includes('cursor')) {
     await validateJsonIfExists(paths.cursorMcp, '.cursor/mcp.json', issues)
@@ -590,6 +597,9 @@ async function validateManagedConfigSyntax(
   }
   if (enabledIntegrations.includes('opencode')) {
     await validateJsonIfExists(paths.opencodeConfig, 'opencode.json', issues)
+  }
+  if (enabledIntegrations.includes('junie')) {
+    await validateJsonIfExists(paths.junieMcp, '.junie/mcp/mcp.json', issues)
   }
 }
 

@@ -26,17 +26,17 @@
 
 Every AI coding tool wants its own config format:
 
-| | Codex | Claude Code | Claude Desktop | Gemini | Cursor | Copilot | Antigravity | Windsurf | OpenCode | Junie |
-|:--|:-----:|:-----------:|:---------------:|:------:|:------:|:-------:|:-----------:|:--------:|:--------:|:-----:|
-| **Config** | `.codex/config.toml` | CLI commands | Global `claude_desktop_config.json` | `.gemini/settings.json` | `.cursor/mcp.json` | `.vscode/mcp.json` | Global `mcp.json` | Global `mcp_config.json` | `opencode.json` | `.junie/mcp/mcp.json` |
-| **Instructions** | `AGENTS.md` | `CLAUDE.md` | — | `AGENTS.md` | `.cursorrules` | — | `AGENTS.md` | `AGENTS.md` | `AGENTS.md` | `AGENTS.md` |
-| **Format** | TOML | JSON (via CLI) | JSON | JSON | JSON | JSON | JSON | JSON | JSON | JSON |
+| | Codex | Claude Code | Claude Desktop | Gemini | Cursor | Copilot VS Code | Copilot CLI | Antigravity | Windsurf | OpenCode | Junie |
+|:--|:-----:|:-----------:|:---------------:|:------:|:------:|:---------------:|:-----------:|:-----------:|:--------:|:--------:|:-----:|
+| **Config** | `.codex/config.toml` | CLI commands | Global `claude_desktop_config.json` | `.gemini/settings.json` | `.cursor/mcp.json` | `.vscode/mcp.json` | `.mcp.json` | Global `mcp.json` | Global `mcp_config.json` | `opencode.json` | `.junie/mcp/mcp.json` |
+| **Instructions** | `AGENTS.md` | `CLAUDE.md` | — | `AGENTS.md` | `.cursorrules` | — | `AGENTS.md` | `AGENTS.md` | `AGENTS.md` | `AGENTS.md` | `AGENTS.md` |
+| **Format** | TOML | JSON (via CLI) | JSON | JSON | JSON | JSON | JSON | JSON | JSON | JSON | JSON |
 
 > **Result:** Duplicated configs, team drift, painful onboarding.
 
 `agents` gives you **one source of truth** in `.agents/` and syncs MCP servers, skills, and instructions to every tool automatically.
 For Claude Code, it keeps `AGENTS.md` canonical and generates a minimal root `CLAUDE.md` wrapper (`@AGENTS.md`) when the Claude integration is enabled.
-For Claude Desktop, it syncs MCP servers into the global `claude_desktop_config.json` while preserving non-agents entries already in that file.
+For Claude Desktop, it syncs local stdio MCP servers into the global `claude_desktop_config.json` while preserving non-agents entries already in that file. Remote Claude MCP servers are managed by Claude custom connectors, not by this file.
 
 ---
 
@@ -112,7 +112,7 @@ Add a server once in `.agents/agents.json`, then run `agents sync` to materializ
     <td align="center">✅</td>
     <td align="center">—</td>
     <td align="center">—</td>
-    <td>Writes global <code>claude_desktop_config.json</code> and preserves non-agents MCP entries</td>
+    <td>Writes local stdio servers to global <code>claude_desktop_config.json</code> and preserves non-agents MCP entries</td>
   </tr>
   <tr>
     <td><strong>Gemini CLI</strong></td>
@@ -129,25 +129,32 @@ Add a server once in `.agents/agents.json`, then run `agents sync` to materializ
     <td>Writes <code>.cursor/mcp.json</code> + CLI enable</td>
   </tr>
   <tr>
-    <td><strong>Copilot</strong></td>
+    <td><strong>Copilot VS Code</strong></td>
     <td align="center">✅</td>
-    <td align="center">✅</td>
-    <td align="center">✅</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
     <td>Writes <code>.vscode/mcp.json</code></td>
+  </tr>
+  <tr>
+    <td><strong>Copilot CLI</strong></td>
+    <td align="center">✅</td>
+    <td align="center">✅</td>
+    <td align="center">✅</td>
+    <td>Writes project <code>.mcp.json</code>; Copilot CLI reads <code>AGENTS.md</code> and <code>.agents/skills</code> natively</td>
   </tr>
   <tr>
     <td><strong>Antigravity</strong></td>
     <td align="center">✅</td>
     <td align="center">✅</td>
     <td align="center">✅</td>
-    <td>Writes to global user profile <code>mcp.json</code></td>
+    <td>Writes to global user profile <code>mcp.json</code> and preserves unmanaged entries</td>
   </tr>
   <tr>
     <td><strong>Windsurf</strong></td>
     <td align="center">✅</td>
     <td align="center">✅</td>
     <td align="center">✅</td>
-    <td>Writes to global user profile <code>~/.codeium/windsurf/mcp_config.json</code> + workspace <code>.windsurf/skills</code></td>
+    <td>Writes to global user profile <code>~/.codeium/windsurf/mcp_config.json</code> and preserves unmanaged entries + workspace <code>.windsurf/skills</code></td>
   </tr>
   <tr>
     <td><strong>OpenCode</strong></td>
@@ -165,6 +172,8 @@ Add a server once in `.agents/agents.json`, then run `agents sync` to materializ
   </tr>
 </table>
 
+Antigravity note: `agents` manages the MCP JSON file only. Product limitations such as Antigravity's current Google/Google Cloud remote MCP OAuth caveats still apply.
+
 ---
 
 ## Project Layout
@@ -181,6 +190,7 @@ your-project/
 │   └── generated/                   ← Auto-generated artifacts (gitignored)
 │       ├── codex.config.toml
 │       ├── claude-desktop.mcp.json
+│       ├── copilot.cli.mcp.json
 │       ├── gemini.settings.json
 │       ├── cursor.mcp.json
 │       ├── windsurf.mcp.json
@@ -192,11 +202,13 @@ your-project/
 ├── .gemini/settings.json             │  (gitignored in source-only mode)
 ├── .cursor/mcp.json                  │
 ├── .vscode/mcp.json                  │
+├── .mcp.json                         │  Copilot CLI
 ├── opencode.json                     │
 ├── .claude/skills/ → .agents/skills  │  Claude workspace bridges
 ├── .cursor/skills/ → .agents/skills  │
 ├── .gemini/skills/ → .agents/skills  │
-└── .windsurf/skills/ → .agents/skills│
+├── .windsurf/skills/ → .agents/skills│
+└── .junie/skills/ → .agents/skills   │
 ```
 
 > **Git strategy:** By default only `.agents/agents.json`, `.agents/skills/`, and `AGENTS.md` are committed. Generated `CLAUDE.md` and tool-specific outputs are gitignored in source-only mode and regenerated with `agents sync`.
@@ -272,7 +284,7 @@ your-project/
 │   ${PROJECT_ROOT}                      ├────────→ Cursor     │
 │                                        │          JSON + CLI │
 │                                        ├────────→ Copilot    │
-│                                        │          VS Code    │
+│                                        │          VS Code + CLI │
 │                                        ├────────→ Antigravity│
 │                                        │          Global     │
 │                                        ├────────→ Windsurf   │
@@ -294,8 +306,8 @@ your-project/
 2. **Resolve** — expands `${PROJECT_ROOT}`, `${ENV_VAR}` placeholders, filters by `enabled` and `requiredEnv`
 3. **Route** — sends each server to its target integrations (or all, if no `targets` specified)
 4. **Generate** — renders tool-specific config formats (TOML for Codex, JSON for others)
-5. **Materialize** — writes configs atomically (project-local and global targets), calls CLIs for Claude Code/Cursor, writes Claude Desktop's global config, and manages Claude Code's root `CLAUDE.md` wrapper
-6. **Bridge skills** — creates symlinks from tool directories to `.agents/skills/` (including Windsurf workspace bridge)
+5. **Materialize** — writes configs atomically (project-local and global targets), calls CLIs for Claude Code/Cursor, writes global configs with scoped merge/cleanup, and manages Claude Code's root `CLAUDE.md` wrapper
+6. **Bridge skills** — creates symlinks from tool directories to `.agents/skills/` where needed; Codex, Copilot CLI, and OpenCode read `.agents/skills/` directly
 
 ---
 
@@ -321,7 +333,7 @@ agents mcp add my-server \
 ```bash
 agents mcp add company-api \
   --url "https://api.company.com/mcp" \
-  --secret-header "Authorization=Bearer {{API_TOKEN}}"
+  --secret-header "Authorization=Bearer YOUR_API_TOKEN"
 ```
 
 > Secrets are automatically detected and split: placeholders go to `agents.json` (committed), real values to `local.json` (gitignored).
@@ -335,8 +347,11 @@ agents mcp add claude-only-server --url "https://..." --target claude
 # Only for Claude Desktop
 agents mcp add desktop-only-server --command npx --arg @my-org/server --target claude_desktop
 
-# Only for Cursor and Copilot
+# Only for Cursor and Copilot in VS Code
 agents mcp add ide-server --command ide-mcp --target cursor --target copilot_vscode
+
+# Only for Copilot CLI
+agents mcp add copilot-cli-server --command npx --arg @my-org/server --target copilot_cli
 ```
 
 ---
@@ -363,7 +378,7 @@ agents mcp add ide-server --command ide-mcp --target cursor --target copilot_vsc
 agents start
 agents mcp add https://mcpservers.org/servers/context7-mcp
 agents mcp add company-api --url "https://api.company.com/mcp" \
-  --secret-header "Authorization=Bearer {{API_TOKEN}}"
+  --secret-header "Authorization=Bearer YOUR_API_TOKEN"
 git add .agents/agents.json .agents/skills/ AGENTS.md && git commit -m "Add agents config"
 ```
 
@@ -402,7 +417,7 @@ In <code>.agents/local.json</code> (gitignored by default). The CLI automaticall
 <details>
 <summary><b>What happens during <code>agents sync</code>?</b></summary>
 <br/>
-It reads your <code>.agents/</code> config, merges secrets, resolves placeholders, generates tool-specific files, and writes them atomically. For Claude Code and Cursor it also calls their CLIs to register servers. Claude Desktop is synced by updating its global <code>claude_desktop_config.json</code> without touching non-agents MCP entries. The whole process is idempotent and safe to run repeatedly.
+It reads your <code>.agents/</code> config, merges secrets, resolves placeholders, generates tool-specific files, and writes them atomically. For Claude Code and Cursor it also calls their CLIs to register servers. Claude Desktop stdio servers are synced by updating its global <code>claude_desktop_config.json</code> without touching non-agents MCP entries. The whole process is idempotent and safe to run repeatedly.
 For Claude Code it also maintains a root <code>CLAUDE.md</code> wrapper without duplicating the contents of <code>AGENTS.md</code>.
 </details>
 
@@ -415,13 +430,13 @@ Run <code>agents watch</code> — it polls <code>.agents/</code> files and auto-
 <details>
 <summary><b>Can I target an MCP server to specific tools only?</b></summary>
 <br/>
-Yes. Add <code>"targets": ["claude", "claude_desktop", "cursor"]</code> to a server definition in <code>agents.json</code>, or use the <code>--target</code> flag with <code>agents mcp add</code>. Servers without targets go to all enabled integrations.
+Yes. Add <code>"targets": ["claude", "claude_desktop", "cursor"]</code> to a server definition in <code>agents.json</code>, or use the <code>--target</code> flag with <code>agents mcp add</code>. Servers without targets stay universal and are included for integrations as they are enabled.
 </details>
 
 <details>
 <summary><b>Any Claude Desktop caveats?</b></summary>
 <br/>
-Yes. Claude Desktop may launch stdio MCP servers with an undefined working directory and limited inherited environment. Prefer absolute paths in <code>command</code>/<code>args</code>, and avoid relying on <code>cwd</code> for Desktop-targeted servers.
+Yes. Claude Desktop local JSON sync is stdio-only. HTTP/SSE MCP servers should be added in Claude as custom connectors or wrapped by a stdio bridge. Prefer absolute paths in <code>command</code>/<code>args</code>, and avoid relying on <code>cwd</code> for Desktop-targeted servers.
 </details>
 
 ---

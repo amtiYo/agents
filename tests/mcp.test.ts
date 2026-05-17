@@ -111,7 +111,35 @@ describe('loadResolvedRegistry', () => {
 
     const resolved = await loadResolvedRegistry(dir)
     expect(resolved.serversByTarget.claude_desktop.map((server) => server.name)).toContain('docs')
+    expect(resolved.serversByTarget.copilot_cli.map((server) => server.name)).toContain('docs')
     expect(resolved.serversByTarget.windsurf.map((server) => server.name)).toContain('docs')
     expect(resolved.serversByTarget.opencode.map((server) => server.name)).toContain('docs')
+    expect(resolved.serversByTarget.junie.map((server) => server.name)).toContain('docs')
+  })
+
+  it('does not expand partial explicit target lists', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'agents-mcp-'))
+    tempDirs.push(dir)
+
+    await mkdir(path.join(dir, '.agents'), { recursive: true })
+
+    const config = createDefaultAgentsConfig({
+      mcpServers: {
+        docs: {
+          transport: 'http',
+          url: 'https://example.com/mcp',
+          targets: ['codex', 'claude', 'gemini', 'copilot_vscode', 'cursor', 'antigravity', 'windsurf'],
+          enabled: true
+        }
+      }
+    })
+
+    await writeFile(path.join(dir, '.agents', 'agents.json'), `${JSON.stringify(config, null, 2)}\n`)
+    await writeFile(path.join(dir, '.agents', 'local.json'), JSON.stringify({ mcpServers: {} }, null, 2))
+
+    const resolved = await loadResolvedRegistry(dir)
+    expect(resolved.serversByTarget.windsurf.map((server) => server.name)).toContain('docs')
+    expect(resolved.serversByTarget.copilot_cli.map((server) => server.name)).not.toContain('docs')
+    expect(resolved.serversByTarget.junie.map((server) => server.name)).not.toContain('docs')
   })
 })

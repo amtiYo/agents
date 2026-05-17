@@ -1,7 +1,7 @@
 import os from 'node:os'
 import path from 'node:path'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { runInit } from '../src/commands/init.js'
 import { runStatus } from '../src/commands/status.js'
 import { loadAgentsConfig, saveAgentsConfig } from '../src/core/config.js'
@@ -12,6 +12,12 @@ const tempDirs: string[] = []
 let previousWindsurfMcpPath: string | undefined
 let previousAntigravityMcpPath: string | undefined
 let previousClaudeDesktopConfigPath: string | undefined
+
+beforeEach(() => {
+  previousWindsurfMcpPath = process.env.AGENTS_WINDSURF_MCP_PATH
+  previousAntigravityMcpPath = process.env.AGENTS_ANTIGRAVITY_MCP_PATH
+  previousClaudeDesktopConfigPath = process.env.AGENTS_CLAUDE_DESKTOP_CONFIG_PATH
+})
 
 afterEach(async () => {
   vi.restoreAllMocks()
@@ -48,9 +54,11 @@ describe('status command', () => {
       'gemini',
       'cursor',
       'copilot_vscode',
+      'copilot_cli',
       'antigravity',
       'windsurf',
-      'opencode'
+      'opencode',
+      'junie'
     ]
     await saveAgentsConfig(projectRoot, config)
 

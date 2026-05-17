@@ -13,7 +13,7 @@ const tempDirs: string[] = []
 
 interface AgentsFile {
   mcp: {
-    servers: Record<string, { args?: string[]; command?: string; env?: Record<string, string> }>
+    servers: Record<string, { args?: string[]; command?: string; env?: Record<string, string>; targets?: string[] }>
   }
   lastSync?: string
 }
@@ -62,6 +62,7 @@ describe('mcp command integration', () => {
 
     expect(configAfterAdd.mcp.servers.context7).toBeDefined()
     expect(configAfterAdd.mcp.servers.context7.args[3]).toMatch(/^\$\{[A-Z0-9_]+\}$/)
+    expect(configAfterAdd.mcp.servers.context7.targets).toBeUndefined()
     expect(localAfterAdd.mcpServers.context7.args[3]).toBe('secret')
     expect(typeof configAfterAdd.lastSync).toBe('string')
     const lastSyncAfterAdd = configAfterAdd.lastSync
@@ -109,6 +110,7 @@ describe('mcp command integration', () => {
     ) as AgentsFile
     expect(configAfterRemove.mcp.servers.context7).toBeUndefined()
     expect(configAfterRemove.mcp.servers.docs).toBeDefined()
+    expect(configAfterRemove.mcp.servers.docs.targets).toBeUndefined()
 
     await performSync({
       projectRoot,
@@ -301,6 +303,53 @@ describe('mcp command integration', () => {
         nonInteractive: true
       }),
     ).rejects.toThrow(/Invalid header key/)
+  })
+
+  it('rejects transport-specific fields that would be dropped by renderers', async () => {
+    const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-mcp-cmds-'))
+    tempDirs.push(projectRoot)
+
+    await runInit({ projectRoot, force: true })
+
+    await expect(
+      runMcpAdd({
+        projectRoot,
+        name: 'stdio-with-header',
+        transport: 'stdio',
+        command: 'npx',
+        args: ['server'],
+        env: [],
+        headers: ['Authorization=Bearer token'],
+        secretEnv: [],
+        secretHeaders: [],
+        secretArgs: [],
+        targets: [],
+        disabled: false,
+        replace: false,
+        noSync: true,
+        nonInteractive: true
+      }),
+    ).rejects.toThrow(/Headers are only supported/)
+
+    await expect(
+      runMcpAdd({
+        projectRoot,
+        name: 'remote-with-env',
+        transport: 'http',
+        url: 'https://example.com/mcp',
+        args: [],
+        env: ['TOKEN=value'],
+        headers: [],
+        secretEnv: [],
+        secretHeaders: [],
+        secretArgs: [],
+        targets: [],
+        disabled: false,
+        replace: false,
+        noSync: true,
+        nonInteractive: true
+      }),
+    ).rejects.toThrow(/Environment variables are only supported/)
   })
 
   it('rejects reserved server names in mcp add', async () => {

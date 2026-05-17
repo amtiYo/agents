@@ -27,6 +27,25 @@ afterEach(async () => {
 })
 
 describe('claude desktop sync', () => {
+  it('does not touch Claude Desktop config when integration was never enabled', async () => {
+    const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-claude-desktop-'))
+    const desktopDir = await mkdtemp(path.join(os.tmpdir(), 'agents-claude-desktop-global-'))
+    const desktopConfigPath = path.join(desktopDir, 'claude_desktop_config.json')
+    tempDirs.push(projectRoot, desktopDir)
+    process.env.AGENTS_CLAUDE_DESKTOP_CONFIG_PATH = desktopConfigPath
+
+    await runInit({ projectRoot, force: true })
+
+    await performSync({
+      projectRoot,
+      check: false,
+      verbose: false
+    })
+
+    await expect(readFile(desktopConfigPath, 'utf8')).rejects.toThrow()
+    await expect(readFile(path.join(desktopDir, '.claude_desktop_config.lock'), 'utf8')).rejects.toThrow()
+  })
+
   it('materializes Claude Desktop config and preserves user-defined entries', async () => {
     const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-claude-desktop-'))
     const desktopDir = await mkdtemp(path.join(os.tmpdir(), 'agents-claude-desktop-global-'))
@@ -186,5 +205,29 @@ describe('claude desktop sync', () => {
     }
     expect(Object.keys(desktopConfig.mcpServers ?? {})).toContain(managedFilesystemA)
     expect(Object.keys(desktopConfig.mcpServers ?? {})).not.toContain(managedFilesystemB)
+  })
+
+  it('leaves invalid existing Claude Desktop JSON untouched', async () => {
+    const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-claude-desktop-'))
+    const desktopDir = await mkdtemp(path.join(os.tmpdir(), 'agents-claude-desktop-global-'))
+    const desktopConfigPath = path.join(desktopDir, 'claude_desktop_config.json')
+    tempDirs.push(projectRoot, desktopDir)
+    process.env.AGENTS_CLAUDE_DESKTOP_CONFIG_PATH = desktopConfigPath
+
+    await runInit({ projectRoot, force: true })
+    await writeFile(desktopConfigPath, '{ invalid', 'utf8')
+
+    const config = await loadAgentsConfig(projectRoot)
+    config.integrations.enabled = ['claude_desktop']
+    await saveAgentsConfig(projectRoot, config)
+
+    const result = await performSync({
+      projectRoot,
+      check: false,
+      verbose: false
+    })
+
+    expect(await readFile(desktopConfigPath, 'utf8')).toBe('{ invalid')
+    expect(result.warnings.join(' ')).toContain('Failed reading Claude Desktop config')
   })
 })
