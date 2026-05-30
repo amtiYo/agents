@@ -89,7 +89,8 @@ describe('renderers', () => {
     const rendered = renderAntigravityMcp(servers)
     expect(rendered.mcpServers).toMatchObject({
       filesystem: {
-        command: 'npx'
+        command: 'npx',
+        args: ['-y', '@modelcontextprotocol/server-filesystem', '/tmp/project']
       },
       'http-tools': {
         serverUrl: 'https://example.com/mcp'

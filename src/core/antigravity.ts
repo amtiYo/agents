@@ -50,14 +50,14 @@ export async function writeAntigravityMcp(pathToWrite: string, payload: Antigrav
 }
 
 /**
- * Normalize an Antigravity MCP payload to the current shape by ensuring server mappings are exposed under `mcpServers` and removing the legacy `servers` property.
+ * Normalize an Antigravity MCP payload to the current shape by ensuring server mappings are exposed under `mcpServers` and removing legacy `servers` and `inputs` properties.
  *
  * @param payload - The MCP payload that may use current (`mcpServers`) or legacy (`servers`) server keys
- * @returns A payload object with `mcpServers` containing the chosen server mapping and without the legacy `servers` property
+ * @returns A payload object with `mcpServers` containing the chosen server mapping and without legacy `servers` or `inputs` properties
  */
 export function normalizeAntigravityMcpPayload(payload: AntigravityMcpPayload): AntigravityMcpPayload {
   const servers = pickServers(payload)
-  const { servers: _legacyServers, ...rest } = payload
+  const { servers: _legacyServers, inputs: _legacyInputs, ...rest } = payload
   return {
     ...rest,
     mcpServers: servers

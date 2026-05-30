@@ -23,9 +23,22 @@ describe('gitignore management', () => {
     await runInit({ projectRoot, force: true })
     await writeFile(path.join(projectRoot, '.gitignore'), '.custom\nCLAUDE.md\n', 'utf8')
 
-    const config = await loadAgentsConfig(projectRoot)
-    config.syncMode = 'commit-generated'
-    await saveAgentsConfig(projectRoot, config)
+    const sourceOnlyConfig = await loadAgentsConfig(projectRoot)
+    sourceOnlyConfig.syncMode = 'source-only'
+    await saveAgentsConfig(projectRoot, sourceOnlyConfig)
+
+    await performSync({
+      projectRoot,
+      check: false,
+      verbose: false
+    })
+
+    const sourceOnlyGitignore = await readFile(path.join(projectRoot, '.gitignore'), 'utf8')
+    expect(sourceOnlyGitignore).toContain('.agents/mcp_config.json')
+
+    const commitGeneratedConfig = await loadAgentsConfig(projectRoot)
+    commitGeneratedConfig.syncMode = 'commit-generated'
+    await saveAgentsConfig(projectRoot, commitGeneratedConfig)
 
     await performSync({
       projectRoot,
