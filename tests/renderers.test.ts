@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import TOML from '@iarna/toml'
 import {
+  renderAntigravityMcp,
   renderClaudeDesktopMcp,
   renderCodexToml,
   renderCopilotCliMcp,
@@ -82,6 +83,24 @@ describe('renderers', () => {
         url: 'https://example.com/sse'
       }
     })
+  })
+
+  it('renders antigravity mcp_config map', () => {
+    const rendered = renderAntigravityMcp(servers)
+    expect(rendered.mcpServers).toMatchObject({
+      filesystem: {
+        command: 'npx',
+        args: ['-y', '@modelcontextprotocol/server-filesystem', '/tmp/project']
+      },
+      'http-tools': {
+        serverUrl: 'https://example.com/mcp'
+      },
+      'sse-tools': {
+        serverUrl: 'https://example.com/sse'
+      }
+    })
+    expect(rendered.mcpServers['filesystem']).not.toHaveProperty('type')
+    expect(rendered.mcpServers['http-tools']).not.toHaveProperty('url')
   })
 
   it('renders copilot cli mcp map', () => {
@@ -205,6 +224,15 @@ describe('renderers', () => {
       })
     })
 
+    it('antigravity includes cwd for stdio server', () => {
+      const rendered = renderAntigravityMcp(serversWithCwd)
+      expect(rendered.mcpServers['project-server']).toMatchObject({
+        command: 'pnpx',
+        cwd: '/abs/path/to/project'
+      })
+      expect(rendered.mcpServers['project-server']).not.toHaveProperty('type')
+    })
+
     it('claude desktop omits cwd and warns to prefer absolute paths', () => {
       const rendered = renderClaudeDesktopMcp(serversWithCwd, projectRoot)
       expect(rendered.mcpServers[toManagedClaudeDesktopName(projectRoot, 'project-server')]).toMatchObject({
@@ -249,6 +277,9 @@ describe('renderers', () => {
 
       const vscode = renderVscodeMcp(servers)
       expect(vscode.servers['filesystem']).not.toHaveProperty('cwd')
+
+      const antigravity = renderAntigravityMcp(servers)
+      expect(antigravity.mcpServers['filesystem']).not.toHaveProperty('cwd')
 
       const claudeDesktop = renderClaudeDesktopMcp(servers, projectRoot)
       expect(claudeDesktop.mcpServers[toManagedClaudeDesktopName(projectRoot, 'filesystem')]).not.toHaveProperty('cwd')

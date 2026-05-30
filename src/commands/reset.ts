@@ -13,6 +13,18 @@ export interface ResetOptions {
   hard: boolean
 }
 
+/**
+ * Performs a project reset by removing managed agent-related files and configuration according to the specified mode.
+ *
+ * In `hard` mode, removes all managed agent artifacts, Workspace/VS Code managed settings and managed `.gitignore` entries.
+ * In `local-only` mode, removes workspace-local managed artifacts but keeps broader project-managed sources.
+ * In the default (safe) mode, removes generated and workspace-managed artifacts while preserving source `.agents` files, root `AGENTS.md`, and managed `.gitignore` entries.
+ *
+ * @param options - Reset options:
+ *   - `projectRoot`: root directory of the project to operate on
+ *   - `localOnly`: when true, limit cleanup to workspace-local targets
+ *   - `hard`: when true, perform the more destructive cleanup that removes additional config/state and managed `.gitignore` entries
+ */
 export async function runReset(options: ResetOptions): Promise<void> {
   const projectRoot = path.resolve(options.projectRoot)
   const paths = getProjectPaths(projectRoot)
@@ -69,6 +81,7 @@ export async function runReset(options: ResetOptions): Promise<void> {
           paths.codexDir,
           paths.geminiDir,
           paths.cursorDir,
+          paths.antigravityWorkspaceMcp,
           paths.antigravityDir,
           paths.windsurfDir,
           paths.opencodeDir,
@@ -86,6 +99,7 @@ export async function runReset(options: ResetOptions): Promise<void> {
           paths.codexDir,
           paths.geminiDir,
           paths.cursorDir,
+          paths.antigravityWorkspaceMcp,
           paths.antigravityDir,
           paths.windsurfDir,
           paths.opencodeDir,

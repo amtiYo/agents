@@ -35,6 +35,7 @@ export interface ProjectPaths {
   copilotCliMcp: string
   vscodeSettings: string
   cursorMcp: string
+  antigravityWorkspaceMcp: string
   antigravityProjectMcp: string
   opencodeConfig: string
   codexDir: string
@@ -56,6 +57,12 @@ export interface ProjectPaths {
   windsurfSkillsBridge: string
 }
 
+/**
+ * Construct a complete set of filesystem paths for a project based on the given project root.
+ *
+ * @param projectRoot - Path to the project root (will be resolved to an absolute path)
+ * @returns An object mapping canonical absolute paths for agent configuration, generated outputs, editor/tool configuration, Antigravity and Junie integration, and various skills/bridge directories
+ */
 export function getProjectPaths(projectRoot: string): ProjectPaths {
   const root = path.resolve(projectRoot)
   const agentsDir = path.join(root, '.agents')
@@ -76,7 +83,7 @@ export function getProjectPaths(projectRoot: string): ProjectPaths {
     generatedCopilot: path.join(generatedDir, 'copilot.vscode.mcp.json'),
     generatedCopilotCli: path.join(generatedDir, 'copilot.cli.mcp.json'),
     generatedCursor: path.join(generatedDir, 'cursor.mcp.json'),
-    generatedAntigravity: path.join(generatedDir, 'antigravity.mcp.json'),
+    generatedAntigravity: path.join(generatedDir, 'antigravity.mcp_config.json'),
     generatedAntigravityState: path.join(generatedDir, 'antigravity.state.json'),
     generatedWindsurf: path.join(generatedDir, 'windsurf.mcp.json'),
     generatedWindsurfState: path.join(generatedDir, 'windsurf.state.json'),
@@ -96,6 +103,7 @@ export function getProjectPaths(projectRoot: string): ProjectPaths {
     copilotCliMcp: path.join(root, '.mcp.json'),
     vscodeSettings: path.join(root, '.vscode', 'settings.json'),
     cursorMcp: path.join(root, '.cursor', 'mcp.json'),
+    antigravityWorkspaceMcp: path.join(agentsDir, 'mcp_config.json'),
     antigravityProjectMcp: path.join(root, '.antigravity', 'mcp.json'),
     opencodeConfig: path.join(root, 'opencode.json'),
     codexDir: path.join(root, '.codex'),

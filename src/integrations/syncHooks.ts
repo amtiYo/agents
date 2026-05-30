@@ -1,7 +1,7 @@
 import path from 'node:path'
 import { ensureDir, pathExists, readJson, writeJsonAtomic } from '../core/fs.js'
 import { writeManagedFile } from '../core/managedFiles.js'
-import { getAntigravityGlobalMcpPath, normalizeAntigravityMcpPayload, readAntigravityMcp } from '../core/antigravity.js'
+import { getLegacyAntigravityGlobalMcpPath, normalizeAntigravityMcpPayload, readAntigravityMcp } from '../core/antigravity.js'
 import { getWindsurfGlobalMcpPath, normalizeWindsurfMcpPayload, readWindsurfMcp } from '../core/windsurf.js'
 import { normalizeOpencodeConfig } from '../core/opencode.js'
 import { renderVscodeMcp } from '../core/renderers.js'
@@ -196,38 +196,27 @@ export const INTEGRATION_SYNC_HOOKS: IntegrationSyncHook[] = [
     materialize: async (context) => {
       const rawGenerated = context.generatedByIntegration.antigravity ?? ''
       const legacyProjectPath = context.paths.antigravityProjectMcp
-      const globalPath = getAntigravityGlobalMcpPath()
-      const globalSyncEnabled = context.config.integrations.options.antigravityGlobalSync !== false
+      const legacyGlobalPath = getLegacyAntigravityGlobalMcpPath()
+      const mcpSyncEnabled = context.config.integrations.options.antigravityGlobalSync !== false
 
       const legacyExists = await pathExists(legacyProjectPath)
-      const globalExists = await pathExists(globalPath)
-      if (context.enabled && globalSyncEnabled && legacyExists && !globalExists) {
-        context.warnings.push(`Found legacy .antigravity/mcp.json. Antigravity now uses global MCP at ${globalPath}.`)
+      if (context.enabled && mcpSyncEnabled && legacyExists) {
+        context.warnings.push('Found legacy .antigravity/mcp.json. Antigravity now uses .agents/mcp_config.json for workspace MCP.')
       }
 
-      if (context.enabled && globalSyncEnabled && legacyExists && globalExists) {
-        try {
-          const [legacy, global] = await Promise.all([
-            readAntigravityMcp(legacyProjectPath),
-            readAntigravityMcp(globalPath)
-          ])
-          if (legacy && global) {
-            const normalizedLegacy = JSON.stringify(normalizeAntigravityMcpPayload(legacy))
-            const normalizedGlobal = JSON.stringify(normalizeAntigravityMcpPayload(global))
-            if (normalizedLegacy !== normalizedGlobal) {
-              context.warnings.push(`Legacy .antigravity/mcp.json differs from global Antigravity MCP (${globalPath}); local file is ignored.`)
-            }
-          }
-        } catch (error) {
-          context.warnings.push(
-            `Could not compare legacy .antigravity/mcp.json with global Antigravity MCP: ${error instanceof Error ? error.message : String(error)}`,
-          )
-        }
-      }
+      const previousManagedNames = await readManagedGlobalNames(context.paths.generatedAntigravityState)
+      await cleanupLegacyAntigravityGlobal({
+        globalPath: legacyGlobalPath,
+        previousManagedNames,
+        projectRoot: context.projectRoot,
+        check: context.check,
+        changed: context.changed,
+        warnings: context.warnings
+      })
 
-      await syncManagedAntigravityGlobal({
-        enabled: context.enabled && globalSyncEnabled,
-        globalPath,
+      await syncManagedAntigravityWorkspace({
+        enabled: context.enabled && mcpSyncEnabled,
+        workspacePath: context.paths.antigravityWorkspaceMcp,
         statePath: context.paths.generatedAntigravityState,
         rawGenerated,
         projectRoot: context.projectRoot,
@@ -361,9 +350,23 @@ interface ManagedGlobalState {
   managedNames: string[]
 }
 
-async function syncManagedAntigravityGlobal(args: {
+/**
+ * Update the workspace Antigravity MCP file with the set of managed servers derived from the generated config and persist the list of managed server names.
+ *
+ * Reads the previous managed server names from `statePath`, merges them with the newly generated servers (removing any previously-managed entries that are no longer produced), writes the resulting MCP JSON to `workspacePath`, and updates the state file with the current managed server names. Operates in a no-op mode when `check` is true (no files are modified) but still computes warnings and records changed paths.
+ *
+ * @param enabled - Whether the integration is enabled; if false, generated servers are not applied but previously-managed names will be removed.
+ * @param workspacePath - Absolute path to the workspace Antigravity MCP file to read and write.
+ * @param statePath - Path to the JSON file that tracks previously-managed server names.
+ * @param rawGenerated - Raw generated Antigravity MCP JSON produced by the integration (may be empty or whitespace).
+ * @param projectRoot - Repository root used for recording relative changes when writing managed files.
+ * @param check - If true, perform a dry run: compute changes and warnings without modifying files.
+ * @param changed - Mutable array to which paths of files that would be or were changed will be appended.
+ * @param warnings - Mutable array to which human-readable warning messages will be appended.
+ */
+async function syncManagedAntigravityWorkspace(args: {
   enabled: boolean
-  globalPath: string
+  workspacePath: string
   statePath: string
   rawGenerated: string
   projectRoot: string
@@ -374,16 +377,16 @@ async function syncManagedAntigravityGlobal(args: {
   const previousNames = await readManagedGlobalNames(args.statePath)
   if (!args.enabled && previousNames.length === 0) return
 
-  const lockPath = path.join(path.dirname(args.globalPath), '.agents-antigravity-mcp.lock')
+  const lockPath = path.join(path.dirname(args.workspacePath), '.agents-antigravity-mcp.lock')
   const releaseLock = args.check ? null : await acquireSyncLock(lockPath)
   try {
     let existing: Record<string, unknown> = {}
-    if (await pathExists(args.globalPath)) {
+    if (await pathExists(args.workspacePath)) {
       try {
-        existing = normalizeAntigravityMcpPayload(await readAntigravityMcp(args.globalPath) ?? {})
+        existing = normalizeAntigravityMcpPayload(await readAntigravityMcp(args.workspacePath) ?? {})
       } catch (error) {
         args.warnings.push(
-          `Failed to read existing Antigravity MCP at ${args.globalPath}; skipped Antigravity global sync. ${error instanceof Error ? error.message : String(error)}`,
+          `Failed to read existing Antigravity MCP at ${args.workspacePath}; skipped Antigravity workspace sync. ${error instanceof Error ? error.message : String(error)}`,
         )
         return
       }
@@ -392,18 +395,16 @@ async function syncManagedAntigravityGlobal(args: {
     const generated = args.enabled && args.rawGenerated.trim().length > 0
       ? normalizeAntigravityMcpPayload(parseJsonObject(args.rawGenerated, 'generated Antigravity config'))
       : normalizeAntigravityMcpPayload({})
-    const managedServers = recordFrom(generated.servers)
-    const existingServers = recordFrom(existing.servers)
+    const managedServers = recordFrom(generated.mcpServers)
+    const existingServers = recordFrom(existing.mcpServers)
     const nextServers = mergeManagedServers(existingServers, previousNames, managedServers)
     const nextPayload = normalizeAntigravityMcpPayload({
       ...existing,
-      servers: nextServers,
-      mcpServers: nextServers,
-      inputs: Array.isArray(existing.inputs) ? existing.inputs : Array.isArray(generated.inputs) ? generated.inputs : []
+      mcpServers: nextServers
     })
 
     await writeManagedFile({
-      absolutePath: args.globalPath,
+      absolutePath: args.workspacePath,
       content: `${JSON.stringify(nextPayload, null, 2)}\n`,
       projectRoot: args.projectRoot,
       check: args.check,
@@ -418,6 +419,77 @@ async function syncManagedAntigravityGlobal(args: {
   }
 }
 
+/**
+ * Remove previously-managed Antigravity MCP servers from a legacy global MCP file if it exists.
+ *
+ * Reads the legacy global MCP at `globalPath`, removes any servers whose names are listed in
+ * `previousManagedNames`, and writes the updated MCP back to `globalPath`. If the legacy file
+ * cannot be read or parsed, a warning is appended to `warnings` and no changes are written.
+ *
+ * @param globalPath - Absolute path to the legacy global Antigravity MCP file to update
+ * @param previousManagedNames - Server names previously managed by this tool that should be removed
+ * @param projectRoot - Repository root used when writing the managed file metadata
+ * @param check - When true, operate in dry-run mode (do not acquire locks or persist changes)
+ * @param changed - Mutable list that will be updated with paths that were or would be changed
+ * @param warnings - Mutable list to which human-readable warning messages are appended on error
+ */
+async function cleanupLegacyAntigravityGlobal(args: {
+  globalPath: string
+  previousManagedNames: string[]
+  projectRoot: string
+  check: boolean
+  changed: string[]
+  warnings: string[]
+}): Promise<void> {
+  if (args.previousManagedNames.length === 0) return
+  if (!(await pathExists(args.globalPath))) return
+
+  const lockPath = path.join(path.dirname(args.globalPath), '.agents-antigravity-legacy-mcp.lock')
+  const releaseLock = args.check ? null : await acquireSyncLock(lockPath)
+  try {
+    let existing: Record<string, unknown>
+    try {
+      existing = normalizeAntigravityMcpPayload(await readAntigravityMcp(args.globalPath) ?? {})
+    } catch (error) {
+      args.warnings.push(
+        `Failed to read legacy Antigravity MCP at ${args.globalPath}; skipped legacy cleanup. ${error instanceof Error ? error.message : String(error)}`,
+      )
+      return
+    }
+
+    const existingServers = recordFrom(existing.mcpServers)
+    const nextServers = mergeManagedServers(existingServers, args.previousManagedNames, {})
+    const nextPayload = normalizeAntigravityMcpPayload({
+      ...existing,
+      mcpServers: nextServers
+    })
+
+    await writeManagedFile({
+      absolutePath: args.globalPath,
+      content: `${JSON.stringify(nextPayload, null, 2)}\n`,
+      projectRoot: args.projectRoot,
+      check: args.check,
+      changed: args.changed
+    })
+  } finally {
+    if (releaseLock) await releaseLock()
+  }
+}
+
+/**
+ * Synchronizes the Windsurf global MCP by merging generated managed servers into the existing global MCP and updating the managed-server state.
+ *
+ * Merges `rawGenerated` (when `enabled`) into the existing MCP's `mcpServers`, removes previously-managed entries, writes the resulting MCP to `globalPath`, and updates `statePath` with the current set of managed server names. Uses a filesystem lock to avoid concurrent writes and appends any warnings to `warnings` and file-change paths to `changed`.
+ *
+ * @param args.enabled - Whether generated MCP entries should be applied (if false, previously-managed names are only removed)
+ * @param args.globalPath - Absolute path to the Windsurf global MCP file to read and/or write
+ * @param args.statePath - Path to the JSON file that records currently managed server names; will be updated when not in `check` mode
+ * @param args.rawGenerated - Raw JSON string produced for Windsurf; parsed when `enabled` and non-empty
+ * @param args.projectRoot - Project root used when writing managed files
+ * @param args.check - If true, perform a dry run (no state update) while still validating and computing the resulting content
+ * @param args.changed - Array that will be appended with paths that were written or would be written
+ * @param args.warnings - Array that will be appended with human-readable warnings encountered during processing
+ */
 async function syncManagedWindsurfGlobal(args: {
   enabled: boolean
   globalPath: string

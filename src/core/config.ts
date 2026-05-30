@@ -10,6 +10,7 @@ export const DEFAULT_VSCODE_HIDDEN_PATHS = [
   '**/.gemini',
   '**/.cursor',
   '**/.antigravity',
+  '**/.agents/mcp_config.json',
   '**/.windsurf',
   '**/.opencode',
   '**/.junie',

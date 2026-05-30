@@ -28,7 +28,7 @@ Every AI coding tool wants its own config format:
 
 | | Codex | Claude Code | Claude Desktop | Gemini | Cursor | Copilot VS Code | Copilot CLI | Antigravity | Windsurf | OpenCode | Junie |
 |:--|:-----:|:-----------:|:---------------:|:------:|:------:|:---------------:|:-----------:|:-----------:|:--------:|:--------:|:-----:|
-| **Config** | `.codex/config.toml` | CLI commands | Global `claude_desktop_config.json` | `.gemini/settings.json` | `.cursor/mcp.json` | `.vscode/mcp.json` | `.mcp.json` | Global `mcp.json` | Global `mcp_config.json` | `opencode.json` | `.junie/mcp/mcp.json` |
+| **Config** | `.codex/config.toml` | CLI commands | Global `claude_desktop_config.json` | `.gemini/settings.json` | `.cursor/mcp.json` | `.vscode/mcp.json` | `.mcp.json` | `.agents/mcp_config.json` | Global `mcp_config.json` | `opencode.json` | `.junie/mcp/mcp.json` |
 | **Instructions** | `AGENTS.md` | `CLAUDE.md` | — | `AGENTS.md` | `.cursorrules` | — | `AGENTS.md` | `AGENTS.md` | `AGENTS.md` | `AGENTS.md` | `AGENTS.md` |
 | **Format** | TOML | JSON (via CLI) | JSON | JSON | JSON | JSON | JSON | JSON | JSON | JSON | JSON |
 
@@ -147,7 +147,7 @@ Add a server once in `.agents/agents.json`, then run `agents sync` to materializ
     <td align="center">✅</td>
     <td align="center">✅</td>
     <td align="center">✅</td>
-    <td>Writes to global user profile <code>mcp.json</code> and preserves unmanaged entries</td>
+    <td>Writes workspace <code>.agents/mcp_config.json</code>; Antigravity CLI (<code>agy</code>) reads <code>AGENTS.md</code> and <code>.agents/skills</code> natively</td>
   </tr>
   <tr>
     <td><strong>Windsurf</strong></td>
@@ -172,7 +172,7 @@ Add a server once in `.agents/agents.json`, then run `agents sync` to materializ
   </tr>
 </table>
 
-Antigravity note: `agents` manages the MCP JSON file only. Product limitations such as Antigravity's current Google/Google Cloud remote MCP OAuth caveats still apply.
+Antigravity note: `agents` manages the workspace MCP config used by Antigravity CLI. Global Antigravity editor/CLI profile files are left user-owned, and product limitations such as current Google/Google Cloud remote MCP OAuth caveats still apply.
 
 ---
 
@@ -185,6 +185,7 @@ your-project/
 ├── .agents/
 │   ├── agents.json                  ← MCP servers & config (commit this)
 │   ├── local.json                   ← Secrets & overrides (gitignored)
+│   ├── mcp_config.json              ← Generated Antigravity CLI MCP (gitignored in source-only mode)
 │   ├── skills/                      ← Reusable workflow definitions
 │   │   └── my-skill/SKILL.md
 │   └── generated/                   ← Auto-generated artifacts (gitignored)
@@ -192,6 +193,7 @@ your-project/
 │       ├── claude-desktop.mcp.json
 │       ├── copilot.cli.mcp.json
 │       ├── gemini.settings.json
+│       ├── antigravity.mcp_config.json
 │       ├── cursor.mcp.json
 │       ├── windsurf.mcp.json
 │       ├── opencode.json
@@ -203,10 +205,11 @@ your-project/
 ├── .cursor/mcp.json                  │
 ├── .vscode/mcp.json                  │
 ├── .mcp.json                         │  Copilot CLI
+├── .agents/mcp_config.json           │  Antigravity CLI
 ├── opencode.json                     │
 ├── .claude/skills/ → .agents/skills  │  Claude workspace bridges
 ├── .cursor/skills/ → .agents/skills  │
-├── .gemini/skills/ → .agents/skills  │
+├── .gemini/skills/ → .agents/skills  │  Gemini workspace bridge
 ├── .windsurf/skills/ → .agents/skills│
 └── .junie/skills/ → .agents/skills   │
 ```
@@ -286,7 +289,8 @@ your-project/
 │                                        ├────────→ Copilot    │
 │                                        │          VS Code + CLI │
 │                                        ├────────→ Antigravity│
-│                                        │          Global     │
+│                                        │          .agents/   │
+│                                        │          mcp_config │
 │                                        ├────────→ Windsurf   │
 │                                        │          Global MCP │
 │                                        ├────────→ OpenCode   │
@@ -307,7 +311,7 @@ your-project/
 3. **Route** — sends each server to its target integrations (or all, if no `targets` specified)
 4. **Generate** — renders tool-specific config formats (TOML for Codex, JSON for others)
 5. **Materialize** — writes configs atomically (project-local and global targets), calls CLIs for Claude Code/Cursor, writes global configs with scoped merge/cleanup, and manages Claude Code's root `CLAUDE.md` wrapper
-6. **Bridge skills** — creates symlinks from tool directories to `.agents/skills/` where needed; Codex, Copilot CLI, and OpenCode read `.agents/skills/` directly
+6. **Bridge skills** — creates symlinks from tool directories to `.agents/skills/` where needed; Codex, Antigravity CLI, Copilot CLI, and OpenCode read `.agents/skills/` directly
 
 ---
 

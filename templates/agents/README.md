@@ -21,6 +21,7 @@ Project-local standard for AGENTS.md + MCP + SKILLS.
 
 ## Generated files
 - `generated/*`: renderer outputs used by `agents sync`
+- `mcp_config.json`: Antigravity CLI workspace MCP config
 - `generated/vscode.settings.state.json`: managed VS Code hide state
 
 ## Common materialized outputs
@@ -29,7 +30,7 @@ Project-local standard for AGENTS.md + MCP + SKILLS.
 - `.vscode/mcp.json`
 - `.vscode/settings.json`
 - `.cursor/mcp.json`
+- `.agents/mcp_config.json`
 - `opencode.json`
 - `.windsurf/skills/`
 - `~/.codeium/windsurf/mcp_config.json` (global)
-- `Antigravity User/mcp.json` (global)

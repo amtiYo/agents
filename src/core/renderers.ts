@@ -111,6 +111,14 @@ export function renderGeminiServers(servers: ResolvedMcpServer[]): {
   return { mcpServers: out, warnings }
 }
 
+/**
+ * Builds a VS Code MCP servers map from a list of resolved MCP servers.
+ *
+ * @param servers - The resolved MCP servers to render
+ * @returns An object with:
+ * - `servers`: a mapping from server name to its VS Code MCP configuration. For `stdio` servers the entry contains `type: 'stdio'`, `command`, `args` (array), and optional `cwd` and `env`. For non-stdio servers the entry contains `type` (transport), `url`, and optional `headers`.
+ * - `warnings`: an array of warnings for servers that were skipped or adjusted during rendering
+ */
 export function renderVscodeMcp(servers: ResolvedMcpServer[]): {
   servers: Record<string, unknown>
   warnings: string[]
@@ -146,6 +154,54 @@ export function renderVscodeMcp(servers: ResolvedMcpServer[]): {
   }
 
   return { servers: out, warnings }
+}
+
+/**
+ * Produce an Antigravity-compatible mapping of MCP servers and collect conversion warnings.
+ *
+ * @param servers - Array of resolved MCP server entries to convert
+ * @returns An object with `mcpServers` (mapping server name -> Antigravity entry) and `warnings` (messages about skipped or adjusted servers).
+ * `mcpServers` entries:
+ * - For `transport === 'stdio'`: `{ command, args, cwd? , env? }`
+ * - For non-stdio transports: `{ serverUrl, headers? }`
+ * `warnings` includes notices for servers skipped due to missing `command` or `url`, and a note when legacy `sse` transports are rendered as `serverUrl`.
+ */
+export function renderAntigravityMcp(servers: ResolvedMcpServer[]): {
+  mcpServers: Record<string, unknown>
+  warnings: string[]
+} {
+  const warnings: string[] = []
+  const out: Record<string, unknown> = {}
+
+  for (const server of servers) {
+    if (server.transport === 'stdio') {
+      if (!server.command) {
+        warnings.push(`Server "${server.name}" has no command; skipped in Antigravity output.`)
+        continue
+      }
+      out[server.name] = {
+        command: server.command,
+        args: server.args ?? [],
+        ...(server.cwd ? { cwd: server.cwd } : {}),
+        ...(server.env ? { env: server.env } : {})
+      }
+      continue
+    }
+
+    if (!server.url) {
+      warnings.push(`Server "${server.name}" has no url; skipped in Antigravity output.`)
+      continue
+    }
+    if (server.transport === 'sse') {
+      warnings.push(`Server "${server.name}" uses legacy sse transport; rendering as serverUrl for Antigravity compatibility.`)
+    }
+    out[server.name] = {
+      serverUrl: server.url,
+      ...(server.headers ? { headers: server.headers } : {})
+    }
+  }
+
+  return { mcpServers: out, warnings }
 }
 
 /**
