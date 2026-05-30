@@ -305,7 +305,7 @@ async function resolveIntegrationAccess(args: {
     if (allowOptionPrompts) {
       integrationOptions.antigravityGlobalSync = true
     }
-    summaries.antigravity = integrationOptions.antigravityGlobalSync ? 'global user profile' : 'disabled'
+    summaries.antigravity = integrationOptions.antigravityGlobalSync ? 'workspace .agents/mcp_config.json' : 'disabled'
   }
 
   if (selectedIntegrations.includes('claude_desktop')) {
@@ -378,6 +378,7 @@ async function shouldOfferCleanup(projectRoot: string): Promise<boolean> {
     paths.codexDir,
     paths.geminiDir,
     paths.cursorDir,
+    paths.antigravityWorkspaceMcp,
     paths.antigravityDir,
     paths.windsurfDir,
     paths.opencodeDir,

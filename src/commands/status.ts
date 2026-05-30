@@ -6,7 +6,6 @@ import { loadAgentsConfig } from '../core/config.js'
 import { listDirNames, pathExists, readJson } from '../core/fs.js'
 import { loadResolvedRegistry } from '../core/mcp.js'
 import { getProjectPaths } from '../core/paths.js'
-import { getAntigravityGlobalMcpPath } from '../core/antigravity.js'
 import {
   getClaudeDesktopConfigPath,
   getClaudeDesktopConfigUnavailableDetail,
@@ -59,9 +58,7 @@ export async function runStatus(options: StatusOptions): Promise<void> {
   const mcpEntries = listMcpEntries(mcpState)
   const paths = getProjectPaths(options.projectRoot)
   const enabled = new Set(config.integrations.enabled)
-  const antigravityGlobalSyncEnabled = config.integrations.options.antigravityGlobalSync !== false
-  const antigravityGlobalPath = getAntigravityGlobalMcpPath()
-  const antigravityGlobalLabel = toHomeRelativePath(antigravityGlobalPath)
+  const antigravityMcpSyncEnabled = config.integrations.options.antigravityGlobalSync !== false
   const claudeDesktopConfigPath = getClaudeDesktopConfigPath()
   const claudeDesktopConfigLabel = claudeDesktopConfigPath ? toHomeRelativePath(claudeDesktopConfigPath) : undefined
   const windsurfGlobalPath = getWindsurfGlobalMcpPath()
@@ -70,6 +67,7 @@ export async function runStatus(options: StatusOptions): Promise<void> {
   const expectedClaudeDesktopServers = resolved.serversByTarget.claude_desktop.map((server) => toManagedClaudeDesktopName(options.projectRoot, server.name))
   const expectedCopilotCliServers = resolved.serversByTarget.copilot_cli.map((server) => server.name)
   const expectedCursorServers = resolved.serversByTarget.cursor.map((server) => server.name)
+  const expectedAntigravityServers = resolved.serversByTarget.antigravity.map((server) => server.name)
   const expectedWindsurfServers = resolved.serversByTarget.windsurf.map((server) => server.name)
   const expectedOpencodeServers = resolved.serversByTarget.opencode.map((server) => server.name)
   const expectedJunieServers = resolved.serversByTarget.junie.map((server) => server.name)
@@ -96,8 +94,8 @@ export async function runStatus(options: StatusOptions): Promise<void> {
   if (enabled.has('cursor')) {
     files['.cursor/mcp.json'] = await pathExists(paths.cursorMcp)
   }
-  if (enabled.has('antigravity') && antigravityGlobalSyncEnabled) {
-    files[antigravityGlobalLabel] = await pathExists(antigravityGlobalPath)
+  if (enabled.has('antigravity') && antigravityMcpSyncEnabled) {
+    files['.agents/mcp_config.json'] = await pathExists(paths.antigravityWorkspaceMcp)
   }
   if (enabled.has('claude_desktop') && claudeDesktopConfigPath && claudeDesktopConfigLabel) {
     files[claudeDesktopConfigLabel] = await pathExists(claudeDesktopConfigPath)
@@ -122,7 +120,7 @@ export async function runStatus(options: StatusOptions): Promise<void> {
   if (enabled.has('windsurf')) {
     files['.windsurf/skills'] = await pathExists(paths.windsurfSkillsBridge)
   }
-  if (enabled.has('gemini') || enabled.has('antigravity')) {
+  if (enabled.has('gemini')) {
     files['.gemini/skills'] = await pathExists(paths.geminiSkillsBridge)
   }
 
@@ -145,10 +143,10 @@ export async function runStatus(options: StatusOptions): Promise<void> {
     if (enabled.has('copilot_vscode')) probes.copilot_vscode = await probeCopilot(paths.vscodeMcp)
     if (enabled.has('copilot_cli')) probes.copilot_cli = await probeMcpServersFile(paths.copilotCliMcp, '.mcp.json', 'mcpServers', expectedCopilotCliServers)
     if (enabled.has('cursor')) probes.cursor = probeCursor(options.projectRoot, expectedCursorServers)
-    if (enabled.has('antigravity') && antigravityGlobalSyncEnabled) {
-      probes.antigravity = await probeAntigravity(antigravityGlobalPath, antigravityGlobalLabel)
+    if (enabled.has('antigravity') && antigravityMcpSyncEnabled) {
+      probes.antigravity = await probeAntigravity(paths.antigravityWorkspaceMcp, '.agents/mcp_config.json', expectedAntigravityServers)
     } else if (enabled.has('antigravity')) {
-      probes.antigravity = 'global sync disabled by integrations.options.antigravityGlobalSync=false'
+      probes.antigravity = 'MCP sync disabled by integrations.options.antigravityGlobalSync=false'
     }
     if (enabled.has('windsurf')) {
       probes.windsurf = await probeWindsurf(windsurfGlobalPath, windsurfGlobalLabel, expectedWindsurfServers)
@@ -351,13 +349,17 @@ function probeCursor(projectRoot: string, expectedServerNames: string[]): string
   return parts.join(', ')
 }
 
-async function probeAntigravity(globalPath: string, label: string): Promise<string> {
-  if (!(await pathExists(globalPath))) return `missing ${label}`
+async function probeAntigravity(filePath: string, label: string, expectedServerNames: string[]): Promise<string> {
+  if (!(await pathExists(filePath))) return `missing ${label}`
 
   try {
-    const parsed = await readJson<{ servers?: Record<string, unknown>; mcpServers?: Record<string, unknown> }>(globalPath)
-    const count = Object.keys(parsed.servers ?? parsed.mcpServers ?? {}).length
-    return `${count} server(s) configured (runtime state visible only in Antigravity UI)`
+    const parsed = await readJson<{ mcpServers?: Record<string, unknown> }>(filePath)
+    const names = Object.keys(parsed.mcpServers ?? {})
+    const missing = expectedServerNames.filter((name) => !names.includes(name))
+    if (missing.length > 0) {
+      return `${names.length} server(s) configured (${names.join(', ') || 'none'}); missing expected: ${missing.join(', ')}`
+    }
+    return `${names.length} server(s) configured (runtime state visible only in Antigravity CLI/UI)`
   } catch {
     return `invalid ${label}`
   }

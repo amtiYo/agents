@@ -41,6 +41,7 @@ project/
 ├── .agents/
 │   ├── agents.json             # MCP servers (committed)
 │   ├── local.json              # Secrets (gitignored)
+│   ├── mcp_config.json         # Generated Antigravity CLI MCP
 │   ├── skills/                 # Workflows
 │   └── generated/              # Auto-generated (gitignored)
 ├── .codex/                     # Materialized (gitignored)
@@ -72,7 +73,7 @@ project/
 | **Cursor** | `.cursor/mcp.json` + CLI enable |
 | **Copilot VS Code** | `.vscode/mcp.json` |
 | **Copilot CLI** | `.mcp.json` |
-| **Antigravity** | Global user profile `mcp.json` (not project-local, preserves unmanaged entries) |
+| **Antigravity** | `.agents/mcp_config.json` for Antigravity CLI workspace MCP |
 | **Windsurf** | Global user profile `~/.codeium/windsurf/mcp_config.json` (preserves unmanaged entries) |
 | **OpenCode** | `opencode.json` (`mcp` block) |
 | **Junie** | `.junie/mcp/mcp.json` |
@@ -106,6 +107,7 @@ project/
     "**/.cursor": true,
     "**/.gemini": true,
     "**/.antigravity": true,
+    "**/.agents/mcp_config.json": true,
     "**/.windsurf": true,
     "**/.opencode": true,
     "**/.junie": true,
@@ -127,7 +129,7 @@ project/
 | **Claude Code** | Symlink to `.claude/skills/` |
 | **Cursor** | Symlink to `.cursor/skills/` |
 | **Gemini** | Symlink to `.gemini/skills/` |
-| **Antigravity** | Reuses `.gemini/skills/` bridge |
+| **Antigravity** | Reads `.agents/skills/` directly |
 | **Windsurf** | Symlink to `.windsurf/skills/` |
 | **Copilot CLI** | Reads `.agents/skills/` directly |
 | **OpenCode** | Reads `.agents/skills/` directly |
@@ -207,6 +209,7 @@ project/
 - ❌ `CLAUDE.md` (source-only mode)
 - ❌ `.agents/local.json`
 - ❌ `.agents/generated/`
+- ❌ `.agents/mcp_config.json`
 - ❌ `.codex/`, `.claude/`, `.cursor/`, `.gemini/`
 - ❌ `.windsurf/`, `.opencode/`, `.junie/`, `.mcp.json`, `opencode.json`
 - ❌ legacy `.antigravity/` (if present from older versions)

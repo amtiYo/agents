@@ -6,6 +6,7 @@ coverage/
 .vscode/
 .agents/mcp/local.json
 .agents/local.json
+.agents/mcp_config.json
 .agents/generated/
 .codex/
 .gemini/

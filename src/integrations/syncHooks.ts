@@ -1,7 +1,7 @@
 import path from 'node:path'
 import { ensureDir, pathExists, readJson, writeJsonAtomic } from '../core/fs.js'
 import { writeManagedFile } from '../core/managedFiles.js'
-import { getAntigravityGlobalMcpPath, normalizeAntigravityMcpPayload, readAntigravityMcp } from '../core/antigravity.js'
+import { getLegacyAntigravityGlobalMcpPath, normalizeAntigravityMcpPayload, readAntigravityMcp } from '../core/antigravity.js'
 import { getWindsurfGlobalMcpPath, normalizeWindsurfMcpPayload, readWindsurfMcp } from '../core/windsurf.js'
 import { normalizeOpencodeConfig } from '../core/opencode.js'
 import { renderVscodeMcp } from '../core/renderers.js'
@@ -196,38 +196,27 @@ export const INTEGRATION_SYNC_HOOKS: IntegrationSyncHook[] = [
     materialize: async (context) => {
       const rawGenerated = context.generatedByIntegration.antigravity ?? ''
       const legacyProjectPath = context.paths.antigravityProjectMcp
-      const globalPath = getAntigravityGlobalMcpPath()
-      const globalSyncEnabled = context.config.integrations.options.antigravityGlobalSync !== false
+      const legacyGlobalPath = getLegacyAntigravityGlobalMcpPath()
+      const mcpSyncEnabled = context.config.integrations.options.antigravityGlobalSync !== false
 
       const legacyExists = await pathExists(legacyProjectPath)
-      const globalExists = await pathExists(globalPath)
-      if (context.enabled && globalSyncEnabled && legacyExists && !globalExists) {
-        context.warnings.push(`Found legacy .antigravity/mcp.json. Antigravity now uses global MCP at ${globalPath}.`)
+      if (context.enabled && mcpSyncEnabled && legacyExists) {
+        context.warnings.push('Found legacy .antigravity/mcp.json. Antigravity now uses .agents/mcp_config.json for workspace MCP.')
       }
 
-      if (context.enabled && globalSyncEnabled && legacyExists && globalExists) {
-        try {
-          const [legacy, global] = await Promise.all([
-            readAntigravityMcp(legacyProjectPath),
-            readAntigravityMcp(globalPath)
-          ])
-          if (legacy && global) {
-            const normalizedLegacy = JSON.stringify(normalizeAntigravityMcpPayload(legacy))
-            const normalizedGlobal = JSON.stringify(normalizeAntigravityMcpPayload(global))
-            if (normalizedLegacy !== normalizedGlobal) {
-              context.warnings.push(`Legacy .antigravity/mcp.json differs from global Antigravity MCP (${globalPath}); local file is ignored.`)
-            }
-          }
-        } catch (error) {
-          context.warnings.push(
-            `Could not compare legacy .antigravity/mcp.json with global Antigravity MCP: ${error instanceof Error ? error.message : String(error)}`,
-          )
-        }
-      }
+      const previousManagedNames = await readManagedGlobalNames(context.paths.generatedAntigravityState)
+      await cleanupLegacyAntigravityGlobal({
+        globalPath: legacyGlobalPath,
+        previousManagedNames,
+        projectRoot: context.projectRoot,
+        check: context.check,
+        changed: context.changed,
+        warnings: context.warnings
+      })
 
-      await syncManagedAntigravityGlobal({
-        enabled: context.enabled && globalSyncEnabled,
-        globalPath,
+      await syncManagedAntigravityWorkspace({
+        enabled: context.enabled && mcpSyncEnabled,
+        workspacePath: context.paths.antigravityWorkspaceMcp,
         statePath: context.paths.generatedAntigravityState,
         rawGenerated,
         projectRoot: context.projectRoot,
@@ -361,9 +350,9 @@ interface ManagedGlobalState {
   managedNames: string[]
 }
 
-async function syncManagedAntigravityGlobal(args: {
+async function syncManagedAntigravityWorkspace(args: {
   enabled: boolean
-  globalPath: string
+  workspacePath: string
   statePath: string
   rawGenerated: string
   projectRoot: string
@@ -374,16 +363,16 @@ async function syncManagedAntigravityGlobal(args: {
   const previousNames = await readManagedGlobalNames(args.statePath)
   if (!args.enabled && previousNames.length === 0) return
 
-  const lockPath = path.join(path.dirname(args.globalPath), '.agents-antigravity-mcp.lock')
+  const lockPath = path.join(path.dirname(args.workspacePath), '.agents-antigravity-mcp.lock')
   const releaseLock = args.check ? null : await acquireSyncLock(lockPath)
   try {
     let existing: Record<string, unknown> = {}
-    if (await pathExists(args.globalPath)) {
+    if (await pathExists(args.workspacePath)) {
       try {
-        existing = normalizeAntigravityMcpPayload(await readAntigravityMcp(args.globalPath) ?? {})
+        existing = normalizeAntigravityMcpPayload(await readAntigravityMcp(args.workspacePath) ?? {})
       } catch (error) {
         args.warnings.push(
-          `Failed to read existing Antigravity MCP at ${args.globalPath}; skipped Antigravity global sync. ${error instanceof Error ? error.message : String(error)}`,
+          `Failed to read existing Antigravity MCP at ${args.workspacePath}; skipped Antigravity workspace sync. ${error instanceof Error ? error.message : String(error)}`,
         )
         return
       }
@@ -392,18 +381,16 @@ async function syncManagedAntigravityGlobal(args: {
     const generated = args.enabled && args.rawGenerated.trim().length > 0
       ? normalizeAntigravityMcpPayload(parseJsonObject(args.rawGenerated, 'generated Antigravity config'))
       : normalizeAntigravityMcpPayload({})
-    const managedServers = recordFrom(generated.servers)
-    const existingServers = recordFrom(existing.servers)
+    const managedServers = recordFrom(generated.mcpServers)
+    const existingServers = recordFrom(existing.mcpServers)
     const nextServers = mergeManagedServers(existingServers, previousNames, managedServers)
     const nextPayload = normalizeAntigravityMcpPayload({
       ...existing,
-      servers: nextServers,
-      mcpServers: nextServers,
-      inputs: Array.isArray(existing.inputs) ? existing.inputs : Array.isArray(generated.inputs) ? generated.inputs : []
+      mcpServers: nextServers
     })
 
     await writeManagedFile({
-      absolutePath: args.globalPath,
+      absolutePath: args.workspacePath,
       content: `${JSON.stringify(nextPayload, null, 2)}\n`,
       projectRoot: args.projectRoot,
       check: args.check,
@@ -413,6 +400,49 @@ async function syncManagedAntigravityGlobal(args: {
     if (!args.check) {
       await writeManagedGlobalNames(args.statePath, args.enabled ? Object.keys(managedServers) : [])
     }
+  } finally {
+    if (releaseLock) await releaseLock()
+  }
+}
+
+async function cleanupLegacyAntigravityGlobal(args: {
+  globalPath: string
+  previousManagedNames: string[]
+  projectRoot: string
+  check: boolean
+  changed: string[]
+  warnings: string[]
+}): Promise<void> {
+  if (args.previousManagedNames.length === 0) return
+  if (!(await pathExists(args.globalPath))) return
+
+  const lockPath = path.join(path.dirname(args.globalPath), '.agents-antigravity-legacy-mcp.lock')
+  const releaseLock = args.check ? null : await acquireSyncLock(lockPath)
+  try {
+    let existing: Record<string, unknown>
+    try {
+      existing = normalizeAntigravityMcpPayload(await readAntigravityMcp(args.globalPath) ?? {})
+    } catch (error) {
+      args.warnings.push(
+        `Failed to read legacy Antigravity MCP at ${args.globalPath}; skipped legacy cleanup. ${error instanceof Error ? error.message : String(error)}`,
+      )
+      return
+    }
+
+    const existingServers = recordFrom(existing.mcpServers)
+    const nextServers = mergeManagedServers(existingServers, args.previousManagedNames, {})
+    const nextPayload = normalizeAntigravityMcpPayload({
+      ...existing,
+      mcpServers: nextServers
+    })
+
+    await writeManagedFile({
+      absolutePath: args.globalPath,
+      content: `${JSON.stringify(nextPayload, null, 2)}\n`,
+      projectRoot: args.projectRoot,
+      check: args.check,
+      changed: args.changed
+    })
   } finally {
     if (releaseLock) await releaseLock()
   }

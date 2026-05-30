@@ -9,7 +9,6 @@ import { pathExists, readJson, readTextOrEmpty } from '../core/fs.js'
 import { loadResolvedRegistry } from '../core/mcp.js'
 import { getProjectPaths } from '../core/paths.js'
 import type { ProjectPaths } from '../core/paths.js'
-import { getAntigravityGlobalMcpPath } from '../core/antigravity.js'
 import { getWindsurfGlobalMcpPath } from '../core/windsurf.js'
 import { commandExists, runCommand } from '../core/shell.js'
 import { performSync } from '../core/sync.js'
@@ -43,7 +42,6 @@ export async function runDoctor(options: DoctorOptions): Promise<void> {
   const previewFixes = options.fixDryRun === true
 
   const paths = getProjectPaths(options.projectRoot)
-  const antigravityGlobalMcpPath = getAntigravityGlobalMcpPath()
   const claudeDesktopConfigPath = getClaudeDesktopConfigPath()
   const windsurfGlobalMcpPath = getWindsurfGlobalMcpPath()
   const issues: Issue[] = []
@@ -78,8 +76,8 @@ export async function runDoctor(options: DoctorOptions): Promise<void> {
     process.exitCode = 1
     return
   }
-  const antigravityGlobalSyncEnabled = config.integrations.options.antigravityGlobalSync !== false
-  const enabledForMaterialization = antigravityGlobalSyncEnabled
+  const antigravityMcpSyncEnabled = config.integrations.options.antigravityGlobalSync !== false
+  const enabledForMaterialization = antigravityMcpSyncEnabled
     ? config.integrations.enabled
     : config.integrations.enabled.filter((integration) => integration !== 'antigravity')
 
@@ -122,7 +120,6 @@ export async function runDoctor(options: DoctorOptions): Promise<void> {
   await validateManagedConfigSyntax(
     paths,
     enabledForMaterialization,
-    antigravityGlobalMcpPath,
     claudeDesktopConfigPath,
     windsurfGlobalMcpPath,
     issues,
@@ -204,9 +201,9 @@ export async function runDoctor(options: DoctorOptions): Promise<void> {
         ...(enabled.has('claude') ? ['.claude/skills'] : []),
         ...(enabled.has('cursor') ? ['.cursor/skills'] : []),
         ...(enabled.has('windsurf') ? ['.windsurf/skills'] : []),
-        ...((enabled.has('gemini') || enabled.has('antigravity')) ? ['.gemini/skills'] : []),
+        ...(enabled.has('gemini') ? ['.gemini/skills'] : []),
         ...(enabled.has('junie') ? ['.junie/mcp/mcp.json', '.junie/skills'] : []),
-        ...(enabled.has('antigravity') ? ['.antigravity/mcp.json'] : []),
+        ...(enabled.has('antigravity') ? ['.agents/mcp_config.json'] : []),
         ...(enabled.has('opencode') ? ['opencode.json'] : [])
       ]
     : []
@@ -262,10 +259,10 @@ export async function runDoctor(options: DoctorOptions): Promise<void> {
     fixSpin.stop('Fixes applied')
   }
 
-  if (enabled.has('antigravity') && antigravityGlobalSyncEnabled && !(await pathExists(antigravityGlobalMcpPath)) && !applyFixes) {
+  if (enabled.has('antigravity') && antigravityMcpSyncEnabled && !(await pathExists(paths.antigravityWorkspaceMcp)) && !applyFixes) {
     issues.push({
       level: 'warning',
-      message: `Antigravity global MCP file missing: ${antigravityGlobalMcpPath} (run agents sync).`
+      message: 'Antigravity workspace MCP file missing: .agents/mcp_config.json (run agents sync).'
     })
   }
 
@@ -293,7 +290,7 @@ export async function runDoctor(options: DoctorOptions): Promise<void> {
   if (enabled.has('antigravity') && (await pathExists(paths.antigravityProjectMcp))) {
     issues.push({
       level: 'warning',
-      message: 'Legacy Antigravity project MCP file found at .antigravity/mcp.json. It is ignored; Antigravity MCP is global now.'
+      message: 'Legacy Antigravity project MCP file found at .antigravity/mcp.json. It is ignored; Antigravity now uses .agents/mcp_config.json.'
     })
   }
 
@@ -542,7 +539,6 @@ function collectInvalidKeyIssuesForSource(
 async function validateManagedConfigSyntax(
   paths: ProjectPaths,
   enabledIntegrations: IntegrationName[],
-  antigravityGlobalMcpPath: string,
   claudeDesktopConfigPath: string | undefined,
   windsurfGlobalMcpPath: string,
   issues: Issue[],
@@ -552,7 +548,7 @@ async function validateManagedConfigSyntax(
   await validateJsonIfExists(paths.generatedCopilot, '.agents/generated/copilot.vscode.mcp.json', issues)
   await validateJsonIfExists(paths.generatedCopilotCli, '.agents/generated/copilot.cli.mcp.json', issues)
   await validateJsonIfExists(paths.generatedCursor, '.agents/generated/cursor.mcp.json', issues)
-  await validateJsonIfExists(paths.generatedAntigravity, '.agents/generated/antigravity.mcp.json', issues)
+  await validateJsonIfExists(paths.generatedAntigravity, '.agents/generated/antigravity.mcp_config.json', issues)
   await validateJsonIfExists(paths.generatedWindsurf, '.agents/generated/windsurf.mcp.json', issues)
   await validateJsonIfExists(paths.generatedOpencode, '.agents/generated/opencode.json', issues)
   await validateJsonIfExists(paths.generatedClaude, '.agents/generated/claude.mcp.json', issues)
@@ -576,8 +572,8 @@ async function validateManagedConfigSyntax(
   }
   if (enabledIntegrations.includes('antigravity')) {
     await validateJsonIfExists(
-      antigravityGlobalMcpPath,
-      `Antigravity global MCP (${antigravityGlobalMcpPath})`,
+      paths.antigravityWorkspaceMcp,
+      '.agents/mcp_config.json',
       issues,
     )
   }

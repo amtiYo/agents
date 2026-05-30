@@ -3,13 +3,12 @@ import path from 'node:path'
 import { ensureDir, pathExists, readJson, writeJsonAtomic } from './fs.js'
 
 export interface AntigravityMcpPayload {
-  servers?: Record<string, unknown>
   mcpServers?: Record<string, unknown>
-  inputs?: unknown[]
+  servers?: Record<string, unknown>
   [key: string]: unknown
 }
 
-export function getAntigravityGlobalMcpPath(): string {
+export function getLegacyAntigravityGlobalMcpPath(): string {
   const override = process.env.AGENTS_ANTIGRAVITY_MCP_PATH
   if (override && override.trim().length > 0) {
     return path.resolve(override)
@@ -44,19 +43,19 @@ export async function writeAntigravityMcp(pathToWrite: string, payload: Antigrav
 
 export function normalizeAntigravityMcpPayload(payload: AntigravityMcpPayload): AntigravityMcpPayload {
   const servers = pickServers(payload)
+  const { servers: _legacyServers, ...rest } = payload
   return {
-    ...payload,
-    servers,
+    ...rest,
     mcpServers: servers
   }
 }
 
 function pickServers(payload: AntigravityMcpPayload): Record<string, unknown> {
-  if (isRecord(payload.servers)) {
-    return payload.servers
-  }
   if (isRecord(payload.mcpServers)) {
     return payload.mcpServers
+  }
+  if (isRecord(payload.servers)) {
+    return payload.servers
   }
   return {}
 }

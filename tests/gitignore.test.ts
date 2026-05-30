@@ -37,6 +37,7 @@ describe('gitignore management', () => {
     expect(gitignore).toContain('.custom')
     expect(gitignore).toContain('.agents/local.json')
     expect(gitignore).toContain('.agents/generated/')
+    expect(gitignore).not.toContain('.agents/mcp_config.json')
     expect(gitignore).not.toContain('CLAUDE.md')
     expect(gitignore).not.toContain('.codex/')
     expect(gitignore).not.toContain('.gemini/')
@@ -54,6 +55,7 @@ describe('gitignore management', () => {
     const gitignore = await readFile(path.join(projectRoot, '.gitignore'), 'utf8')
     expect((gitignore.match(/CLAUDE\.md/g) ?? []).length).toBe(1)
     expect((gitignore.match(/\.agents\/generated\//g) ?? []).length).toBe(1)
+    expect(gitignore).toContain('.agents/mcp_config.json')
     expect(gitignore).toContain('.custom')
   })
 
@@ -62,8 +64,8 @@ describe('gitignore management', () => {
     tempDirs.push(projectRoot)
 
     await writeFile(
-      path.join(projectRoot, '.gitignore'),
-      '.custom\n/CLAUDE.md\n/.agents/local.json\n/.agents/generated/\n/.codex/\n',
+        path.join(projectRoot, '.gitignore'),
+        '.custom\n/CLAUDE.md\n/.agents/local.json\n/.agents/generated/\n/.agents/mcp_config.json\n/.codex/\n',
       'utf8'
     )
 
@@ -79,7 +81,7 @@ describe('gitignore management', () => {
     tempDirs.push(projectRoot)
 
     const gitignorePath = path.join(projectRoot, '.gitignore')
-    await writeFile(gitignorePath, '.agents/local.json\n/.agents/generated/\nCLAUDE.md\n', 'utf8')
+    await writeFile(gitignorePath, '.agents/local.json\n/.agents/generated/\n.agents/mcp_config.json\nCLAUDE.md\n', 'utf8')
 
     const changed = await cleanupManagedGitignore(projectRoot)
     expect(changed).toBe(true)

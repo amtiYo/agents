@@ -134,7 +134,7 @@ describe('doctor command', () => {
     expect(output).toContain('Custom root CLAUDE.md detected')
   }, 15000)
 
-  it('does not warn about missing Antigravity global MCP when global sync is disabled', async () => {
+  it('does not warn about missing Antigravity workspace MCP when MCP sync is disabled', async () => {
     const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-doctor-'))
     tempDirs.push(projectRoot)
 
@@ -148,7 +148,7 @@ describe('doctor command', () => {
       await runDoctor({ projectRoot, fix: false })
     })
 
-    expect(output).not.toContain('Antigravity global MCP file missing')
+    expect(output).not.toContain('Antigravity workspace MCP file missing')
   }, 15000)
 
   it('reports missing Claude Desktop config when integration is enabled', async () => {

@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - No changes yet.
 
+## [0.8.9] - 2026-05-31
+
+### Changed
+
+- Antigravity sync now targets the current Antigravity CLI workspace MCP file (`.agents/mcp_config.json`) using `serverUrl` for remote MCP servers.
+- Antigravity integration preflight now checks the `agy` CLI binary instead of the older `antigravity` command name.
+- Antigravity-enabled projects now rely on native `.agents/skills` discovery instead of creating a `.gemini/skills` bridge when Gemini itself is not enabled.
+
+### Fixed
+
+- Antigravity sync preserves unmanaged entries in `.agents/mcp_config.json` and removes only this project's previously managed entries when MCP sync is disabled.
+
 ## [0.8.8] - 2026-05-17
 
 ### Added

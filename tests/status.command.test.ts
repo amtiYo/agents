@@ -10,12 +10,10 @@ import * as shell from '../src/core/shell.js'
 
 const tempDirs: string[] = []
 let previousWindsurfMcpPath: string | undefined
-let previousAntigravityMcpPath: string | undefined
 let previousClaudeDesktopConfigPath: string | undefined
 
 beforeEach(() => {
   previousWindsurfMcpPath = process.env.AGENTS_WINDSURF_MCP_PATH
-  previousAntigravityMcpPath = process.env.AGENTS_ANTIGRAVITY_MCP_PATH
   previousClaudeDesktopConfigPath = process.env.AGENTS_CLAUDE_DESKTOP_CONFIG_PATH
 })
 
@@ -25,11 +23,6 @@ afterEach(async () => {
     delete process.env.AGENTS_WINDSURF_MCP_PATH
   } else {
     process.env.AGENTS_WINDSURF_MCP_PATH = previousWindsurfMcpPath
-  }
-  if (previousAntigravityMcpPath === undefined) {
-    delete process.env.AGENTS_ANTIGRAVITY_MCP_PATH
-  } else {
-    process.env.AGENTS_ANTIGRAVITY_MCP_PATH = previousAntigravityMcpPath
   }
   if (previousClaudeDesktopConfigPath === undefined) {
     delete process.env.AGENTS_CLAUDE_DESKTOP_CONFIG_PATH
@@ -213,12 +206,9 @@ describe('status command', () => {
     expect(parsed.probes.claude_desktop).toContain('managed server(s) configured')
   })
 
-  it('omits Antigravity global file checks when global sync option is disabled', async () => {
+  it('omits Antigravity workspace MCP checks when MCP sync option is disabled', async () => {
     const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-status-'))
-    const antigravityDir = await mkdtemp(path.join(os.tmpdir(), 'agents-ag-status-'))
-    tempDirs.push(projectRoot, antigravityDir)
-    previousAntigravityMcpPath = process.env.AGENTS_ANTIGRAVITY_MCP_PATH
-    process.env.AGENTS_ANTIGRAVITY_MCP_PATH = path.join(antigravityDir, 'mcp.json')
+    tempDirs.push(projectRoot)
 
     await runInit({ projectRoot, force: true })
     const config = await loadAgentsConfig(projectRoot)
@@ -241,8 +231,8 @@ describe('status command', () => {
     })
 
     const parsed = JSON.parse(output) as { files: Record<string, boolean>; probes: Record<string, string> }
-    expect(Object.keys(parsed.files).some((key) => key.includes('mcp.json') && key.includes('agents-ag-status'))).toBe(false)
-    expect(parsed.probes.antigravity).toContain('global sync disabled')
+    expect(parsed.files['.agents/mcp_config.json']).toBeUndefined()
+    expect(parsed.probes.antigravity).toContain('MCP sync disabled')
   })
 })
 
