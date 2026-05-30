@@ -8,6 +8,14 @@ export interface AntigravityMcpPayload {
   [key: string]: unknown
 }
 
+/**
+ * Resolve the absolute filesystem path for the legacy global Antigravity MCP configuration file.
+ *
+ * Uses the `AGENTS_ANTIGRAVITY_MCP_PATH` environment variable when set and non-empty; otherwise
+ * returns an OS-specific default location (macOS, Windows with `APPDATA` fallback, or XDG/`~/.config` for other platforms).
+ *
+ * @returns Absolute path to the legacy global Antigravity MCP JSON file (`mcp.json`).
+ */
 export function getLegacyAntigravityGlobalMcpPath(): string {
   const override = process.env.AGENTS_ANTIGRAVITY_MCP_PATH
   if (override && override.trim().length > 0) {
@@ -41,6 +49,12 @@ export async function writeAntigravityMcp(pathToWrite: string, payload: Antigrav
   await writeJsonAtomic(pathToWrite, normalizeAntigravityMcpPayload(payload))
 }
 
+/**
+ * Normalize an Antigravity MCP payload to the current shape by ensuring server mappings are exposed under `mcpServers` and removing the legacy `servers` property.
+ *
+ * @param payload - The MCP payload that may use current (`mcpServers`) or legacy (`servers`) server keys
+ * @returns A payload object with `mcpServers` containing the chosen server mapping and without the legacy `servers` property
+ */
 export function normalizeAntigravityMcpPayload(payload: AntigravityMcpPayload): AntigravityMcpPayload {
   const servers = pickServers(payload)
   const { servers: _legacyServers, ...rest } = payload
@@ -50,6 +64,12 @@ export function normalizeAntigravityMcpPayload(payload: AntigravityMcpPayload): 
   }
 }
 
+/**
+ * Selects the server mapping from the payload preferring `mcpServers` and falling back to legacy `servers`.
+ *
+ * @param payload - MCP payload that may contain `mcpServers` (current) or `servers` (legacy)
+ * @returns The selected servers mapping, or an empty object if neither field contains a plain object
+ */
 function pickServers(payload: AntigravityMcpPayload): Record<string, unknown> {
   if (isRecord(payload.mcpServers)) {
     return payload.mcpServers

@@ -350,6 +350,20 @@ interface ManagedGlobalState {
   managedNames: string[]
 }
 
+/**
+ * Update the workspace Antigravity MCP file with the set of managed servers derived from the generated config and persist the list of managed server names.
+ *
+ * Reads the previous managed server names from `statePath`, merges them with the newly generated servers (removing any previously-managed entries that are no longer produced), writes the resulting MCP JSON to `workspacePath`, and updates the state file with the current managed server names. Operates in a no-op mode when `check` is true (no files are modified) but still computes warnings and records changed paths.
+ *
+ * @param enabled - Whether the integration is enabled; if false, generated servers are not applied but previously-managed names will be removed.
+ * @param workspacePath - Absolute path to the workspace Antigravity MCP file to read and write.
+ * @param statePath - Path to the JSON file that tracks previously-managed server names.
+ * @param rawGenerated - Raw generated Antigravity MCP JSON produced by the integration (may be empty or whitespace).
+ * @param projectRoot - Repository root used for recording relative changes when writing managed files.
+ * @param check - If true, perform a dry run: compute changes and warnings without modifying files.
+ * @param changed - Mutable array to which paths of files that would be or were changed will be appended.
+ * @param warnings - Mutable array to which human-readable warning messages will be appended.
+ */
 async function syncManagedAntigravityWorkspace(args: {
   enabled: boolean
   workspacePath: string
@@ -405,6 +419,20 @@ async function syncManagedAntigravityWorkspace(args: {
   }
 }
 
+/**
+ * Remove previously-managed Antigravity MCP servers from a legacy global MCP file if it exists.
+ *
+ * Reads the legacy global MCP at `globalPath`, removes any servers whose names are listed in
+ * `previousManagedNames`, and writes the updated MCP back to `globalPath`. If the legacy file
+ * cannot be read or parsed, a warning is appended to `warnings` and no changes are written.
+ *
+ * @param globalPath - Absolute path to the legacy global Antigravity MCP file to update
+ * @param previousManagedNames - Server names previously managed by this tool that should be removed
+ * @param projectRoot - Repository root used when writing the managed file metadata
+ * @param check - When true, operate in dry-run mode (do not acquire locks or persist changes)
+ * @param changed - Mutable list that will be updated with paths that were or would be changed
+ * @param warnings - Mutable list to which human-readable warning messages are appended on error
+ */
 async function cleanupLegacyAntigravityGlobal(args: {
   globalPath: string
   previousManagedNames: string[]
@@ -448,6 +476,20 @@ async function cleanupLegacyAntigravityGlobal(args: {
   }
 }
 
+/**
+ * Synchronizes the Windsurf global MCP by merging generated managed servers into the existing global MCP and updating the managed-server state.
+ *
+ * Merges `rawGenerated` (when `enabled`) into the existing MCP's `mcpServers`, removes previously-managed entries, writes the resulting MCP to `globalPath`, and updates `statePath` with the current set of managed server names. Uses a filesystem lock to avoid concurrent writes and appends any warnings to `warnings` and file-change paths to `changed`.
+ *
+ * @param args.enabled - Whether generated MCP entries should be applied (if false, previously-managed names are only removed)
+ * @param args.globalPath - Absolute path to the Windsurf global MCP file to read and/or write
+ * @param args.statePath - Path to the JSON file that records currently managed server names; will be updated when not in `check` mode
+ * @param args.rawGenerated - Raw JSON string produced for Windsurf; parsed when `enabled` and non-empty
+ * @param args.projectRoot - Project root used when writing managed files
+ * @param args.check - If true, perform a dry run (no state update) while still validating and computing the resulting content
+ * @param args.changed - Array that will be appended with paths that were written or would be written
+ * @param args.warnings - Array that will be appended with human-readable warnings encountered during processing
+ */
 async function syncManagedWindsurfGlobal(args: {
   enabled: boolean
   globalPath: string

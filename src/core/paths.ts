@@ -57,6 +57,12 @@ export interface ProjectPaths {
   windsurfSkillsBridge: string
 }
 
+/**
+ * Construct a complete set of filesystem paths for a project based on the given project root.
+ *
+ * @param projectRoot - Path to the project root (will be resolved to an absolute path)
+ * @returns An object mapping canonical absolute paths for agent configuration, generated outputs, editor/tool configuration, Antigravity and Junie integration, and various skills/bridge directories
+ */
 export function getProjectPaths(projectRoot: string): ProjectPaths {
   const root = path.resolve(projectRoot)
   const agentsDir = path.join(root, '.agents')

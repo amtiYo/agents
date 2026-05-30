@@ -49,6 +49,17 @@ interface StatusOutput {
   probesSkipped: boolean
 }
 
+/**
+ * Gather and display the current agents project status, including configured MCP entries, enabled integrations, file presence checks, and integration probe results.
+ *
+ * The command loads project and MCP state, computes expected server names per integration, checks for existence of relevant integration and workspace files, optionally runs runtime/config probes for enabled integrations (skipped when `options.fast`), and renders a structured status object either as JSON or as compact/verbose terminal output.
+ *
+ * @param options - Options controlling the status run:
+ *   - `projectRoot`: path to the project root to inspect
+ *   - `json`: when true, output the full status as JSON
+ *   - `fast`: when true, skip runtime probes and only perform file/existence checks
+ *   - `verbose`: when true, emit a detailed files and probes breakdown instead of a compact summary
+ */
 export async function runStatus(options: StatusOptions): Promise<void> {
   ui.setContext({ json: options.json })
 
@@ -329,6 +340,13 @@ async function probeMcpServersFile(
   }
 }
 
+/**
+ * Summarizes Cursor agent MCP server statuses and notes any expected servers that are not present.
+ *
+ * @param projectRoot - Path to the project root where Cursor status is inspected
+ * @param expectedServerNames - List of MCP server names expected to be present
+ * @returns A comma-separated status summary such as `2 ready, 1 need approval, 1 disabled, missing in list: server-a` describing counts per status and any missing expected servers
+ */
 function probeCursor(projectRoot: string, expectedServerNames: string[]): string {
   if (!commandExists('cursor-agent')) return 'cursor-agent CLI not found'
   const listed = listCursorMcpStatuses(projectRoot)
@@ -349,6 +367,16 @@ function probeCursor(projectRoot: string, expectedServerNames: string[]): string
   return parts.join(', ')
 }
 
+/**
+ * Checks an Antigravity configuration file for configured MCP servers and reports any missing expected servers.
+ *
+ * @param expectedServerNames - The list of MCP server names that should be present in the Antigravity config
+ * @returns A human-readable status string:
+ * - `missing <label>` if the config file does not exist
+ * - `invalid <label>` if the file cannot be read or parsed
+ * - `"<n> server(s) configured (<names>); missing expected: <missing...>"` if some expected servers are absent
+ * - `"<n> server(s) configured (runtime state visible only in Antigravity CLI/UI)"` if all expected servers are present
+ */
 async function probeAntigravity(filePath: string, label: string, expectedServerNames: string[]): Promise<string> {
   if (!(await pathExists(filePath))) return `missing ${label}`
 

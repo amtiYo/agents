@@ -111,6 +111,14 @@ export function renderGeminiServers(servers: ResolvedMcpServer[]): {
   return { mcpServers: out, warnings }
 }
 
+/**
+ * Builds a VS Code MCP servers map from a list of resolved MCP servers.
+ *
+ * @param servers - The resolved MCP servers to render
+ * @returns An object with:
+ * - `servers`: a mapping from server name to its VS Code MCP configuration. For `stdio` servers the entry contains `type: 'stdio'`, `command`, `args` (array), and optional `cwd` and `env`. For non-stdio servers the entry contains `type` (transport), `url`, and optional `headers`.
+ * - `warnings`: an array of warnings for servers that were skipped or adjusted during rendering
+ */
 export function renderVscodeMcp(servers: ResolvedMcpServer[]): {
   servers: Record<string, unknown>
   warnings: string[]
@@ -148,6 +156,16 @@ export function renderVscodeMcp(servers: ResolvedMcpServer[]): {
   return { servers: out, warnings }
 }
 
+/**
+ * Produce an Antigravity-compatible mapping of MCP servers and collect conversion warnings.
+ *
+ * @param servers - Array of resolved MCP server entries to convert
+ * @returns An object with `mcpServers` (mapping server name -> Antigravity entry) and `warnings` (messages about skipped or adjusted servers).
+ * `mcpServers` entries:
+ * - For `transport === 'stdio'`: `{ command, args, cwd? , env? }`
+ * - For non-stdio transports: `{ serverUrl, headers? }`
+ * `warnings` includes notices for servers skipped due to missing `command` or `url`, and a note when legacy `sse` transports are rendered as `serverUrl`.
+ */
 export function renderAntigravityMcp(servers: ResolvedMcpServer[]): {
   mcpServers: Record<string, unknown>
   warnings: string[]

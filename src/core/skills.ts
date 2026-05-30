@@ -7,6 +7,21 @@ import type { IntegrationName } from '../types.js'
 
 const BRIDGE_MARKER_FILENAME = '.agents_bridge'
 
+/**
+ * Synchronizes the project's agents skills directory into each supported integration's bridge location.
+ *
+ * Ensures the agents skills directory exists (unless `check` is true), detects whether any managed skill
+ * directories are present, and for each supported integration will create, update, or remove that
+ * integration's skills bridge according to whether the integration is enabled and skills exist.
+ * Records affected paths in `changed`, may append warnings for unmanaged existing bridges, and finally
+ * cleans up a legacy antigravity bridge if it is agent-managed and matches the current source.
+ *
+ * @param projectRoot - Path to the repository/project root
+ * @param enabledIntegrations - List of integration names that should have active bridges
+ * @param check - If true, perform a dry run: record potential changes in `changed` but do not modify the filesystem
+ * @param changed - Array that will be appended with paths (relative when possible) of bridges and directories that would be or were changed/removed
+ * @param warnings - Array that will be appended with human-readable warning messages encountered during synchronization
+ */
 export async function syncSkills(args: {
   projectRoot: string
   enabledIntegrations: IntegrationName[]

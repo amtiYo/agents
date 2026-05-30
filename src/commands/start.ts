@@ -216,6 +216,21 @@ export async function runStart(options: StartOptions): Promise<void> {
   }
 }
 
+/**
+ * Compute final integration options, human-readable per-integration summaries, and any warnings
+ * based on the selected integrations and interactive/auto-approve settings.
+ *
+ * @param args.projectRoot - Absolute path to the target project used for integration-specific checks
+ * @param args.selectedIntegrations - List of integration ids to enable
+ * @param args.interactive - Whether interactive prompts are allowed
+ * @param args.autoApprove - Default approval value when prompts are not shown
+ * @param args.integrationOptions - Base integration options to start from (will be updated)
+ * @param args.allowOptionPrompts - If true, the function may prompt or override options for integrations
+ * @returns An object containing:
+ *   - `integrationOptions`: final option values (`cursorAutoApprove`, `antigravityGlobalSync`),
+ *   - `summaries`: mapping of integration id → short status/placement string,
+ *   - `warnings`: array of warning messages produced while resolving access and state
+ */
 async function resolveIntegrationAccess(args: {
   projectRoot: string
   selectedIntegrations: IntegrationName[]
@@ -369,6 +384,12 @@ function renderPreflight(items: Array<{ label: string; ok: boolean; detail: stri
     .join('\n')
 }
 
+/**
+ * Checks whether the project contains generated or integration-specific artifacts that warrant offering a cleanup.
+ *
+ * @param projectRoot - Path to the project root to inspect
+ * @returns `true` if any known generated or integration-specific artifact exists in the project, `false` otherwise
+ */
 async function shouldOfferCleanup(projectRoot: string): Promise<boolean> {
   const paths = getProjectPaths(projectRoot)
   const legacyAgentDir = path.join(projectRoot, '.agent')

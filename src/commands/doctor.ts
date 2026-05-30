@@ -33,6 +33,17 @@ interface Issue {
   message: string
 }
 
+/**
+ * Run diagnostics for a project and optionally preview or apply automatic fixes.
+ *
+ * Performs filesystem and configuration checks, collects errors and warnings, validates generated
+ * and managed configs, inspects MCP state and integrations, and reports issues/actions. When
+ * requested, it will preview proposed fixes or apply them (untracking git paths, setting Codex
+ * trust, and running `agents sync`).
+ *
+ * @param options - Doctor command options (must include `projectRoot`; may include `fix` and `fixDryRun` to control applying or previewing fixes)
+ * @throws Error - If both `options.fix` and `options.fixDryRun` are enabled simultaneously
+ */
 export async function runDoctor(options: DoctorOptions): Promise<void> {
   if (options.fix && options.fixDryRun) {
     throw new Error('Use either --fix or --fix-dry-run, not both.')
@@ -536,6 +547,17 @@ function collectInvalidKeyIssuesForSource(
   return messages
 }
 
+/**
+ * Validate the existence and syntax of managed/generated integration configuration files and append any parse errors to `issues`.
+ *
+ * Validates a fixed set of generated TOML/JSON files and additional integration-specific config files when their integration names appear in `enabledIntegrations`. When a file exists but fails to parse, an error is pushed into the supplied `issues` array.
+ *
+ * @param paths - Project paths used to locate generated and workspace config files
+ * @param enabledIntegrations - Integration names that enable validation of their non-generated config locations
+ * @param claudeDesktopConfigPath - Optional path to Claude Desktop config; validated only if provided and the integration is enabled
+ * @param windsurfGlobalMcpPath - Path to Windsurf global MCP config to validate when the integration is enabled
+ * @param issues - Mutable list to which validation errors are appended
+ */
 async function validateManagedConfigSyntax(
   paths: ProjectPaths,
   enabledIntegrations: IntegrationName[],
