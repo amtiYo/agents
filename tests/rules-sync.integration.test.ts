@@ -130,6 +130,23 @@ describe('rules sync', () => {
     expect(claude).toContain('Just guidance, no frontmatter.')
   })
 
+  it('warns and skips when an unmanaged rule file already exists', { timeout: 25000 }, async () => {
+    const projectRoot = await setupProject(['cursor'])
+
+    const cursorRulesDir = path.join(projectRoot, '.cursor', 'rules')
+    await mkdir(cursorRulesDir, { recursive: true })
+    await writeFile(path.join(cursorRulesDir, 'existing.mdc'), 'Unmanaged content.\n', 'utf8')
+
+    await writeRule(projectRoot, 'existing', '---\nalwaysApply: true\ndescription: x\n---\n\nNew rule.\n')
+
+    const result = await performSync({ projectRoot, check: false, verbose: false })
+
+    expect(result.warnings.some((w) => w.includes('not managed by agents'))).toBe(true)
+    // The pre-existing file is preserved, not overwritten.
+    const content = await readFile(path.join(cursorRulesDir, 'existing.mdc'), 'utf8')
+    expect(content).toBe('Unmanaged content.\n')
+  })
+
   it('removes stale rule files when the source rule is deleted', { timeout: 25000 }, async () => {
     const projectRoot = await setupProject(['cursor', 'claude'])
     await writeRule(

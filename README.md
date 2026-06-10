@@ -243,7 +243,7 @@ All API endpoints must validate input with zod.
 
 `agents sync` writes, for each enabled tool:
 
-| `.agents/rules/<name>.md` | Cursor `.cursor/rules/<name>.mdc` | Claude `.claude/rules/<name>.md` | Windsurf `.windsurf/rules/<name>.md` | Copilot `.github/instructions/<name>.instructions.md` |
+| `.agents/rules/<name>.md` | Cursor `.cursor/rules/<name>.mdc` | Claude `.claude/rules/<name>.md` | Windsurf `.windsurf/rules/<name>.md` | GitHub Copilot `.github/instructions/<name>.instructions.md` |
 |---|---|---|---|---|
 | `alwaysApply: true` | `alwaysApply: true` | *(no `paths`)* | `trigger: always_on` | `applyTo: "**"` |
 | `globs: [...]` | `globs:` | `paths:` | `trigger: glob` + `globs:` | `applyTo:` |

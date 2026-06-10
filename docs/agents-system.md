@@ -23,6 +23,7 @@ Technical blueprint for advanced users.
 | `.agents/agents.json` | MCP servers (shared) |
 | `.agents/local.json` | Secrets (gitignored) |
 | `.agents/skills/` | Reusable workflows |
+| `.agents/rules/` | Scoped instructions (→ per-tool rule files) |
 
 ## Core Principles
 
@@ -43,6 +44,7 @@ project/
 │   ├── local.json              # Secrets (gitignored)
 │   ├── mcp_config.json         # Generated Antigravity CLI MCP
 │   ├── skills/                 # Workflows
+│   ├── rules/                  # Scoped instructions (→ per-tool rule files)
 │   └── generated/              # Auto-generated (gitignored)
 ├── .codex/                     # Materialized (gitignored)
 ├── .claude/                    # Materialized (gitignored)
@@ -137,6 +139,21 @@ project/
 
 **Validation:** `agents doctor` checks frontmatter (`name`, `description`)
 
+## Rules Sync
+
+`.agents/rules/*.md` declare activation in frontmatter (`alwaysApply` / `globs` / `description`) and are rendered into each enabled tool's native rule format:
+
+| Tool | Generated |
+|:-----|:----------|
+| **Cursor** | `.cursor/rules/<name>.mdc` (`alwaysApply` / `globs` / `description`) |
+| **Claude Code** | `.claude/rules/<name>.md` (`globs` → `paths`) |
+| **Windsurf** | `.windsurf/rules/<name>.md` (`trigger` / `globs` / `description`) |
+| **GitHub Copilot** | `.github/instructions/<name>.instructions.md` (`applyTo`) |
+
+- **Glob-scoped** rules load only when matching files are in context; **always-on** rules (`alwaysApply: true`) always load.
+- Tools without a native rule-file mechanism (Gemini, Codex, OpenCode, Junie, Antigravity) read `AGENTS.md` directly — put always-everywhere guidance there.
+- Generation is gated per enabled integration; stale rule files are pruned via `.agents/generated/*.rules.state.json`, and a pre-existing unmanaged rule file is never overwritten.
+
 ## Reset Options
 
 | Command | Effect |
@@ -203,6 +220,7 @@ project/
 **Committed:**
 - ✅ `.agents/agents.json`
 - ✅ `.agents/skills/`
+- ✅ `.agents/rules/`
 - ✅ `AGENTS.md`
 
 **Gitignored:**
@@ -212,6 +230,7 @@ project/
 - ❌ `.agents/mcp_config.json`
 - ❌ `.codex/`, `.claude/`, `.cursor/`, `.gemini/`
 - ❌ `.windsurf/`, `.opencode/`, `.junie/`, `.mcp.json`, `opencode.json`
+- ❌ `.claude/rules`, `.github/instructions` (generated rule files)
 - ❌ legacy `.antigravity/` (if present from older versions)
 
 ---

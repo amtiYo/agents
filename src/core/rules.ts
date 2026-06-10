@@ -131,7 +131,7 @@ async function discoverRules(rulesDir: string): Promise<RuleSource[]> {
     if (!entry.isFile()) continue
     if (entry.name.startsWith('.') || !entry.name.endsWith('.md')) continue
     const topic = entry.name.slice(0, -'.md'.length)
-    if (!topic) continue
+    if (!isSafeRuleName(topic)) continue
     const raw = await readFile(path.join(rulesDir, entry.name), 'utf8')
     rules.push({ topic, ...parseRuleFile(raw) })
   }
@@ -160,6 +160,11 @@ async function syncToolRules(args: {
 
   const toRemove = previous.filter((topic) => !desired.includes(topic))
   for (const topic of toRemove) {
+    // Defense-in-depth: never let a tampered state file drive deletion outside targetDir.
+    if (!isSafeRuleName(topic)) {
+      warnings.push(`Skipping invalid managed rule name in state: "${topic}"`)
+      continue
+    }
     const file = path.join(targetDir, `${topic}.${suffix}`)
     if (!(await pathExists(file))) continue
     changed.push(path.relative(projectRoot, file) || file)
@@ -338,12 +343,19 @@ function stripQuotes(value: string): string {
   return value.replace(/^["']|["']$/gu, '')
 }
 
+// A rule name (derived from a filename or read back from a state file) must be a
+// single safe path segment — no separators or traversal — before it is used to
+// build a file path for writing or deletion.
+function isSafeRuleName(name: string): boolean {
+  return name.length > 0 && !name.includes('/') && !name.includes('\\') && !name.includes('..')
+}
+
 async function readRulesState(statePath: string): Promise<string[]> {
   if (!(await pathExists(statePath))) return []
   try {
     const parsed = await readJson<RulesState>(statePath)
     return Array.isArray(parsed.managedNames)
-      ? parsed.managedNames.filter((name): name is string => typeof name === 'string')
+      ? parsed.managedNames.filter((name): name is string => typeof name === 'string' && isSafeRuleName(name))
       : []
   } catch {
     return []
