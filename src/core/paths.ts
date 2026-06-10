@@ -9,6 +9,7 @@ export interface ProjectPaths {
   rootClaudeMd: string
   agentsReadme: string
   agentsSkillsDir: string
+  agentsRulesDir: string
   generatedDir: string
   generatedCodex: string
   generatedGemini: string
@@ -26,6 +27,10 @@ export interface ProjectPaths {
   generatedClaudeState: string
   generatedClaudeInstructionsState: string
   generatedCursorState: string
+  generatedCursorRulesState: string
+  generatedClaudeRulesState: string
+  generatedWindsurfRulesState: string
+  generatedCopilotRulesState: string
   generatedSkillsState: string
   generatedVscodeSettingsState: string
   generatedSyncLock: string
@@ -55,6 +60,10 @@ export interface ProjectPaths {
   claudeSkillsBridge: string
   cursorSkillsBridge: string
   windsurfSkillsBridge: string
+  cursorRulesDir: string
+  claudeRulesDir: string
+  windsurfRulesDir: string
+  copilotInstructionsDir: string
 }
 
 /**
@@ -77,6 +86,7 @@ export function getProjectPaths(projectRoot: string): ProjectPaths {
     rootClaudeMd: path.join(root, 'CLAUDE.md'),
     agentsReadme: path.join(agentsDir, 'README.md'),
     agentsSkillsDir: path.join(agentsDir, 'skills'),
+    agentsRulesDir: path.join(agentsDir, 'rules'),
     generatedDir,
     generatedCodex: path.join(generatedDir, 'codex.config.toml'),
     generatedGemini: path.join(generatedDir, 'gemini.settings.json'),
@@ -94,6 +104,10 @@ export function getProjectPaths(projectRoot: string): ProjectPaths {
     generatedClaudeState: path.join(generatedDir, 'claude.state.json'),
     generatedClaudeInstructionsState: path.join(generatedDir, 'claude.instructions.state.json'),
     generatedCursorState: path.join(generatedDir, 'cursor.state.json'),
+    generatedCursorRulesState: path.join(generatedDir, 'cursor.rules.state.json'),
+    generatedClaudeRulesState: path.join(generatedDir, 'claude.rules.state.json'),
+    generatedWindsurfRulesState: path.join(generatedDir, 'windsurf.rules.state.json'),
+    generatedCopilotRulesState: path.join(generatedDir, 'copilot.rules.state.json'),
     generatedSkillsState: path.join(generatedDir, 'skills.state.json'),
     generatedVscodeSettingsState: path.join(generatedDir, 'vscode.settings.state.json'),
     generatedSyncLock: path.join(generatedDir, 'sync.lock'),
@@ -122,6 +136,10 @@ export function getProjectPaths(projectRoot: string): ProjectPaths {
     geminiSkillsBridge: path.join(root, '.gemini', 'skills'),
     claudeSkillsBridge: path.join(root, '.claude', 'skills'),
     cursorSkillsBridge: path.join(root, '.cursor', 'skills'),
-    windsurfSkillsBridge: path.join(root, '.windsurf', 'skills')
+    windsurfSkillsBridge: path.join(root, '.windsurf', 'skills'),
+    cursorRulesDir: path.join(root, '.cursor', 'rules'),
+    claudeRulesDir: path.join(root, '.claude', 'rules'),
+    windsurfRulesDir: path.join(root, '.windsurf', 'rules'),
+    copilotInstructionsDir: path.join(root, '.github', 'instructions')
   }
 }

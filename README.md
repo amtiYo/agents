@@ -188,6 +188,8 @@ your-project/
 │   ├── mcp_config.json              ← Generated Antigravity CLI MCP (gitignored in source-only mode)
 │   ├── skills/                      ← Reusable workflow definitions
 │   │   └── my-skill/SKILL.md
+│   ├── rules/                       ← Scoped instructions (→ per-tool rule files)
+│   │   └── my-rule.md
 │   └── generated/                   ← Auto-generated artifacts (gitignored)
 │       ├── codex.config.toml
 │       ├── claude-desktop.mcp.json
@@ -211,11 +213,47 @@ your-project/
 ├── .cursor/skills/ → .agents/skills  │
 ├── .gemini/skills/ → .agents/skills  │  Gemini workspace bridge
 ├── .windsurf/skills/ → .agents/skills│
-└── .junie/skills/ → .agents/skills   │
+├── .junie/skills/ → .agents/skills   │
+├── .cursor/rules/*.mdc               │  Rules generated from .agents/rules/
+├── .claude/rules/*.md                │
+├── .windsurf/rules/*.md              │
+└── .github/instructions/*.md         │  Copilot
 ```
 
-> **Git strategy:** By default only `.agents/agents.json`, `.agents/skills/`, and `AGENTS.md` are committed. Generated `CLAUDE.md` and tool-specific outputs are gitignored in source-only mode and regenerated with `agents sync`.
+> **Git strategy:** By default only `.agents/agents.json`, `.agents/skills/`, `.agents/rules/`, and `AGENTS.md` are committed. Generated `CLAUDE.md` and tool-specific outputs are gitignored in source-only mode and regenerated with `agents sync`.
 > Claude Desktop MCP is materialized into the user's global `claude_desktop_config.json`, not into the project tree.
+
+---
+
+## Rules
+
+Drop a markdown file in `.agents/rules/` and `agents sync` materializes it into the **native rule format** of every enabled tool that supports rule files — so a single scoped instruction stays aligned everywhere instead of being copied into four different formats by hand.
+
+Each rule declares its activation in YAML frontmatter:
+
+```markdown
+---
+description: API conventions
+globs: ["apps/api/**/*.ts"]   # file-scoped: only loads when matching files are in context
+alwaysApply: false            # set true for an always-on rule (omit globs)
+---
+
+All API endpoints must validate input with zod.
+```
+
+`agents sync` writes, for each enabled tool:
+
+| `.agents/rules/<name>.md` | Cursor `.cursor/rules/<name>.mdc` | Claude `.claude/rules/<name>.md` | Windsurf `.windsurf/rules/<name>.md` | Copilot `.github/instructions/<name>.instructions.md` |
+|---|---|---|---|---|
+| `alwaysApply: true` | `alwaysApply: true` | *(no `paths`)* | `trigger: always_on` | `applyTo: "**"` |
+| `globs: [...]` | `globs:` | `paths:` | `trigger: glob` + `globs:` | `applyTo:` |
+| `description` only | `description` | always-on* | `trigger: model_decision` | `applyTo: "**"`* |
+
+\* Claude and Copilot have no description/model-decision activation mode, so a description-only rule becomes always-on there (a warning is printed). Cursor and Windsurf support it natively.
+
+Stale rule files are removed automatically on the next sync (tracked in `.agents/generated/*.rules.state.json`). Rules are gated per tool — only enabled integrations get files.
+
+**Tools without a native rule-file mechanism** (Gemini, Codex, OpenCode, Junie, Antigravity) read your shared `AGENTS.md` directly, so put always-everywhere guidance there and use `.agents/rules/` for scoped/conditional instructions.
 
 ---
 
@@ -312,6 +350,7 @@ your-project/
 4. **Generate** — renders tool-specific config formats (TOML for Codex, JSON for others)
 5. **Materialize** — writes configs atomically (project-local and global targets), calls CLIs for Claude Code/Cursor, writes global configs with scoped merge/cleanup, and manages Claude Code's root `CLAUDE.md` wrapper
 6. **Bridge skills** — creates symlinks from tool directories to `.agents/skills/` where needed; Codex, Antigravity CLI, Copilot CLI, and OpenCode read `.agents/skills/` directly
+7. **Generate rules** — renders `.agents/rules/*.md` into each enabled tool's native rule format (Cursor/Claude/Windsurf/Copilot) and prunes stale rule files
 
 ---
 

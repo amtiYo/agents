@@ -10,6 +10,7 @@ import { toManagedClaudeName } from '../integrations/claude.js'
 import { INTEGRATION_SYNC_HOOKS } from '../integrations/syncHooks.js'
 import { ensureProjectGitignore } from './gitignore.js'
 import { syncSkills } from './skills.js'
+import { syncRules } from './rules.js'
 import { syncClaudeInstructions } from './claudeInstructions.js'
 import {
   getClaudeDesktopConfigPath,
@@ -145,6 +146,14 @@ export async function performSync(options: SyncOptions): Promise<SyncResult> {
     })
 
     await syncSkills({
+      projectRoot,
+      enabledIntegrations: config.integrations.enabled,
+      check,
+      changed,
+      warnings
+    })
+
+    await syncRules({
       projectRoot,
       enabledIntegrations: config.integrations.enabled,
       check,

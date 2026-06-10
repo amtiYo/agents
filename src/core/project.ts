@@ -19,6 +19,7 @@ export async function initializeProjectSkeleton(args: {
   await ensureDir(paths.agentsDir)
   await ensureDir(paths.generatedDir)
   await ensureDir(paths.agentsSkillsDir)
+  await ensureDir(paths.agentsRulesDir)
 
   const changed: string[] = []
   const warnings: string[] = []

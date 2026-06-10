@@ -12,6 +12,8 @@ const SOURCE_ONLY_ENTRIES = [
   '.mcp.json',
   '.vscode/mcp.json',
   '.claude/skills',
+  '.claude/rules',
+  '.github/instructions',
   '.cursor/',
   '.antigravity/',
   '.windsurf/',
