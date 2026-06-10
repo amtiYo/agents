@@ -155,6 +155,34 @@ agents sync
 
 ---
 
+## Scoped Rules
+
+Share one instruction across tools and have it load only where relevant.
+
+```bash
+mkdir -p .agents/rules
+cat > .agents/rules/api.md <<'EOF'
+---
+description: API conventions
+globs: ["apps/api/**/*.ts"]
+alwaysApply: false
+EOF
+# (close the frontmatter and add the rule body)
+printf -- '---\n\nAll API endpoints must validate input with zod.\n' >> .agents/rules/api.md
+
+agents sync
+```
+
+**Result** (for enabled tools):
+- Cursor → `.cursor/rules/api.mdc` (`globs: apps/api/**/*.ts`)
+- Claude Code → `.claude/rules/api.md` (`paths: ["apps/api/**/*.ts"]`)
+- Windsurf → `.windsurf/rules/api.md` (`trigger: glob`)
+- GitHub Copilot → `.github/instructions/api.instructions.md` (`applyTo: "apps/api/**/*.ts"`)
+
+Set `alwaysApply: true` (and omit `globs`) for an always-on rule. Tools without a native rule mechanism (Gemini, Codex, OpenCode, Junie, Antigravity) read `AGENTS.md` — keep always-everywhere guidance there.
+
+---
+
 ## Scripting
 
 ### Rotate MCP token daily
