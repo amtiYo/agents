@@ -1,0 +1,109 @@
+# Hermes Integration Implementation Plan
+
+> **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
+
+**Goal:** Add Hermes Agent as a first-class Agent Sync MCP target while keeping every workspace mapped to exactly one independent Hermes home or profile.
+
+**Architecture:** Agent Sync renders its resolved MCP registry into Hermes' native `mcp_servers` YAML shape. Each workspace selects one target with `integrations.options.hermesProfile` (or the active `HERMES_HOME` when null). A Hermes sync hook merges only that workspace's owned servers, preserves unmanaged YAML, tracks ownership in `.agents/generated/hermes.state.json`, cleans the previous target when retargeted, and supports dry-run drift detection. There is no cross-profile fan-out.
+
+**Tech Stack:** TypeScript, Vitest, Node.js filesystem APIs, `yaml` for comment-preserving YAML document updates.
+
+---
+
+### Task 1: Register Hermes as an integration
+
+**Files:**
+- Modify: `src/types.ts`
+- Modify: `src/integrations/registry.ts`
+- Modify: `src/core/config.ts`
+- Modify: `tests/config.test.ts`
+
+**Steps:**
+1. Add failing tests proving `hermes` is accepted as an integration and `hermesProfile` defaults to `null` while surviving config reload.
+2. Run `npm test -- tests/config.test.ts tests/mcp-validation.test.ts` and confirm the tests fail because Hermes is unknown.
+3. Add `hermes` to `IntegrationName`, `INTEGRATIONS`, and default MCP targets; add `hermesProfile` to normalized integration options.
+4. Re-run the focused tests and confirm they pass.
+
+### Task 2: Render Hermes-native MCP definitions
+
+**Files:**
+- Create: `src/integrations/hermes.ts`
+- Modify: `tests/renderers.test.ts`
+
+**Steps:**
+1. Add failing renderer tests for stdio, Streamable HTTP, and SSE definitions, including headers, environment variables, and `enabled: true`.
+2. Run `npm test -- tests/renderers.test.ts` and confirm the missing renderer failure.
+3. Implement `buildHermesPayload()` with Hermes-native keys and a warning when a stdio `cwd` cannot be represented.
+4. Re-run the renderer tests and confirm they pass.
+
+### Task 3: Merge managed servers into Hermes YAML safely
+
+**Files:**
+- Create: `src/core/hermes.ts`
+- Create: `tests/hermes.test.ts`
+- Modify: `package.json`
+- Modify: `package-lock.json`
+
+**Steps:**
+1. Add `yaml` as a runtime dependency.
+2. Add failing tests proving the merge preserves comments, unrelated settings, unmanaged MCP servers, and platform-specific `no_mcp`; replaces current managed servers; and removes stale managed entries.
+3. Add failing tests for default-home resolution, one named profile, unsafe profile rejection, and the singular `AGENTS_HERMES_CONFIG_PATH` test/operator override.
+4. Run `npm test -- tests/hermes.test.ts` and confirm the failures.
+5. Implement config discovery, YAML merge, managed-state parsing, and atomic writes using existing filesystem helpers.
+6. Re-run the focused tests and confirm they pass.
+
+### Task 4: Wire Hermes into sync and check mode
+
+**Files:**
+- Modify: `src/core/paths.ts`
+- Modify: `src/integrations/syncHooks.ts`
+- Create: `tests/hermes-sync.integration.test.ts`
+
+**Steps:**
+1. Add failing integration tests proving normal sync updates one selected config, `--check` reports drift without writing, retargeting cleans the previous config, and disabling Hermes removes only previously managed entries.
+2. Run `npm test -- tests/hermes-sync.integration.test.ts` and confirm the failures.
+3. Add generated payload/state paths and a Hermes sync hook with `materializeWhenDisabled` cleanup semantics.
+4. Re-run the focused integration tests and confirm they pass.
+
+### Task 5: Complete CLI visibility and documentation
+
+**Files:**
+- Modify: `src/commands/status.ts`
+- Modify: `src/commands/doctor.ts`
+- Modify: `README.md`
+- Modify: `CHANGELOG.md`
+- Modify: `package.json`
+- Modify: `AGENTS.md`
+
+**Steps:**
+1. Add status/doctor assertions that Hermes is visible and its config targets are reported.
+2. Update the supported-integration table, package description and keywords, development guide, and Unreleased changelog.
+3. Run focused status/doctor tests.
+
+### Task 6: Verify and export the patch
+
+**Files:**
+- Create outside upstream checkout: `luma-homelab/patches/agents-dev-cli/0001-add-hermes-integration.patch`
+
+**Steps:**
+1. Run `npm run build`.
+2. Run `npm run lint`.
+3. Run `npm test` and confirm all tests pass.
+4. Commit the upstream-compatible change on `feat/hermes-integration`.
+5. Export it with `git format-patch -1 --stdout` into the Home Lab Utilities worktree.
+6. Verify the patch applies cleanly to upstream `main` with `git apply --check`.
+
+### Task 7: Apply locally and synchronize Utilities
+
+**Files:**
+- Modify: each independently mapped workspace's `.agents/agents.json`
+- Modify: each independently mapped workspace's `.agents/local.json` only when a host-local endpoint override is required
+- Generated by sync: harness configuration files and Hermes profile configs
+
+**Steps:**
+1. Install/link the verified patched CLI locally without publishing it.
+2. Add `hermes` to enabled integrations and set that workspace's one `hermesProfile` value.
+3. Add `utilities-gateway` to each workspace with the appropriate harness targets and the portable tailnet endpoint in shared config. On Luma, resolve the service name to `127.0.0.1` with a host-only resolver entry; do not add a machine-specific local override.
+4. Run `agents sync`, followed by `agents sync --check`, `agents status --verbose`, `agents mcp test`, and `agents mcp test --runtime` in each workspace.
+5. Verify each workspace's one mapped Hermes profile contains Utilities and each supported generated harness contains the server.
+6. Restart the managed Hermes service only if runtime reload requires it, then confirm all profile logs register Utilities.

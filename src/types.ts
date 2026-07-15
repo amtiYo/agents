@@ -12,6 +12,7 @@ export type IntegrationName =
   | 'windsurf'
   | 'opencode'
   | 'junie'
+  | 'hermes'
 export type SyncMode = 'source-only' | 'commit-generated'
 
 export type McpTransportType = 'stdio' | 'http' | 'sse'
@@ -26,6 +27,7 @@ export interface AgentsConfig {
     options: {
       cursorAutoApprove: boolean
       antigravityGlobalSync: boolean
+      hermesProfile: string | null
     }
   }
   syncMode: SyncMode

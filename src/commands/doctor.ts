@@ -1,4 +1,5 @@
 import TOML from '@iarna/toml'
+import { parseDocument } from 'yaml'
 import { loadAgentsConfig } from '../core/config.js'
 import { getClaudeInstructionsHealth } from '../core/claudeInstructions.js'
 import {
@@ -10,6 +11,7 @@ import { loadResolvedRegistry } from '../core/mcp.js'
 import { getProjectPaths } from '../core/paths.js'
 import type { ProjectPaths } from '../core/paths.js'
 import { getWindsurfGlobalMcpPath } from '../core/windsurf.js'
+import { resolveHermesConfigPath } from '../core/hermes.js'
 import { commandExists, runCommand } from '../core/shell.js'
 import { performSync } from '../core/sync.js'
 import { ensureCodexProjectTrusted, getCodexTrustState } from '../core/trust.js'
@@ -133,6 +135,7 @@ export async function runDoctor(options: DoctorOptions): Promise<void> {
     enabledForMaterialization,
     claudeDesktopConfigPath,
     windsurfGlobalMcpPath,
+    resolveHermesConfigPath({ profile: config.integrations.options.hermesProfile }),
     issues,
   )
 
@@ -563,6 +566,7 @@ async function validateManagedConfigSyntax(
   enabledIntegrations: IntegrationName[],
   claudeDesktopConfigPath: string | undefined,
   windsurfGlobalMcpPath: string,
+  hermesConfigPath: string,
   issues: Issue[],
 ): Promise<void> {
   await validateTomlIfExists(paths.generatedCodex, '.agents/generated/codex.config.toml', issues)
@@ -576,6 +580,7 @@ async function validateManagedConfigSyntax(
   await validateJsonIfExists(paths.generatedClaude, '.agents/generated/claude.mcp.json', issues)
   await validateJsonIfExists(paths.generatedClaudeDesktop, '.agents/generated/claude-desktop.mcp.json', issues)
   await validateJsonIfExists(paths.generatedJunie, '.agents/generated/junie.mcp.json', issues)
+  await validateJsonIfExists(paths.generatedHermes, '.agents/generated/hermes.mcp.json', issues)
 
   if (enabledIntegrations.includes('codex')) {
     await validateTomlIfExists(paths.codexConfig, '.codex/config.toml', issues)
@@ -619,6 +624,9 @@ async function validateManagedConfigSyntax(
   if (enabledIntegrations.includes('junie')) {
     await validateJsonIfExists(paths.junieMcp, '.junie/mcp/mcp.json', issues)
   }
+  if (enabledIntegrations.includes('hermes')) {
+    await validateYamlIfExists(hermesConfigPath, `Hermes config (${hermesConfigPath})`, issues)
+  }
 }
 
 async function validateTomlIfExists(filePath: string, label: string, issues: Issue[]): Promise<void> {
@@ -642,6 +650,17 @@ async function validateJsonIfExists(filePath: string, label: string, issues: Iss
     issues.push({
       level: 'error',
       message: `Invalid JSON in ${label}: ${error instanceof Error ? error.message : String(error)}`
+    })
+  }
+}
+
+async function validateYamlIfExists(filePath: string, label: string, issues: Issue[]): Promise<void> {
+  if (!(await pathExists(filePath))) return
+  const document = parseDocument(await readTextOrEmpty(filePath))
+  if (document.errors.length > 0) {
+    issues.push({
+      level: 'error',
+      message: `Invalid YAML in ${label}: ${document.errors.map((error) => error.message).join('; ')}`
     })
   }
 }

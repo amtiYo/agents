@@ -15,6 +15,8 @@ export interface ProjectPaths {
   generatedCopilot: string
   generatedCopilotCli: string
   generatedCursor: string
+  generatedHermes: string
+  generatedHermesState: string
   generatedAntigravity: string
   generatedAntigravityState: string
   generatedWindsurf: string
@@ -83,6 +85,8 @@ export function getProjectPaths(projectRoot: string): ProjectPaths {
     generatedCopilot: path.join(generatedDir, 'copilot.vscode.mcp.json'),
     generatedCopilotCli: path.join(generatedDir, 'copilot.cli.mcp.json'),
     generatedCursor: path.join(generatedDir, 'cursor.mcp.json'),
+    generatedHermes: path.join(generatedDir, 'hermes.mcp.json'),
+    generatedHermesState: path.join(generatedDir, 'hermes.state.json'),
     generatedAntigravity: path.join(generatedDir, 'antigravity.mcp_config.json'),
     generatedAntigravityState: path.join(generatedDir, 'antigravity.state.json'),
     generatedWindsurf: path.join(generatedDir, 'windsurf.mcp.json'),

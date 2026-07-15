@@ -26,11 +26,11 @@
 
 Every AI coding tool wants its own config format:
 
-| | Codex | Claude Code | Claude Desktop | Gemini | Cursor | Copilot VS Code | Copilot CLI | Antigravity | Windsurf | OpenCode | Junie |
-|:--|:-----:|:-----------:|:---------------:|:------:|:------:|:---------------:|:-----------:|:-----------:|:--------:|:--------:|:-----:|
-| **Config** | `.codex/config.toml` | CLI commands | Global `claude_desktop_config.json` | `.gemini/settings.json` | `.cursor/mcp.json` | `.vscode/mcp.json` | `.mcp.json` | `.agents/mcp_config.json` | Global `mcp_config.json` | `opencode.json` | `.junie/mcp/mcp.json` |
-| **Instructions** | `AGENTS.md` | `CLAUDE.md` | — | `AGENTS.md` | `.cursorrules` | — | `AGENTS.md` | `AGENTS.md` | `AGENTS.md` | `AGENTS.md` | `AGENTS.md` |
-| **Format** | TOML | JSON (via CLI) | JSON | JSON | JSON | JSON | JSON | JSON | JSON | JSON | JSON |
+| | Codex | Claude Code | Claude Desktop | Gemini | Cursor | Copilot VS Code | Copilot CLI | Antigravity | Windsurf | OpenCode | Junie | Hermes |
+|:--|:-----:|:-----------:|:---------------:|:------:|:------:|:---------------:|:-----------:|:-----------:|:--------:|:--------:|:-----:|:------:|
+| **Config** | `.codex/config.toml` | CLI commands | Global `claude_desktop_config.json` | `.gemini/settings.json` | `.cursor/mcp.json` | `.vscode/mcp.json` | `.mcp.json` | `.agents/mcp_config.json` | Global `mcp_config.json` | `opencode.json` | `.junie/mcp/mcp.json` | One home/profile `config.yaml` |
+| **Instructions** | `AGENTS.md` | `CLAUDE.md` | — | `AGENTS.md` | `.cursorrules` | — | `AGENTS.md` | `AGENTS.md` | `AGENTS.md` | `AGENTS.md` | `AGENTS.md` | — |
+| **Format** | TOML | JSON (via CLI) | JSON | JSON | JSON | JSON | JSON | JSON | JSON | JSON | JSON | YAML |
 
 > **Result:** Duplicated configs, team drift, painful onboarding.
 
@@ -170,6 +170,13 @@ Add a server once in `.agents/agents.json`, then run `agents sync` to materializ
     <td align="center">✅</td>
     <td>Writes <code>.junie/mcp/mcp.json</code> + skills bridge <code>.junie/skills</code></td>
   </tr>
+  <tr>
+    <td><strong>Hermes Agent</strong></td>
+    <td align="center">✅</td>
+    <td align="center">—</td>
+    <td align="center">—</td>
+    <td>Merges into one active home or named profile <code>config.yaml</code>; preserves unmanaged YAML and cleans only workspace-owned servers</td>
+  </tr>
 </table>
 
 Antigravity note: `agents` manages the workspace MCP config used by Antigravity CLI. Global Antigravity editor/CLI profile files are left user-owned, and product limitations such as current Google/Google Cloud remote MCP OAuth caveats still apply.
@@ -195,6 +202,7 @@ your-project/
 │       ├── gemini.settings.json
 │       ├── antigravity.mcp_config.json
 │       ├── cursor.mcp.json
+│       ├── hermes.mcp.json
 │       ├── windsurf.mcp.json
 │       ├── opencode.json
 │       └── ...
@@ -216,6 +224,7 @@ your-project/
 
 > **Git strategy:** By default only `.agents/agents.json`, `.agents/skills/`, and `AGENTS.md` are committed. Generated `CLAUDE.md` and tool-specific outputs are gitignored in source-only mode and regenerated with `agents sync`.
 > Claude Desktop MCP is materialized into the user's global `claude_desktop_config.json`, not into the project tree.
+> Hermes MCP is materialized into exactly one home or named profile per workspace. Multiple workspaces may share a Hermes process while retaining independent profile configuration.
 
 ---
 
@@ -309,7 +318,7 @@ your-project/
 1. **Load** — reads `.agents/agents.json` + merges secrets from `.agents/local.json`
 2. **Resolve** — expands `${PROJECT_ROOT}`, `${ENV_VAR}` placeholders, filters by `enabled` and `requiredEnv`
 3. **Route** — sends each server to its target integrations (or all, if no `targets` specified)
-4. **Generate** — renders tool-specific config formats (TOML for Codex, JSON for others)
+4. **Generate** — renders tool-specific config formats (TOML for Codex, YAML for Hermes, JSON for others)
 5. **Materialize** — writes configs atomically (project-local and global targets), calls CLIs for Claude Code/Cursor, writes global configs with scoped merge/cleanup, and manages Claude Code's root `CLAUDE.md` wrapper
 6. **Bridge skills** — creates symlinks from tool directories to `.agents/skills/` where needed; Codex, Antigravity CLI, Copilot CLI, and OpenCode read `.agents/skills/` directly
 

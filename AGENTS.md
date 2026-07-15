@@ -117,6 +117,7 @@ Each tool has a renderer that converts `.agents/agents.json` to tool-specific fo
 - **Cursor:** JSON (`.cursor/mcp.json`)
 - **Copilot:** JSON (`.vscode/mcp.json`)
 - **Antigravity:** JSON (`.antigravity/mcp.json`)
+- **Hermes Agent:** YAML (`~/.hermes/config.yaml` or one named profile selected per workspace)
 
 ### 4. MCP Server Management (`core/mcp.ts`)
 

@@ -12,6 +12,7 @@ import {
   renderWindsurfMcp
 } from '../src/core/renderers.js'
 import { toManagedClaudeDesktopName } from '../src/core/claudeDesktop.js'
+import { buildHermesPayload } from '../src/integrations/hermes.js'
 import type { ResolvedMcpServer } from '../src/types.js'
 
 const projectRoot = '/tmp/agents-renderers'
@@ -189,6 +190,31 @@ describe('renderers', () => {
     expect(rendered.mcpServers['filesystem']).not.toHaveProperty('type')
   })
 
+  it('renders Hermes-native stdio, HTTP and SSE definitions', () => {
+    const rendered = buildHermesPayload(servers)
+
+    expect(rendered.mcpServers).toMatchObject({
+      filesystem: {
+        command: 'npx',
+        args: ['-y', '@modelcontextprotocol/server-filesystem', '/tmp/project'],
+        enabled: true
+      },
+      'http-tools': {
+        url: 'https://example.com/mcp',
+        headers: {
+          Authorization: 'Bearer token'
+        },
+        enabled: true
+      },
+      'sse-tools': {
+        url: 'https://example.com/sse',
+        transport: 'sse',
+        enabled: true
+      }
+    })
+    expect(rendered.warnings).toEqual([])
+  })
+
   describe('cwd propagation', () => {
     const serversWithCwd: ResolvedMcpServer[] = [
       {
@@ -204,6 +230,13 @@ describe('renderers', () => {
       const rendered = renderCodexToml(serversWithCwd)
       expect(rendered.content).toContain('cwd = "/abs/path/to/project"')
       expect(() => TOML.parse(rendered.content)).not.toThrow()
+    })
+
+    it('warns when Hermes cannot represent a stdio cwd', () => {
+      const rendered = buildHermesPayload(serversWithCwd)
+
+      expect(rendered.mcpServers['project-server']).not.toHaveProperty('cwd')
+      expect(rendered.warnings.join(' ')).toContain('does not support cwd')
     })
 
     it('gemini includes cwd for stdio server', () => {

@@ -17,7 +17,8 @@ export const INTEGRATIONS: IntegrationDefinition[] = [
   { id: 'antigravity', label: 'Antigravity', requiredBinary: 'agy' },
   { id: 'windsurf', label: 'Windsurf' },
   { id: 'opencode', label: 'OpenCode' },
-  { id: 'junie', label: 'Junie', requiredBinary: 'junie' }
+  { id: 'junie', label: 'Junie', requiredBinary: 'junie' },
+  { id: 'hermes', label: 'Hermes Agent', requiredBinary: 'hermes' }
 ]
 
 export const INTEGRATION_IDS: IntegrationName[] = INTEGRATIONS.map((item) => item.id)

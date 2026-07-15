@@ -9,10 +9,12 @@ import { performSync } from '../src/core/sync.js'
 
 const tempDirs: string[] = []
 let previousClaudeDesktopConfigPath: string | undefined
+let previousHermesConfigPath: string | undefined
 
 beforeEach(() => {
   process.exitCode = undefined
   previousClaudeDesktopConfigPath = process.env.AGENTS_CLAUDE_DESKTOP_CONFIG_PATH
+  previousHermesConfigPath = process.env.AGENTS_HERMES_CONFIG_PATH
 })
 
 afterEach(async () => {
@@ -21,6 +23,11 @@ afterEach(async () => {
     delete process.env.AGENTS_CLAUDE_DESKTOP_CONFIG_PATH
   } else {
     process.env.AGENTS_CLAUDE_DESKTOP_CONFIG_PATH = previousClaudeDesktopConfigPath
+  }
+  if (previousHermesConfigPath === undefined) {
+    delete process.env.AGENTS_HERMES_CONFIG_PATH
+  } else {
+    process.env.AGENTS_HERMES_CONFIG_PATH = previousHermesConfigPath
   }
   for (const dir of tempDirs.splice(0, tempDirs.length)) {
     await rm(dir, { recursive: true, force: true })
@@ -191,6 +198,27 @@ describe('doctor command', () => {
     })
 
     expect(output).toContain('Invalid JSON in Claude Desktop config')
+    expect(process.exitCode).toBe(1)
+  }, 15000)
+
+  it('reports invalid YAML in the workspace Hermes config', async () => {
+    const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-doctor-'))
+    const hermesRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-doctor-hermes-'))
+    tempDirs.push(projectRoot, hermesRoot)
+    const hermesConfigPath = path.join(hermesRoot, 'config.yaml')
+    process.env.AGENTS_HERMES_CONFIG_PATH = hermesConfigPath
+
+    await runInit({ projectRoot, force: true })
+    const config = await loadAgentsConfig(projectRoot)
+    config.integrations.enabled = ['hermes']
+    await saveAgentsConfig(projectRoot, config)
+    await writeFile(hermesConfigPath, 'mcp_servers: [invalid\n', 'utf8')
+
+    const output = await captureStdout(async () => {
+      await runDoctor({ projectRoot, fix: false })
+    })
+
+    expect(output).toContain('Invalid YAML in Hermes config')
     expect(process.exitCode).toBe(1)
   }, 15000)
 })

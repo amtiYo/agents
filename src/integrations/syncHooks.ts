@@ -1,11 +1,12 @@
 import path from 'node:path'
-import { ensureDir, pathExists, readJson, writeJsonAtomic } from '../core/fs.js'
+import { ensureDir, pathExists, readJson, readTextOrEmpty, writeJsonAtomic } from '../core/fs.js'
 import { writeManagedFile } from '../core/managedFiles.js'
 import { getLegacyAntigravityGlobalMcpPath, normalizeAntigravityMcpPayload, readAntigravityMcp } from '../core/antigravity.js'
 import { getWindsurfGlobalMcpPath, normalizeWindsurfMcpPayload, readWindsurfMcp } from '../core/windsurf.js'
 import { normalizeOpencodeConfig } from '../core/opencode.js'
 import { renderVscodeMcp } from '../core/renderers.js'
 import { acquireSyncLock } from '../core/syncLock.js'
+import { mergeHermesConfig, normalizeHermesManagedState, resolveHermesConfigPath } from '../core/hermes.js'
 import { buildAntigravityPayload } from './antigravity.js'
 import { buildCodexConfig } from './codex.js'
 import { buildCopilotCliPayload } from './copilotCli.js'
@@ -15,6 +16,7 @@ import { buildGeminiPayload } from './gemini.js'
 import { buildOpencodePayload } from './opencode.js'
 import { buildWindsurfPayload } from './windsurf.js'
 import { buildJuniePayload } from './junie.js'
+import { buildHermesPayload } from './hermes.js'
 import type { ProjectPaths } from '../core/paths.js'
 import type { AgentsConfig, IntegrationName, ResolvedMcpServer } from '../types.js'
 
@@ -326,6 +328,31 @@ export const INTEGRATION_SYNC_HOOKS: IntegrationSyncHook[] = [
     }
   },
   {
+    id: 'hermes',
+    generatedPath: (paths) => paths.generatedHermes,
+    buildGenerated: (servers) => {
+      const hermes = buildHermesPayload(servers)
+      return {
+        content: `${JSON.stringify({ mcpServers: hermes.mcpServers }, null, 2)}\n`,
+        warnings: hermes.warnings
+      }
+    },
+    materializeWhenDisabled: true,
+    materialize: async (context) => {
+      await syncManagedHermesConfig({
+        enabled: context.enabled,
+        configPath: resolveHermesConfigPath({
+          profile: context.config.integrations.options.hermesProfile
+        }),
+        statePath: context.paths.generatedHermesState,
+        rawGenerated: context.generatedByIntegration.hermes ?? '',
+        projectRoot: context.projectRoot,
+        check: context.check,
+        changed: context.changed
+      })
+    }
+  },
+  {
     id: 'claude',
     generatedPath: (paths) => paths.generatedClaude,
     buildGenerated: (servers) => {
@@ -337,6 +364,86 @@ export const INTEGRATION_SYNC_HOOKS: IntegrationSyncHook[] = [
     }
   }
 ]
+
+async function syncManagedHermesConfig(args: {
+  enabled: boolean
+  configPath: string
+  statePath: string
+  rawGenerated: string
+  projectRoot: string
+  check: boolean
+  changed: string[]
+}): Promise<void> {
+  const state = await readHermesManagedState(args.statePath)
+  const generated = args.enabled && args.rawGenerated.trim()
+    ? parseJsonObject(args.rawGenerated, 'generated Hermes config')
+    : {}
+  const nextServers = recordFrom(generated.mcpServers) as Record<string, Record<string, unknown>>
+
+  for (const [previousPath, previousNames] of Object.entries(state.configs)) {
+    if (args.enabled && previousPath === args.configPath) continue
+    await applyHermesMerge({
+      configPath: previousPath,
+      previousNames,
+      nextServers: {},
+      projectRoot: args.projectRoot,
+      check: args.check,
+      changed: args.changed
+    })
+  }
+
+  if (args.enabled) {
+    await applyHermesMerge({
+      configPath: args.configPath,
+      previousNames: state.configs[args.configPath] ?? [],
+      nextServers,
+      projectRoot: args.projectRoot,
+      check: args.check,
+      changed: args.changed
+    })
+  }
+
+  if (!args.check) {
+    await writeJsonAtomic(args.statePath, {
+      configs: args.enabled
+        ? { [args.configPath]: Object.keys(nextServers).sort((a, b) => a.localeCompare(b)) }
+        : {}
+    })
+  }
+}
+
+async function applyHermesMerge(args: {
+  configPath: string
+  previousNames: string[]
+  nextServers: Record<string, Record<string, unknown>>
+  projectRoot: string
+  check: boolean
+  changed: string[]
+}): Promise<void> {
+  const releaseLock = args.check ? null : await acquireSyncLock(`${args.configPath}.agents-sync.lock`)
+  try {
+    const source = await readTextOrEmpty(args.configPath)
+    const content = mergeHermesConfig(source, args.previousNames, args.nextServers)
+    await writeManagedFile({
+      absolutePath: args.configPath,
+      content,
+      projectRoot: args.projectRoot,
+      check: args.check,
+      changed: args.changed
+    })
+  } finally {
+    if (releaseLock) await releaseLock()
+  }
+}
+
+async function readHermesManagedState(statePath: string) {
+  if (!(await pathExists(statePath))) return normalizeHermesManagedState(null)
+  try {
+    return normalizeHermesManagedState(await readJson<unknown>(statePath))
+  } catch {
+    return normalizeHermesManagedState(null)
+  }
+}
 
 function parseJsonObject(raw: string, label: string): Record<string, unknown> {
   try {

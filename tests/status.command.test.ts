@@ -11,10 +11,12 @@ import * as shell from '../src/core/shell.js'
 const tempDirs: string[] = []
 let previousWindsurfMcpPath: string | undefined
 let previousClaudeDesktopConfigPath: string | undefined
+let previousHermesConfigPath: string | undefined
 
 beforeEach(() => {
   previousWindsurfMcpPath = process.env.AGENTS_WINDSURF_MCP_PATH
   previousClaudeDesktopConfigPath = process.env.AGENTS_CLAUDE_DESKTOP_CONFIG_PATH
+  previousHermesConfigPath = process.env.AGENTS_HERMES_CONFIG_PATH
 })
 
 afterEach(async () => {
@@ -28,6 +30,11 @@ afterEach(async () => {
     delete process.env.AGENTS_CLAUDE_DESKTOP_CONFIG_PATH
   } else {
     process.env.AGENTS_CLAUDE_DESKTOP_CONFIG_PATH = previousClaudeDesktopConfigPath
+  }
+  if (previousHermesConfigPath === undefined) {
+    delete process.env.AGENTS_HERMES_CONFIG_PATH
+  } else {
+    process.env.AGENTS_HERMES_CONFIG_PATH = previousHermesConfigPath
   }
   for (const dir of tempDirs.splice(0, tempDirs.length)) {
     await rm(dir, { recursive: true, force: true })
@@ -233,6 +240,33 @@ describe('status command', () => {
     const parsed = JSON.parse(output) as { files: Record<string, boolean>; probes: Record<string, string> }
     expect(parsed.files['.agents/mcp_config.json']).toBeUndefined()
     expect(parsed.probes.antigravity).toContain('MCP sync disabled')
+  })
+
+  it('reports the one Hermes config owned by the workspace', async () => {
+    const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-status-'))
+    const hermesRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-hermes-status-'))
+    tempDirs.push(projectRoot, hermesRoot)
+    process.env.AGENTS_HERMES_CONFIG_PATH = path.join(hermesRoot, 'config.yaml')
+
+    await runInit({ projectRoot, force: true })
+    const config = await loadAgentsConfig(projectRoot)
+    config.integrations.enabled = ['hermes']
+    config.mcp.servers = {
+      utilities: {
+        transport: 'http',
+        url: 'https://utilities.example/mcp',
+        targets: ['hermes']
+      }
+    }
+    await saveAgentsConfig(projectRoot, config)
+    await performSync({ projectRoot, check: false, verbose: false })
+
+    const output = await captureStdout(async () => {
+      await runStatus({ projectRoot, json: true, verbose: false, fast: false })
+    })
+    const parsed = JSON.parse(output) as { files: Record<string, boolean>; probes: Record<string, string> }
+    expect(parsed.files[process.env.AGENTS_HERMES_CONFIG_PATH]).toBe(true)
+    expect(parsed.probes.hermes).toContain('1 managed server(s) configured')
   })
 })
 

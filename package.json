@@ -1,7 +1,7 @@
 {
   "name": "@agents-dev/cli",
   "version": "0.8.9",
-  "description": "One config to rule them all — sync MCP servers, skills, and AGENTS.md across Codex, Claude Code/Desktop, Gemini CLI, Cursor, Copilot VS Code/CLI, Antigravity, Windsurf, OpenCode, and Junie.",
+  "description": "One config to rule them all — sync MCP servers, skills, and AGENTS.md across Codex, Claude Code/Desktop, Gemini CLI, Cursor, Copilot VS Code/CLI, Antigravity, Windsurf, OpenCode, Junie, and Hermes Agent.",
   "main": "dist/cli.js",
   "scripts": {
     "build": "node -e \"const fs=require('node:fs'); fs.rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.json",
@@ -43,6 +43,7 @@
     "windsurf",
     "opencode",
     "junie",
+    "hermes-agent",
     "ai-coding",
     "llm-tools",
     "config-sync",
@@ -69,7 +70,8 @@
     "@iarna/toml": "^2.2.5",
     "commander": "^14.0.3",
     "jsonc-parser": "^3.3.1",
-    "picocolors": "^1.1.1"
+    "picocolors": "^1.1.1",
+    "yaml": "^2.9.0"
   },
   "devDependencies": {
     "@types/node": "^25.2.0",

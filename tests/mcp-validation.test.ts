@@ -39,9 +39,9 @@ describe('mcp validation', () => {
     )
   })
 
-  it('parses target options including claude_desktop, windsurf and opencode', () => {
-    const targets = parseTargetOptions(['claude_desktop,windsurf,opencode'])
-    expect(targets).toEqual(['claude_desktop', 'windsurf', 'opencode'])
+  it('parses target options including claude_desktop, windsurf, opencode and hermes', () => {
+    const targets = parseTargetOptions(['claude_desktop,windsurf,opencode,hermes'])
+    expect(targets).toEqual(['claude_desktop', 'windsurf', 'opencode', 'hermes'])
   })
 
   it('rejects reserved server names', () => {

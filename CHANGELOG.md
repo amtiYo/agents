@@ -7,7 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-- No changes yet.
+### Added
+
+- New integration: **Hermes Agent** (`hermes`) — each workspace targets one Hermes home or named profile through `integrations.options.hermesProfile`; MCP servers are merged into native YAML while preserving unmanaged settings and entries.
+- Hermes sync supports managed ownership cleanup, dry-run drift checks, status reporting, and YAML diagnostics.
 
 ## [0.8.9] - 2026-05-31
 
