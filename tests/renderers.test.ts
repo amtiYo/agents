@@ -81,7 +81,11 @@ describe('renderers', () => {
 
     const first = mergeCodexConfig(unmanaged, firstGenerated)
     const second = mergeCodexConfig(first, secondGenerated)
+    const firstBegin = first.indexOf(CODEX_MANAGED_MCP_BEGIN)
+    const firstEnd = first.indexOf('\n', first.indexOf(CODEX_MANAGED_MCP_END))
 
+    expect(first.slice(0, firstBegin)).toBe(unmanaged)
+    expect(first.slice(firstEnd + 1)).toBe('')
     expect(second.slice(0, second.indexOf(CODEX_MANAGED_MCP_BEGIN))).toBe(
       first.slice(0, first.indexOf(CODEX_MANAGED_MCP_BEGIN)),
     )
@@ -89,6 +93,121 @@ describe('renderers', () => {
     expect(second).not.toContain('"first"')
     expect(second.match(/# BEGIN agents-sync managed MCP/g)).toHaveLength(1)
     expect(() => TOML.parse(second)).not.toThrow()
+  })
+
+  it('preserves byte-exact unmanaged content before and after an existing managed block', () => {
+    const before = '# Before block\nmodel = "gpt-5.6-sol"\n\n'
+    const after = '\n# After block\n[features]\nweb_search = true\n'
+    const existing = [
+      before,
+      CODEX_MANAGED_MCP_BEGIN,
+      '\n[mcp_servers."executor"]\ncommand = "old"\n',
+      CODEX_MANAGED_MCP_END,
+      after
+    ].join('')
+    const generated = renderCodexToml([{
+      name: 'executor',
+      transport: 'stdio',
+      command: 'executor',
+      args: ['mcp']
+    }]).content
+
+    const merged = mergeCodexConfig(existing, generated)
+    const begin = merged.indexOf(CODEX_MANAGED_MCP_BEGIN)
+    const end = merged.indexOf(CODEX_MANAGED_MCP_END) + CODEX_MANAGED_MCP_END.length
+
+    expect(merged.slice(0, begin)).toBe(before)
+    expect(merged.slice(end)).toBe(after)
+    expect(merged).toContain('command = "executor"')
+    expect(merged).not.toContain('command = "old"')
+  })
+
+  it.each(['"""', "'''"])(
+    'does not treat marker lines inside a %s TOML string as ownership markers',
+    (delimiter) => {
+    const unmanaged = [
+      `prompt = ${delimiter}`,
+      CODEX_MANAGED_MCP_BEGIN,
+      'This text belongs to the prompt.',
+      CODEX_MANAGED_MCP_END,
+      delimiter,
+      ''
+    ].join('\n')
+
+    const merged = mergeCodexConfig(unmanaged, renderCodexToml([]).content)
+
+    expect(merged.slice(0, unmanaged.length)).toBe(unmanaged)
+    expect(merged).toContain([
+      `prompt = ${delimiter}`,
+      CODEX_MANAGED_MCP_BEGIN,
+      'This text belongs to the prompt.',
+      CODEX_MANAGED_MCP_END,
+      delimiter
+    ].join('\n'))
+    expect(merged.match(/# BEGIN agents-sync managed MCP/g)).toHaveLength(2)
+    expect(() => TOML.parse(merged)).not.toThrow()
+    },
+  )
+
+  it('does not treat marker-like longer comment lines as ownership markers', () => {
+    const unmanaged = [
+      `# Documentation mentions ${CODEX_MANAGED_MCP_BEGIN}`,
+      `# Documentation mentions ${CODEX_MANAGED_MCP_END}`,
+      `  ${CODEX_MANAGED_MCP_BEGIN}`,
+      `  ${CODEX_MANAGED_MCP_END}`,
+      'model = "gpt-5.6-sol"',
+      ''
+    ].join('\n')
+
+    const merged = mergeCodexConfig(unmanaged, renderCodexToml([]).content)
+
+    expect(merged.slice(0, unmanaged.length)).toBe(unmanaged)
+    expect(merged).toContain(`# Documentation mentions ${CODEX_MANAGED_MCP_BEGIN}`)
+    expect(merged).toContain(`# Documentation mentions ${CODEX_MANAGED_MCP_END}`)
+    expect(merged).toContain(`  ${CODEX_MANAGED_MCP_BEGIN}`)
+    expect(merged).toContain(`  ${CODEX_MANAGED_MCP_END}`)
+    expect(() => TOML.parse(merged)).not.toThrow()
+  })
+
+  it('does not treat marker substrings in escaped basic string values as ownership markers', () => {
+    const unmanaged = [
+      `begin_note = "escaped quote: \\"; marker: ${CODEX_MANAGED_MCP_BEGIN}"`,
+      `end_note = "marker: ${CODEX_MANAGED_MCP_END}"`,
+      ''
+    ].join('\n')
+
+    const merged = mergeCodexConfig(unmanaged, renderCodexToml([]).content)
+
+    expect(merged.slice(0, unmanaged.length)).toBe(unmanaged)
+    expect(merged).toContain(`escaped quote: \\"; marker: ${CODEX_MANAGED_MCP_BEGIN}`)
+    expect(() => TOML.parse(merged)).not.toThrow()
+  })
+
+  it('preserves CRLF outside a managed block and uses it for the replacement block', () => {
+    const before = 'model = "gpt-5.6-sol"\r\n\r\n'
+    const after = '\r\n# After\r\nweb_search = true\r\n'
+    const existing = [
+      before,
+      CODEX_MANAGED_MCP_BEGIN,
+      '\r\n[mcp_servers."executor"]\r\ncommand = "old"\r\n',
+      CODEX_MANAGED_MCP_END,
+      after
+    ].join('')
+
+    const merged = mergeCodexConfig(existing, renderCodexToml([{
+      name: 'executor',
+      transport: 'stdio',
+      command: 'executor',
+      args: ['mcp']
+    }]).content)
+    const begin = merged.indexOf(CODEX_MANAGED_MCP_BEGIN)
+    const end = merged.indexOf(CODEX_MANAGED_MCP_END) + CODEX_MANAGED_MCP_END.length
+    const managed = merged.slice(begin, end)
+
+    expect(merged.slice(0, begin)).toBe(before)
+    expect(merged.slice(end)).toBe(after)
+    expect(managed).not.toMatch(/(?<!\r)\n/)
+    expect(() => TOML.parse(merged)).not.toThrow()
   })
 
   it.each([
