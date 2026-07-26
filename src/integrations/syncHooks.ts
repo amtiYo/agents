@@ -1,6 +1,7 @@
 import path from 'node:path'
 import { ensureDir, pathExists, readJson, readTextOrEmpty, writeJsonAtomic } from '../core/fs.js'
 import { writeManagedFile } from '../core/managedFiles.js'
+import { mergeCodexConfig } from '../core/codexConfig.js'
 import { getLegacyAntigravityGlobalMcpPath, normalizeAntigravityMcpPayload, readAntigravityMcp } from '../core/antigravity.js'
 import { getWindsurfGlobalMcpPath, normalizeWindsurfMcpPayload, readWindsurfMcp } from '../core/windsurf.js'
 import { normalizeOpencodeConfig } from '../core/opencode.js'
@@ -57,8 +58,10 @@ export const INTEGRATION_SYNC_HOOKS: IntegrationSyncHook[] = [
       }
     },
     materialize: async (context) => {
-      const content = context.generatedByIntegration.codex ?? ''
+      const generatedContent = context.generatedByIntegration.codex ?? ''
       const targetPath = context.paths.codexConfig
+      const existingContent = await readTextOrEmpty(targetPath)
+      const content = mergeCodexConfig(existingContent, generatedContent)
       await writeManagedFile({
         absolutePath: targetPath,
         content,

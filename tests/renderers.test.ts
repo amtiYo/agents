@@ -12,6 +12,11 @@ import {
   renderWindsurfMcp
 } from '../src/core/renderers.js'
 import { toManagedClaudeDesktopName } from '../src/core/claudeDesktop.js'
+import {
+  CODEX_MANAGED_MCP_BEGIN,
+  CODEX_MANAGED_MCP_END,
+  mergeCodexConfig
+} from '../src/core/codexConfig.js'
 import { buildHermesPayload } from '../src/integrations/hermes.js'
 import type { ResolvedMcpServer } from '../src/types.js'
 
@@ -50,6 +55,51 @@ describe('renderers', () => {
     expect(rendered.content).toContain('[mcp_servers."sse-tools"]')
     expect(rendered.warnings.join(' ')).toContain('legacy sse transport')
     expect(() => TOML.parse(rendered.content)).not.toThrow()
+  })
+
+  it('replaces only the agents-sync managed Codex block', () => {
+    const unmanaged = [
+      '# Project comment',
+      'model = "gpt-5.6-sol"',
+      '',
+      '[mcp_servers.node_repl]',
+      'enabled = false',
+      ''
+    ].join('\n')
+    const firstGenerated = renderCodexToml([{
+      name: 'executor',
+      transport: 'stdio',
+      command: 'executor',
+      args: ['mcp', '--scope', 'first']
+    }]).content
+    const secondGenerated = renderCodexToml([{
+      name: 'executor',
+      transport: 'stdio',
+      command: 'executor',
+      args: ['mcp', '--scope', 'second']
+    }]).content
+
+    const first = mergeCodexConfig(unmanaged, firstGenerated)
+    const second = mergeCodexConfig(first, secondGenerated)
+
+    expect(second.slice(0, second.indexOf(CODEX_MANAGED_MCP_BEGIN))).toBe(
+      first.slice(0, first.indexOf(CODEX_MANAGED_MCP_BEGIN)),
+    )
+    expect(second).toContain('"second"')
+    expect(second).not.toContain('"first"')
+    expect(second.match(/# BEGIN agents-sync managed MCP/g)).toHaveLength(1)
+    expect(() => TOML.parse(second)).not.toThrow()
+  })
+
+  it.each([
+    `${CODEX_MANAGED_MCP_BEGIN}\n`,
+    `${CODEX_MANAGED_MCP_END}\n`,
+    `${CODEX_MANAGED_MCP_BEGIN}\n${CODEX_MANAGED_MCP_BEGIN}\n${CODEX_MANAGED_MCP_END}\n`,
+    `${CODEX_MANAGED_MCP_BEGIN}\n${CODEX_MANAGED_MCP_END}\n${CODEX_MANAGED_MCP_END}\n`
+  ])('rejects a malformed agents-sync managed Codex block', (existing) => {
+    expect(() => mergeCodexConfig(existing, renderCodexToml([]).content)).toThrow(
+      /malformed agents-sync managed MCP block/,
+    )
   })
 
   it('renders gemini server map for stdio and http', () => {
