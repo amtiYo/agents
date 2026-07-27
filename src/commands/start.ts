@@ -105,8 +105,8 @@ export async function runStart(options: StartOptions): Promise<void> {
     interactive,
     autoApprove: options.yes || options.nonInteractive,
     integrationOptions: preserveExistingConfig
-      ? (existingConfig?.integrations.options ?? { cursorAutoApprove: true, antigravityGlobalSync: true })
-      : { cursorAutoApprove: true, antigravityGlobalSync: true },
+      ? (existingConfig?.integrations.options ?? { cursorAutoApprove: true, antigravityGlobalSync: true, hermesProfile: null })
+      : { cursorAutoApprove: true, antigravityGlobalSync: true, hermesProfile: null },
     allowOptionPrompts: !preserveExistingConfig
   })
 
@@ -239,7 +239,7 @@ async function resolveIntegrationAccess(args: {
   integrationOptions: AgentsConfig['integrations']['options']
   allowOptionPrompts: boolean
 }): Promise<{
-  integrationOptions: { cursorAutoApprove: boolean; antigravityGlobalSync: boolean }
+  integrationOptions: AgentsConfig['integrations']['options']
   summaries: Record<string, string>
   warnings: string[]
 }> {
@@ -250,7 +250,8 @@ async function resolveIntegrationAccess(args: {
 
   const integrationOptions = {
     cursorAutoApprove: baseOptions.cursorAutoApprove,
-    antigravityGlobalSync: baseOptions.antigravityGlobalSync
+    antigravityGlobalSync: baseOptions.antigravityGlobalSync,
+    hermesProfile: baseOptions.hermesProfile
   }
 
   if (selectedIntegrations.includes('codex')) {
@@ -343,6 +344,12 @@ async function resolveIntegrationAccess(args: {
     summaries.junie = 'project .junie/mcp/mcp.json + skills bridge'
   }
 
+  if (selectedIntegrations.includes('hermes')) {
+    summaries.hermes = integrationOptions.hermesProfile
+      ? `Hermes profile ${integrationOptions.hermesProfile}`
+      : 'active Hermes home'
+  }
+
   return {
     integrationOptions,
     summaries,
@@ -359,7 +366,8 @@ function formatSummaryKey(key: string): string {
     antigravity: 'Antigravity sync',
     windsurf: 'Windsurf sync',
     opencode: 'OpenCode sync',
-    junie: 'Junie sync'
+    junie: 'Junie sync',
+    hermes: 'Hermes sync'
   }
   return labels[key] ?? key
 }

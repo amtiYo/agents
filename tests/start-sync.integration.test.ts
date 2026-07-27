@@ -108,13 +108,159 @@ describe('start + sync flow', () => {
     expect(configAfterNoopSync.lastSync).toBe(configAfterDriftSync.lastSync)
 
     await writeFile(path.join(projectRoot, '.codex', 'config.toml'), '', 'utf8')
+    const codexBeforeCheck = await readFile(path.join(projectRoot, '.codex', 'config.toml'), 'utf8')
     const check = await performSync({ projectRoot, check: true, verbose: false })
     expect(check.changed).toContain('.codex/config.toml')
+    expect(await readFile(path.join(projectRoot, '.codex', 'config.toml'), 'utf8')).toBe(codexBeforeCheck)
 
     const configAfterCheck = JSON.parse(
       await readFile(path.join(projectRoot, '.agents', 'agents.json'), 'utf8'),
     ) as { lastSync: string | null }
     expect(configAfterCheck.lastSync).toBe(configAfterNoopSync.lastSync)
+  })
+
+  it('preserves unmanaged Codex settings while adding managed MCP servers', async () => {
+    const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-codex-merge-'))
+    const codexDir = await mkdtemp(path.join(os.tmpdir(), 'agents-codex-global-'))
+    tempDirs.push(projectRoot, codexDir)
+
+    process.env.AGENTS_CODEX_CONFIG_PATH = path.join(codexDir, 'config.toml')
+    process.env.PATH = '/dev/null'
+
+    await runStart({
+      projectRoot,
+      nonInteractive: true,
+      yes: true
+    })
+
+    const codexConfigPath = path.join(projectRoot, '.codex', 'config.toml')
+    const unmanagedCodexConfig = [
+      '# Project-owned Codex settings',
+      'model = "gpt-5.6-sol"',
+      '',
+      '[mcp_servers.node_repl]',
+      'enabled = false',
+      ''
+    ].join('\n')
+    await writeFile(codexConfigPath, unmanagedCodexConfig, 'utf8')
+
+    const config = await loadAgentsConfig(projectRoot)
+    config.mcp.servers = {
+      executor: {
+        transport: 'stdio',
+        command: 'executor',
+        args: ['mcp', '--scope', 'coi_chief_of_staff'],
+        targets: ['codex']
+      }
+    }
+    await saveAgentsConfig(projectRoot, config)
+
+    await performSync({ projectRoot, check: false, verbose: false })
+
+    const merged = await readFile(codexConfigPath, 'utf8')
+    expect(merged).toContain('# Project-owned Codex settings')
+    expect(merged).toContain('model = "gpt-5.6-sol"')
+    expect(merged).toContain('[mcp_servers.node_repl]')
+    expect(merged).toContain('enabled = false')
+    expect(merged).toContain('# BEGIN agents-sync managed MCP')
+    expect(merged).toContain('[mcp_servers."executor"]')
+    expect(merged).toContain('# END agents-sync managed MCP')
+    expect(() => TOML.parse(merged)).not.toThrow()
+  })
+
+  it('changes only the managed Codex block on a second sync', async () => {
+    const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-codex-resync-'))
+    const codexDir = await mkdtemp(path.join(os.tmpdir(), 'agents-codex-global-'))
+    tempDirs.push(projectRoot, codexDir)
+
+    process.env.AGENTS_CODEX_CONFIG_PATH = path.join(codexDir, 'config.toml')
+    process.env.PATH = '/dev/null'
+
+    await runStart({
+      projectRoot,
+      nonInteractive: true,
+      yes: true
+    })
+
+    const codexConfigPath = path.join(projectRoot, '.codex', 'config.toml')
+    const unmanagedCodexConfig = [
+      '# This comment and the settings below are project-owned.',
+      'model = "gpt-5.6-sol"',
+      '',
+      '[mcp_servers.node_repl]',
+      'enabled = false',
+      ''
+    ].join('\n')
+    await writeFile(codexConfigPath, unmanagedCodexConfig, 'utf8')
+
+    const config = await loadAgentsConfig(projectRoot)
+    config.mcp.servers = {
+      executor: {
+        transport: 'stdio',
+        command: 'executor',
+        args: ['mcp', '--scope', 'first'],
+        targets: ['codex']
+      }
+    }
+    await saveAgentsConfig(projectRoot, config)
+    await performSync({ projectRoot, check: false, verbose: false })
+
+    const first = await readFile(codexConfigPath, 'utf8')
+    config.mcp.servers.executor.args = ['mcp', '--scope', 'second']
+    await saveAgentsConfig(projectRoot, config)
+    await performSync({ projectRoot, check: false, verbose: false })
+
+    const second = await readFile(codexConfigPath, 'utf8')
+    const managedStart = '# BEGIN agents-sync managed MCP'
+    const managedEnd = '# END agents-sync managed MCP'
+    const firstStart = first.indexOf(managedStart)
+    const secondStart = second.indexOf(managedStart)
+    const firstEnd = first.indexOf(managedEnd) + managedEnd.length
+    const secondEnd = second.indexOf(managedEnd) + managedEnd.length
+
+    expect(firstStart).toBeGreaterThanOrEqual(0)
+    expect(secondStart).toBeGreaterThanOrEqual(0)
+    expect(first.slice(0, firstStart)).toBe(second.slice(0, secondStart))
+    expect(first.slice(firstEnd)).toBe(second.slice(secondEnd))
+    expect(second.match(/# BEGIN agents-sync managed MCP/g)).toHaveLength(1)
+    expect(second).not.toContain('"first"')
+    expect(second).toContain('"second"')
+    expect(() => TOML.parse(second)).not.toThrow()
+  })
+
+  it.each([false, true])('rejects invalid existing Codex TOML without overwriting it (check: %s)', async (check) => {
+    const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-codex-invalid-project-'))
+    const codexDir = await mkdtemp(path.join(os.tmpdir(), 'agents-codex-global-'))
+    tempDirs.push(projectRoot, codexDir)
+
+    process.env.AGENTS_CODEX_CONFIG_PATH = path.join(codexDir, 'config.toml')
+    process.env.PATH = '/dev/null'
+
+    await runStart({
+      projectRoot,
+      nonInteractive: true,
+      yes: true
+    })
+
+    const codexConfigPath = path.join(projectRoot, '.codex', 'config.toml')
+    const invalidCodexConfig = 'model = "unterminated\n'
+    await writeFile(codexConfigPath, invalidCodexConfig, 'utf8')
+
+    const config = await loadAgentsConfig(projectRoot)
+    config.mcp.servers = {
+      executor: {
+        transport: 'stdio',
+        command: 'executor',
+        args: ['mcp'],
+        targets: ['codex']
+      }
+    }
+    await saveAgentsConfig(projectRoot, config)
+
+    await expect(
+      performSync({ projectRoot, check, verbose: false }),
+    ).rejects.toThrow(/invalid existing Codex TOML/i)
+    expect(await readFile(codexConfigPath, 'utf8')).toBe(invalidCodexConfig)
   })
 
   it('keeps lastSync stable after safe reset when sources did not change', async () => {

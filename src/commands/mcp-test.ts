@@ -241,6 +241,7 @@ function runRuntimeChecks(entries: McpServerEntry[], projectRoot: string, timeou
         || integration === 'windsurf'
         || integration === 'opencode'
         || integration === 'junie'
+        || integration === 'hermes'
       ) {
         runtimeByIntegration[integration] = {
           status: 'unsupported',

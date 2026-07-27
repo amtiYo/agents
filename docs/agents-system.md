@@ -77,6 +77,7 @@ project/
 | **Windsurf** | Global user profile `~/.codeium/windsurf/mcp_config.json` (preserves unmanaged entries) |
 | **OpenCode** | `opencode.json` (`mcp` block) |
 | **Junie** | `.junie/mcp/mcp.json` |
+| **Hermes Agent** | `~/.hermes/config.yaml`, or one named profile via `integrations.options.hermesProfile` |
 
 ## Claude Instructions
 

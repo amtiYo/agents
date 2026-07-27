@@ -2,6 +2,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { readFile } from 'node:fs/promises'
 import { parse, type ParseError } from 'jsonc-parser'
+import { parse as parseYaml } from 'yaml'
 import { loadAgentsConfig } from '../core/config.js'
 import { listDirNames, pathExists, readJson } from '../core/fs.js'
 import { loadResolvedRegistry } from '../core/mcp.js'
@@ -14,6 +15,7 @@ import {
   toManagedClaudeDesktopName
 } from '../core/claudeDesktop.js'
 import { getWindsurfGlobalMcpPath } from '../core/windsurf.js'
+import { resolveHermesConfigPath } from '../core/hermes.js'
 import { commandExists, runCommand } from '../core/shell.js'
 import { getCodexTrustState } from '../core/trust.js'
 import { listMcpEntries, loadMcpState } from '../core/mcpCrud.js'
@@ -74,6 +76,8 @@ export async function runStatus(options: StatusOptions): Promise<void> {
   const claudeDesktopConfigLabel = claudeDesktopConfigPath ? toHomeRelativePath(claudeDesktopConfigPath) : undefined
   const windsurfGlobalPath = getWindsurfGlobalMcpPath()
   const windsurfGlobalLabel = toHomeRelativePath(windsurfGlobalPath)
+  const hermesConfigPath = resolveHermesConfigPath({ profile: config.integrations.options.hermesProfile })
+  const hermesConfigLabel = toHomeRelativePath(hermesConfigPath)
   const expectedCodexServers = resolved.serversByTarget.codex.map((server) => server.name)
   const expectedClaudeDesktopServers = resolved.serversByTarget.claude_desktop.map((server) => toManagedClaudeDesktopName(options.projectRoot, server.name))
   const expectedCopilotCliServers = resolved.serversByTarget.copilot_cli.map((server) => server.name)
@@ -82,6 +86,7 @@ export async function runStatus(options: StatusOptions): Promise<void> {
   const expectedWindsurfServers = resolved.serversByTarget.windsurf.map((server) => server.name)
   const expectedOpencodeServers = resolved.serversByTarget.opencode.map((server) => server.name)
   const expectedJunieServers = resolved.serversByTarget.junie.map((server) => server.name)
+  const expectedHermesServers = resolved.serversByTarget.hermes.map((server) => server.name)
 
   const files: Record<string, boolean> = {
     '.agents/agents.json': await pathExists(paths.agentsConfig),
@@ -120,6 +125,9 @@ export async function runStatus(options: StatusOptions): Promise<void> {
   if (enabled.has('junie')) {
     files['.junie/mcp/mcp.json'] = await pathExists(paths.junieMcp)
     files['.junie/skills'] = await pathExists(paths.junieSkillsBridge)
+  }
+  if (enabled.has('hermes')) {
+    files[hermesConfigLabel] = await pathExists(hermesConfigPath)
   }
   if (enabled.has('claude')) {
     files['CLAUDE.md'] = await pathExists(paths.rootClaudeMd)
@@ -168,6 +176,9 @@ export async function runStatus(options: StatusOptions): Promise<void> {
     if (enabled.has('junie')) {
       probes.junie = await probeMcpServersFile(paths.junieMcp, '.junie/mcp/mcp.json', 'mcpServers', expectedJunieServers)
     }
+    if (enabled.has('hermes')) {
+      probes.hermes = await probeHermes(hermesConfigPath, hermesConfigLabel, expectedHermesServers)
+    }
     probes.skills = await probeSkills(paths.agentsSkillsDir)
     probes.vscode_hidden = await probeVscodeHidden(paths.vscodeSettings)
   }
@@ -210,7 +221,7 @@ export async function runStatus(options: StatusOptions): Promise<void> {
     ui.keyValue('MCP', `${output.mcp.configured} configured, ${output.mcp.localOverrides} local override(s)`)
     ui.keyValue('Selected MCP', ui.formatList(output.selectedMcpServers))
 
-    const compactProbeOrder = ['codex', 'claude', 'claude_desktop', 'gemini', 'copilot_vscode', 'copilot_cli', 'cursor', 'antigravity', 'windsurf', 'opencode', 'junie']
+    const compactProbeOrder = ['codex', 'claude', 'claude_desktop', 'gemini', 'copilot_vscode', 'copilot_cli', 'cursor', 'antigravity', 'windsurf', 'opencode', 'junie', 'hermes']
     const compactProbes = compactProbeOrder
       .filter((name) => Boolean(output.probes[name]))
       .map((name) => `${name}: ${output.probes[name]}`)
@@ -442,6 +453,21 @@ async function probeOpencode(configPath: string, expectedServerNames: string[]):
     return `${names.length} server(s) configured`
   } catch {
     return 'invalid opencode.json'
+  }
+}
+
+async function probeHermes(configPath: string, label: string, expectedServerNames: string[]): Promise<string> {
+  if (!(await pathExists(configPath))) return `missing ${label}`
+  try {
+    const parsed = parseYaml(await readFile(configPath, 'utf8')) as { mcp_servers?: Record<string, unknown> } | null
+    const names = Object.keys(parsed?.mcp_servers ?? {})
+    const missing = expectedServerNames.filter((name) => !names.includes(name))
+    if (missing.length > 0) {
+      return `${expectedServerNames.length - missing.length} managed server(s) configured; missing expected: ${missing.join(', ')}`
+    }
+    return `${expectedServerNames.length} managed server(s) configured`
+  } catch {
+    return `invalid ${label}`
   }
 }
 

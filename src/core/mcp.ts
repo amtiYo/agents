@@ -61,7 +61,8 @@ export function resolveFromConfigAndLocal(input: {
     antigravity: [],
     windsurf: [],
     opencode: [],
-    junie: []
+    junie: [],
+    hermes: []
   }
 
   const selectedServerNames: string[] = []

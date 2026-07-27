@@ -13,6 +13,34 @@ afterEach(async () => {
 })
 
 describe('config loading', () => {
+  it('defaults the Hermes profile target to the active home', () => {
+    const config = createDefaultAgentsConfig()
+
+    expect(config.integrations.options.hermesProfile).toBeNull()
+  })
+
+  it('preserves an explicit per-workspace Hermes profile target', async () => {
+    const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-config-'))
+    tempDirs.push(projectRoot)
+    const config = createDefaultAgentsConfig({
+      integrationOptions: {
+        cursorAutoApprove: true,
+        antigravityGlobalSync: true,
+        hermesProfile: 'home-lab'
+      }
+    })
+
+    await mkdir(path.join(projectRoot, '.agents'), { recursive: true })
+    await writeFile(
+      path.join(projectRoot, '.agents', 'agents.json'),
+      `${JSON.stringify(config, null, 2)}\n`,
+      'utf8'
+    )
+
+    const loaded = await loadAgentsConfig(projectRoot)
+    expect(loaded.integrations.options.hermesProfile).toBe('home-lab')
+  })
+
   it('falls back to source-only when syncMode is invalid', async () => {
     const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-config-'))
     tempDirs.push(projectRoot)

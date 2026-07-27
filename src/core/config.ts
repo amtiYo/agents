@@ -30,7 +30,8 @@ const DEFAULT_TARGETS: IntegrationName[] = [
   'antigravity',
   'windsurf',
   'opencode',
-  'junie'
+  'junie',
+  'hermes'
 ]
 
 const DEFAULT_MCP_SERVERS: Record<string, McpServerDefinition> = {
@@ -74,6 +75,7 @@ export function createDefaultAgentsConfig(args?: {
   integrationOptions?: {
     cursorAutoApprove: boolean
     antigravityGlobalSync: boolean
+    hermesProfile: string | null
   }
   syncMode?: SyncMode
   hideGenerated?: boolean
@@ -89,7 +91,8 @@ export function createDefaultAgentsConfig(args?: {
       enabled: [...(args?.enabledIntegrations ?? [])],
       options: {
         cursorAutoApprove: args?.integrationOptions?.cursorAutoApprove !== false,
-        antigravityGlobalSync: args?.integrationOptions?.antigravityGlobalSync !== false
+        antigravityGlobalSync: args?.integrationOptions?.antigravityGlobalSync !== false,
+        hermesProfile: normalizeHermesProfile(args?.integrationOptions?.hermesProfile)
       }
     },
     syncMode: args?.syncMode ?? 'source-only',
@@ -132,7 +135,8 @@ export async function loadAgentsConfig(projectRoot: string): Promise<AgentsConfi
       : [],
     options: {
       cursorAutoApprove: config.integrations?.options?.cursorAutoApprove !== false,
-      antigravityGlobalSync: config.integrations?.options?.antigravityGlobalSync !== false
+      antigravityGlobalSync: config.integrations?.options?.antigravityGlobalSync !== false,
+      hermesProfile: normalizeHermesProfile(config.integrations?.options?.hermesProfile)
     }
   }
 
@@ -164,6 +168,10 @@ export async function loadAgentsConfig(projectRoot: string): Promise<AgentsConfi
   }
 
   return config
+}
+
+function normalizeHermesProfile(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() ? value.trim() : null
 }
 
 export async function saveAgentsConfig(projectRoot: string, config: AgentsConfig): Promise<void> {
