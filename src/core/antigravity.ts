@@ -9,6 +9,16 @@ export interface AntigravityMcpPayload {
 }
 
 /**
+ * Resolve the absolute filesystem path for the Antigravity CLI workspace MCP configuration file.
+ *
+ * @param projectRoot - The root directory of the project
+ * @returns Absolute path to the workspace MCP JSON file (`.agents/mcp_config.json`)
+ */
+export function getAntigravityWorkspaceMcpPath(projectRoot: string): string {
+  return path.join(projectRoot, '.agents', 'mcp_config.json')
+}
+
+/**
  * Resolve the absolute filesystem path for the legacy global Antigravity MCP configuration file.
  *
  * Uses the `AGENTS_ANTIGRAVITY_MCP_PATH` environment variable when set and non-empty; otherwise
