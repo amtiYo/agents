@@ -46,7 +46,10 @@ describe('cursor + antigravity sync', () => {
     ) as Record<string, unknown>
     expect(generatedAntigravity).toEqual(antigravityMcp)
     await expect(lstat(path.join(projectRoot, '.antigravity', 'mcp.json'))).rejects.toThrow()
-    await expect(lstat(path.join(projectRoot, '.gemini', 'skills'))).rejects.toThrow()
+    const antigravitySkills = await lstat(path.join(projectRoot, '.gemini', 'skills'))
+    expect(antigravitySkills.isDirectory()).toBe(true)
+    expect(antigravitySkills.isSymbolicLink()).toBe(false)
+    await expect(lstat(path.join(projectRoot, '.gemini', 'skills', 'skill-guide'))).resolves.toBeTruthy()
   }, 15000)
 
   it('removes only project-managed antigravity workspace entries when MCP sync is disabled', async () => {

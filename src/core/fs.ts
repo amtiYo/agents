@@ -33,11 +33,27 @@ export async function writeJsonAtomic(filePath: string, value: unknown): Promise
   await writeTextAtomic(filePath, `${JSON.stringify(value, null, 2)}\n`)
 }
 
-export async function writeTextAtomic(filePath: string, content: string): Promise<void> {
+export async function writePrivateJsonAtomic(filePath: string, value: unknown): Promise<void> {
+  await writeTextAtomic(filePath, `${JSON.stringify(value, null, 2)}\n`, 0o600)
+}
+
+export async function writeTextAtomic(filePath: string, content: string, mode?: number): Promise<void> {
+  await writeTextAtomicWithMode(filePath, content, mode)
+}
+
+export async function writePrivateTextAtomic(filePath: string, content: string): Promise<void> {
+  await writeTextAtomicWithMode(filePath, content, 0o600)
+}
+
+async function writeTextAtomicWithMode(filePath: string, content: string, mode?: number): Promise<void> {
   await ensureDir(path.dirname(filePath))
   const tmpPath = `${filePath}.${randomUUID()}.tmp`
-  await writeFile(tmpPath, content, 'utf8')
-  await rename(tmpPath, filePath)
+  try {
+    await writeFile(tmpPath, content, { encoding: 'utf8', ...(mode === undefined ? {} : { mode }) })
+    await rename(tmpPath, filePath)
+  } finally {
+    await rm(tmpPath, { force: true })
+  }
 }
 
 export async function removeIfExists(filePath: string): Promise<void> {
@@ -71,7 +87,11 @@ export async function listDirNames(dirPath: string): Promise<string[]> {
   return entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name)
 }
 
-export async function copyDir(fromDir: string, toDir: string): Promise<void> {
+export async function copyDir(fromDir: string, toDir: string, options?: { dereference?: boolean }): Promise<void> {
   await ensureDir(path.dirname(toDir))
-  await cp(fromDir, toDir, { recursive: true, force: true })
+  await cp(fromDir, toDir, {
+    recursive: true,
+    force: true,
+    ...(options?.dereference === undefined ? {} : { dereference: options.dereference })
+  })
 }

@@ -1,6 +1,6 @@
 import os from 'node:os'
 import path from 'node:path'
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { afterEach, describe, expect, it } from 'vitest'
 import { createDefaultAgentsConfig, saveAgentsConfig } from '../src/core/config.js'
 import { loadMcpState, removeMcpServer, upsertMcpServers } from '../src/core/mcpCrud.js'
@@ -80,6 +80,11 @@ describe('mcp CRUD', () => {
     const stateAfterReplace = await loadMcpState(projectRoot)
     expect(stateAfterReplace.config.mcp.servers.context7.transport).toBe('http')
     expect(stateAfterReplace.local.mcpServers.context7).toBeUndefined()
+
+    if (process.platform !== 'win32') {
+      const localInfo = await stat(path.join(projectRoot, '.agents', 'local.json'))
+      expect(localInfo.mode & 0o777).toBe(0o600)
+    }
   })
 
   it('removes servers from config and local overrides', async () => {

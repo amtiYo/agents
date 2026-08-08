@@ -151,6 +151,28 @@ describe('doctor command', () => {
     expect(output).not.toContain('Antigravity workspace MCP file missing')
   }, 15000)
 
+  it('reports and then accepts the Antigravity physical flat skills bridge', async () => {
+    const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-doctor-'))
+    tempDirs.push(projectRoot)
+
+    await runInit({ projectRoot, force: true })
+    const config = await loadAgentsConfig(projectRoot)
+    config.integrations.enabled = ['antigravity']
+    await saveAgentsConfig(projectRoot, config)
+
+    const beforeSync = await captureStdout(async () => {
+      await runDoctor({ projectRoot, fix: false })
+    })
+    expect(beforeSync).toContain('Antigravity skills bridge missing: .gemini/skills')
+
+    await performSync({ projectRoot, check: false, verbose: false })
+    const afterSync = await captureStdout(async () => {
+      await runDoctor({ projectRoot, fix: false })
+    })
+    expect(afterSync).not.toContain('Antigravity skills bridge missing: .gemini/skills')
+    expect(afterSync).not.toContain('Antigravity skills bridge must be a physical flat directory')
+  }, 20000)
+
   it('reports missing Claude Desktop config when integration is enabled', async () => {
     const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-doctor-'))
     const desktopDir = await mkdtemp(path.join(os.tmpdir(), 'agents-doctor-claude-desktop-'))

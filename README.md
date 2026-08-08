@@ -147,7 +147,7 @@ Add a server once in `.agents/agents.json`, then run `agents sync` to materializ
     <td align="center">✅</td>
     <td align="center">✅</td>
     <td align="center">✅</td>
-    <td>Writes workspace <code>.agents/mcp_config.json</code>; Antigravity CLI (<code>agy</code>) reads <code>AGENTS.md</code> and <code>.agents/skills</code> natively</td>
+    <td>Writes workspace <code>.agents/mcp_config.json</code> and an Antigravity-compatible physical flat skills bridge at <code>.gemini/skills</code></td>
   </tr>
   <tr>
     <td><strong>Windsurf</strong></td>
@@ -172,7 +172,7 @@ Add a server once in `.agents/agents.json`, then run `agents sync` to materializ
   </tr>
 </table>
 
-Antigravity note: `agents` manages the workspace MCP config used by Antigravity CLI. Global Antigravity editor/CLI profile files are left user-owned, and product limitations such as current Google/Google Cloud remote MCP OAuth caveats still apply.
+Antigravity note: `agents` manages the workspace MCP config used by Antigravity CLI and materializes a physical flat copy at `.gemini/skills` when Antigravity is enabled. Nested source skills remain under `.agents/skills`; duplicate skill names are rejected for the flat bridge. Global Antigravity editor/CLI profile files are left user-owned.
 
 ---
 
@@ -209,7 +209,7 @@ your-project/
 ├── opencode.json                     │
 ├── .claude/skills/ → .agents/skills  │  Claude workspace bridges
 ├── .cursor/skills/ → .agents/skills  │
-├── .gemini/skills/ → .agents/skills  │  Gemini workspace bridge
+├── .gemini/skills/ → .agents/skills  │  Gemini bridge; flat copy for Antigravity
 ├── .windsurf/skills/ → .agents/skills│
 └── .junie/skills/ → .agents/skills   │
 ```
@@ -300,7 +300,7 @@ your-project/
 │                                                              │
 │   .agents/skills/ ── symlink ──→ .claude/skills              │
 │                                  .cursor/skills              │
-│                                  .gemini/skills              │
+│                                  .gemini/skills              │  (flat copy for Antigravity)
 │                                  .junie/skills               │
 │                                  .windsurf/skills            │
 └──────────────────────────────────────────────────────────────┘
@@ -311,7 +311,7 @@ your-project/
 3. **Route** — sends each server to its target integrations (or all, if no `targets` specified)
 4. **Generate** — renders tool-specific config formats (TOML for Codex, JSON for others)
 5. **Materialize** — writes configs atomically (project-local and global targets), calls CLIs for Claude Code/Cursor, writes global configs with scoped merge/cleanup, and manages Claude Code's root `CLAUDE.md` wrapper
-6. **Bridge skills** — creates symlinks from tool directories to `.agents/skills/` where needed; Codex, Antigravity CLI, Copilot CLI, and OpenCode read `.agents/skills/` directly
+6. **Bridge skills** — creates symlinks from tool directories to `.agents/skills/` where needed; Antigravity receives a physical flat copy at `.gemini/skills` so nested skills are discoverable
 
 ---
 

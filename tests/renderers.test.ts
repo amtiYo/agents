@@ -12,6 +12,12 @@ import {
   renderWindsurfMcp
 } from '../src/core/renderers.js'
 import { toManagedClaudeDesktopName } from '../src/core/claudeDesktop.js'
+import {
+  CODEX_MANAGED_MCP_BEGIN,
+  CODEX_MANAGED_MCP_END,
+  mergeCodexConfig,
+  removeCodexManagedBlock
+} from '../src/core/codexConfig.js'
 import type { ResolvedMcpServer } from '../src/types.js'
 
 const projectRoot = '/tmp/agents-renderers'
@@ -49,6 +55,104 @@ describe('renderers', () => {
     expect(rendered.content).toContain('[mcp_servers."sse-tools"]')
     expect(rendered.warnings.join(' ')).toContain('legacy sse transport')
     expect(() => TOML.parse(rendered.content)).not.toThrow()
+  })
+
+  it('preserves unmanaged Codex settings while replacing the managed MCP block', () => {
+    const existing = [
+      'model = "custom-model"',
+      '',
+      CODEX_MANAGED_MCP_BEGIN,
+      '',
+      '[mcp_servers."old"]',
+      'command = "old"',
+      CODEX_MANAGED_MCP_END,
+      '',
+      '[features]',
+      'web_search = true',
+      ''
+    ].join('\n')
+    const generated = renderCodexToml([{
+      name: 'new',
+      transport: 'stdio',
+      command: 'new-server',
+      args: ['mcp']
+    }]).content
+
+    const merged = mergeCodexConfig(existing, generated)
+
+    expect(merged).toContain('model = "custom-model"')
+    expect(merged).toContain('[features]')
+    expect(merged).toContain('[mcp_servers."new"]')
+    expect(merged).not.toContain('[mcp_servers."old"]')
+    expect(merged.match(new RegExp(CODEX_MANAGED_MCP_BEGIN, 'g'))).toHaveLength(1)
+    expect(() => TOML.parse(merged)).not.toThrow()
+  })
+
+  it('migrates the legacy fully-generated Codex file without duplicating MCP tables', () => {
+    const generated = renderCodexToml([{
+      name: 'filesystem',
+      transport: 'stdio',
+      command: 'npx',
+      args: ['server']
+    }]).content
+
+    const merged = mergeCodexConfig(generated, generated)
+
+    expect(merged.match(new RegExp(CODEX_MANAGED_MCP_BEGIN, 'g'))).toHaveLength(1)
+    expect(merged).toContain('[mcp_servers."filesystem"]')
+    expect(() => TOML.parse(merged)).not.toThrow()
+  })
+
+  it('preserves user settings after legacy generated Codex MCP tables', () => {
+    const legacy = renderCodexToml([{
+      name: 'old',
+      transport: 'stdio',
+      command: 'old-server'
+    }]).content
+    const existing = `${legacy}[features]\nweb_search = true\n`
+    const generated = renderCodexToml([{
+      name: 'new',
+      transport: 'stdio',
+      command: 'new-server'
+    }]).content
+
+    const merged = mergeCodexConfig(existing, generated)
+
+    expect(merged).toContain('[features]')
+    expect(merged).toContain('web_search = true')
+    expect(merged).toContain('[mcp_servers."new"]')
+    expect(merged).not.toContain('[mcp_servers."old"]')
+    expect(() => TOML.parse(merged)).not.toThrow()
+  })
+
+  it('rejects malformed existing Codex TOML without producing merged output', () => {
+    const existing = 'model = "unterminated\n'
+    const generated = renderCodexToml([]).content
+
+    expect(() => mergeCodexConfig(existing, generated)).toThrow(/Invalid existing Codex TOML/)
+  })
+
+  it('removes only the managed Codex block during cleanup', () => {
+    const existing = [
+      'model = "custom-model"',
+      '',
+      CODEX_MANAGED_MCP_BEGIN,
+      '',
+      '[mcp_servers."old"]',
+      'command = "old"',
+      CODEX_MANAGED_MCP_END,
+      '',
+      '[features]',
+      'web_search = true',
+      ''
+    ].join('\n')
+
+    const cleaned = removeCodexManagedBlock(existing)
+
+    expect(cleaned).toContain('model = "custom-model"')
+    expect(cleaned).toContain('[features]')
+    expect(cleaned).not.toContain('agents-sync managed MCP')
+    expect(() => TOML.parse(cleaned)).not.toThrow()
   })
 
   it('renders gemini server map for stdio and http', () => {

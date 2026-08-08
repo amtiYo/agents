@@ -130,6 +130,34 @@ describe('status command', () => {
     expect(Object.keys(parsed.files).some((key) => key.includes('mcp_config.json'))).toBe(true)
   })
 
+  it('reports the Antigravity flat skills bridge when enabled', async () => {
+    const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-status-'))
+    tempDirs.push(projectRoot)
+
+    await runInit({ projectRoot, force: true })
+    const config = await loadAgentsConfig(projectRoot)
+    config.integrations.enabled = ['antigravity']
+    await saveAgentsConfig(projectRoot, config)
+    await performSync({
+      projectRoot,
+      check: false,
+      verbose: false
+    })
+
+    const output = await captureStdout(async () => {
+      await runStatus({
+        projectRoot,
+        json: true,
+        verbose: false,
+        fast: false
+      })
+    })
+
+    const parsed = JSON.parse(output) as { files: Record<string, boolean>; probes: Record<string, string> }
+    expect(parsed.files['.gemini/skills']).toBe(true)
+    expect(parsed.probes.antigravity_skills).toContain('flat copy bridge')
+  })
+
   it('includes root CLAUDE.md file state when Claude is enabled', async () => {
     const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-status-'))
     tempDirs.push(projectRoot)

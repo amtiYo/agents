@@ -30,8 +30,8 @@ export async function runConnect(options: ConnectOptions): Promise<void> {
   }
 
   const added = selected.filter((integration) => !currentlyEnabled.has(integration))
-  if (added.length === 0) {
-    ui.info('No new integrations selected.')
+  if (selected.length === 0) {
+    ui.info('No integrations selected.')
     ui.keyValue('Integrations', ui.formatList(config.integrations.enabled))
     return
   }
@@ -42,10 +42,12 @@ export async function runConnect(options: ConnectOptions): Promise<void> {
   const nextEnabled = [...currentlyEnabled]
 
   const spin = ui.spinner()
-  spin.start('Updating integrations...')
+  spin.start(added.length > 0 ? 'Updating integrations...' : 'Synchronizing integrations...')
 
-  config.integrations.enabled = nextEnabled
-  await saveAgentsConfig(options.projectRoot, config)
+  if (added.length > 0) {
+    config.integrations.enabled = nextEnabled
+    await saveAgentsConfig(options.projectRoot, config)
+  }
 
   const syncResult = await performSync({
     projectRoot: options.projectRoot,
@@ -53,9 +55,13 @@ export async function runConnect(options: ConnectOptions): Promise<void> {
     verbose: options.verbose
   })
 
-  spin.stop('Integrations updated')
+  spin.stop(added.length > 0 ? 'Integrations updated' : 'Integrations synchronized')
 
-  ui.keyValue('Added', ui.formatList(added))
+  if (added.length > 0) {
+    ui.keyValue('Added', ui.formatList(added))
+  } else {
+    ui.info('No new integrations selected; existing integrations synchronized.')
+  }
   ui.keyValue('Integrations', ui.formatList(nextEnabled))
 
   const warningBlock = formatWarnings(syncResult.warnings, 5)
@@ -68,7 +74,7 @@ export async function runConnect(options: ConnectOptions): Promise<void> {
     }
   }
 
-  ui.success(`Updated ${syncResult.changed.length} item(s)`)
+  ui.success(`${added.length > 0 ? 'Updated' : 'Synchronized'} ${syncResult.changed.length} item(s)`)
 }
 
 async function promptSelection(current: IntegrationName[]): Promise<IntegrationName[]> {

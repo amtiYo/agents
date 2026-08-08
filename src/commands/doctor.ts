@@ -13,6 +13,7 @@ import { getWindsurfGlobalMcpPath } from '../core/windsurf.js'
 import { commandExists, runCommand } from '../core/shell.js'
 import { performSync } from '../core/sync.js'
 import { ensureCodexProjectTrusted, getCodexTrustState } from '../core/trust.js'
+import { inspectAntigravitySkillsBridge } from '../core/skills.js'
 import { validateSkillsDirectory } from '../core/skillsValidation.js'
 import { validateVscodeSettingsParse } from '../core/vscodeSettings.js'
 import { INTEGRATIONS } from '../integrations/registry.js'
@@ -139,6 +140,33 @@ export async function runDoctor(options: DoctorOptions): Promise<void> {
   const skillWarnings = await validateSkillsDirectory(paths.agentsSkillsDir)
   for (const warning of skillWarnings) {
     issues.push({ level: 'warning', message: warning })
+  }
+
+  if (config.integrations.enabled.includes('antigravity')) {
+    const antigravitySkills = await inspectAntigravitySkillsBridge(paths.agentsSkillsDir, paths.geminiSkillsBridge)
+    if (antigravitySkills.expectedSkillNames.length > 0 && antigravitySkills.duplicateNames.length === 0) {
+      if (!antigravitySkills.exists) {
+        issues.push({
+          level: 'warning',
+          message: 'Antigravity skills bridge missing: .gemini/skills (run agents sync).'
+        })
+      } else if (!antigravitySkills.physicalDirectory) {
+        issues.push({
+          level: 'warning',
+          message: 'Antigravity skills bridge must be a physical flat directory, not a symlink (run agents sync).'
+        })
+      } else if (!antigravitySkills.managed) {
+        issues.push({
+          level: 'warning',
+          message: 'Existing .gemini/skills is not managed by agents; Antigravity nested skills were not synchronized.'
+        })
+      } else if (!antigravitySkills.inSync) {
+        issues.push({
+          level: 'warning',
+          message: 'Antigravity skills bridge is out of sync with .agents/skills (run agents sync).'
+        })
+      }
+    }
   }
 
   if (config.workspace.vscode.hideGenerated) {

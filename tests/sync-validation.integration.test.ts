@@ -1,6 +1,6 @@
 import os from 'node:os'
 import path from 'node:path'
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { runInit } from '../src/commands/init.js'
 import { loadAgentsConfig, saveAgentsConfig } from '../src/core/config.js'
@@ -41,7 +41,7 @@ describe('sync validation', () => {
     ).rejects.toThrow(/Invalid environment variable key "BAD KEY" in server "invalid"/)
   })
 
-  it('reports warning when existing gemini settings are invalid JSON', async () => {
+  it('reports warning and preserves existing gemini settings when JSON is invalid', async () => {
     const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-sync-validation-'))
     tempDirs.push(projectRoot)
 
@@ -66,12 +66,36 @@ describe('sync validation', () => {
       warnSpy.mockRestore()
     }
 
-    expect(
-      result.warnings.some((warning) =>
-        warning.includes('Failed to read existing Gemini config at')
-        && warning.includes('starting fresh')
-      )
-    ).toBe(true)
+    expect(result.warnings.some((warning) =>
+      warning.includes('Failed to read existing Gemini config at')
+      && warning.includes('skipped Gemini sync')
+    )).toBe(true)
+    expect(await readFile(geminiPath, 'utf8')).toBe('{ invalid json')
     expect(warnSpy).not.toHaveBeenCalled()
+  })
+
+  it('reports warning and preserves existing OpenCode settings when JSON is invalid', async () => {
+    const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-sync-validation-'))
+    tempDirs.push(projectRoot)
+
+    await runInit({ projectRoot, force: true })
+    const config = await loadAgentsConfig(projectRoot)
+    config.integrations.enabled = ['opencode']
+    await saveAgentsConfig(projectRoot, config)
+
+    const opencodePath = path.join(projectRoot, 'opencode.json')
+    await writeFile(opencodePath, '{ invalid json', 'utf8')
+
+    const result = await performSync({
+      projectRoot,
+      check: false,
+      verbose: false
+    })
+
+    expect(result.warnings.some((warning) =>
+      warning.includes('Failed to read existing OpenCode config at')
+      && warning.includes('skipped OpenCode sync')
+    )).toBe(true)
+    expect(await readFile(opencodePath, 'utf8')).toBe('{ invalid json')
   })
 })

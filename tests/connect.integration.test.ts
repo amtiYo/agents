@@ -1,6 +1,6 @@
 import os from 'node:os'
 import path from 'node:path'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, stat } from 'node:fs/promises'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { runInit } from '../src/commands/init.js'
 import { getConnectableIntegrations, runConnect } from '../src/commands/connect.js'
@@ -67,5 +67,30 @@ describe('connect command', () => {
     const updated = await loadAgentsConfig(projectRoot)
     expect(updated.integrations.enabled).toContain('codex')
     expect(updated.integrations.enabled).toContain('cursor')
+  }, 20_000)
+
+  it('re-syncs an already-enabled integration and materializes missing Antigravity workspace MCP', async () => {
+    const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-connect-antigravity-'))
+    tempDirs.push(projectRoot)
+
+    await runInit({ projectRoot, force: true })
+    const config = await loadAgentsConfig(projectRoot)
+    config.integrations.enabled = ['antigravity']
+    await saveAgentsConfig(projectRoot, config)
+
+    const workspacePath = path.join(projectRoot, '.agents', 'mcp_config.json')
+    await expect(stat(workspacePath)).rejects.toThrow()
+
+    await runConnect({
+      projectRoot,
+      llm: 'antigravity',
+      interactive: false,
+      verbose: false
+    })
+
+    const payload = JSON.parse(await readFile(workspacePath, 'utf8')) as {
+      mcpServers?: Record<string, unknown>
+    }
+    expect(payload.mcpServers).toHaveProperty('filesystem')
   }, 20_000)
 })

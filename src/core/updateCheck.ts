@@ -1,6 +1,6 @@
 import os from 'node:os'
 import path from 'node:path'
-import { pathExists, readJson, writeJsonAtomic } from './fs.js'
+import { pathExists, readJson, writeJsonAtomic, writePrivateJsonAtomic } from './fs.js'
 import { getProjectPaths } from './paths.js'
 import type { UpdateCheckMetadata } from '../types.js'
 import * as ui from './ui.js'
@@ -206,7 +206,7 @@ async function persistUpdateMetadata(storage: StorageState, metadata: UpdateChec
     const fresh = await readDocument(storage.filePath)
     if (fresh.valid) {
       writeUpdateMetadata(fresh.document, storage.kind, metadata)
-      await writeJsonAtomic(storage.filePath, fresh.document)
+      await writePrivateJsonAtomic(storage.filePath, fresh.document)
     }
     return
   }
