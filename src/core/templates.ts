@@ -1,7 +1,7 @@
 import path from 'node:path'
 import { copyFile, lstat } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
-import { ensureDir, pathExists, writeTextAtomic } from './fs.js'
+import { ensureDir, pathExists, writePrivateTextAtomic } from './fs.js'
 import { getProjectPaths } from './paths.js'
 
 const __filename = fileURLToPath(import.meta.url)
@@ -58,7 +58,7 @@ export async function scaffoldBaseTemplates(
   }
 
   if (!(await pathExists(paths.agentsLocal))) {
-    await writeTextAtomic(paths.agentsLocal, '{\n  "mcpServers": {}\n}\n')
+    await writePrivateTextAtomic(paths.agentsLocal, '{\n  "mcpServers": {}\n}\n')
     changed.push(path.relative(projectRoot, paths.agentsLocal) || paths.agentsLocal)
   }
 

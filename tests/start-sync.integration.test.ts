@@ -77,6 +77,16 @@ describe('start + sync flow', () => {
     expect(await exists(path.join(projectRoot, '.agents', 'skills', 'docs-research', 'SKILL.md'))).toBe(true)
     expect(await exists(path.join(projectRoot, '.agents', 'skills', 'mcp-troubleshooting', 'SKILL.md'))).toBe(true)
     expect(await readFile(path.join(projectRoot, '.gitignore'), 'utf8')).toContain('CLAUDE.md')
+
+    const legacyCodexConfigPath = path.join(projectRoot, '.codex', 'config.toml')
+    const legacyCodexConfig = await readFile(legacyCodexConfigPath, 'utf8')
+    await writeFile(legacyCodexConfigPath, `model = "custom-model"\n\n${legacyCodexConfig}`, 'utf8')
+    await performSync({ projectRoot, check: false, verbose: false })
+    const migratedCodexConfig = await readFile(legacyCodexConfigPath, 'utf8')
+    expect(migratedCodexConfig).toContain('model = "custom-model"')
+    expect(migratedCodexConfig.match(/# BEGIN agents-sync managed MCP/g)).toHaveLength(1)
+    expect(() => TOML.parse(migratedCodexConfig)).not.toThrow()
+
     const firstLastSync = projectConfig.lastSync
 
     const configWithHttp = await loadAgentsConfig(projectRoot)

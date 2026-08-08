@@ -1,6 +1,6 @@
 {
   "name": "@agents-dev/cli",
-  "version": "0.8.9",
+  "version": "0.8.10",
   "description": "One config to rule them all — sync MCP servers, skills, and AGENTS.md across Codex, Claude Code/Desktop, Gemini CLI, Cursor, Copilot VS Code/CLI, Antigravity, Windsurf, OpenCode, and Junie.",
   "main": "dist/cli.js",
   "scripts": {
@@ -78,6 +78,7 @@
     "eslint": "^9.39.2",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
-    "vitest": "^4.0.18"
+    "vite": "^6.4.3",
+    "vitest": "^4.1.10"
   }
 }

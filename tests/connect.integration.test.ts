@@ -1,10 +1,12 @@
 import os from 'node:os'
 import path from 'node:path'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, stat } from 'node:fs/promises'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { runInit } from '../src/commands/init.js'
 import { getConnectableIntegrations, runConnect } from '../src/commands/connect.js'
 import { loadAgentsConfig, saveAgentsConfig } from '../src/core/config.js'
+import * as sync from '../src/core/sync.js'
+import * as ui from '../src/core/ui.js'
 
 const tempDirs: string[] = []
 
@@ -68,4 +70,57 @@ describe('connect command', () => {
     expect(updated.integrations.enabled).toContain('codex')
     expect(updated.integrations.enabled).toContain('cursor')
   }, 20_000)
+
+  it('re-syncs an already-enabled integration and materializes missing Antigravity workspace MCP', async () => {
+    const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-connect-antigravity-'))
+    tempDirs.push(projectRoot)
+
+    await runInit({ projectRoot, force: true })
+    const config = await loadAgentsConfig(projectRoot)
+    config.integrations.enabled = ['antigravity']
+    await saveAgentsConfig(projectRoot, config)
+
+    const workspacePath = path.join(projectRoot, '.agents', 'mcp_config.json')
+    await expect(stat(workspacePath)).rejects.toThrow()
+
+    await runConnect({
+      projectRoot,
+      llm: 'antigravity',
+      interactive: false,
+      verbose: false
+    })
+
+    const payload = JSON.parse(await readFile(workspacePath, 'utf8')) as {
+      mcpServers?: Record<string, unknown>
+    }
+    expect(payload.mcpServers).toHaveProperty('filesystem')
+
+    const afterConfig = await loadAgentsConfig(projectRoot)
+    expect(afterConfig.integrations.enabled).toEqual(['antigravity'])
+  }, 20_000)
+
+  it('stops the spinner when synchronization fails', async () => {
+    const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-connect-error-'))
+    tempDirs.push(projectRoot)
+
+    await runInit({ projectRoot, force: true })
+    const config = await loadAgentsConfig(projectRoot)
+    config.integrations.enabled = ['antigravity']
+    await saveAgentsConfig(projectRoot, config)
+
+    const stop = vi.fn()
+    vi.spyOn(ui, 'spinner').mockReturnValue({
+      start: vi.fn(),
+      stop
+    })
+    vi.spyOn(sync, 'performSync').mockRejectedValue(new Error('sync failed'))
+
+    await expect(runConnect({
+      projectRoot,
+      llm: 'antigravity',
+      interactive: false,
+      verbose: false
+    })).rejects.toThrow('sync failed')
+    expect(stop).toHaveBeenCalledWith('Synchronization failed')
+  })
 })

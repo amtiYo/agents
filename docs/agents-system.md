@@ -124,12 +124,12 @@ project/
 
 | Tool | Location |
 |:-----|:---------|
-| **Source** | `.agents/skills/*/SKILL.md` |
+| **Source** | `.agents/skills/**/SKILL.md` |
 | **Codex** | Reads `.agents/skills/` directly |
 | **Claude Code** | Symlink to `.claude/skills/` |
 | **Cursor** | Symlink to `.cursor/skills/` |
-| **Gemini** | Symlink to `.gemini/skills/` |
-| **Antigravity** | Reads `.agents/skills/` directly |
+| **Gemini** | Symlink to `.gemini/skills/` when Antigravity is disabled |
+| **Antigravity** | Physical flat copy at `.gemini/skills`; nested source skills remain in `.agents/skills/` |
 | **Windsurf** | Symlink to `.windsurf/skills/` |
 | **Copilot CLI** | Reads `.agents/skills/` directly |
 | **OpenCode** | Reads `.agents/skills/` directly |
@@ -141,8 +141,8 @@ project/
 
 | Command | Effect |
 |:--------|:-------|
-| `agents reset` | Remove generated files, keep `.agents/` |
-| `agents reset --local-only` | Remove tool configs only |
+| `agents reset` | Remove managed generated files and bridges, keep `.agents/` |
+| `agents reset --local-only` | Remove managed tool files and bridges only |
 | `agents reset --hard` | Remove all agents-managed setup (`.agents/`, `AGENTS.md`, managed `CLAUDE.md`, gitignore entries) |
 
 ## Security Model
@@ -156,6 +156,7 @@ project/
 **Rules:**
 - ❌ No secrets in git
 - ✅ Secrets in `.agents/local.json`
+- ✅ `.agents/local.json` is written with owner-only permissions on supported filesystems
 - ✅ Strict key validation (shell-safe for env, HTTP token for headers)
 
 ## Sync Process

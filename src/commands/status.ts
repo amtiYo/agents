@@ -17,6 +17,7 @@ import { getWindsurfGlobalMcpPath } from '../core/windsurf.js'
 import { commandExists, runCommand } from '../core/shell.js'
 import { getCodexTrustState } from '../core/trust.js'
 import { listMcpEntries, loadMcpState } from '../core/mcpCrud.js'
+import { inspectAntigravitySkillsBridge } from '../core/skills.js'
 import { listCursorMcpStatuses, sanitizeTerminalOutput } from '../core/cursorCli.js'
 import * as ui from '../core/ui.js'
 
@@ -108,6 +109,9 @@ export async function runStatus(options: StatusOptions): Promise<void> {
   if (enabled.has('antigravity') && antigravityMcpSyncEnabled) {
     files['.agents/mcp_config.json'] = await pathExists(paths.antigravityWorkspaceMcp)
   }
+  if (enabled.has('antigravity')) {
+    files['.gemini/skills'] = await pathExists(paths.geminiSkillsBridge)
+  }
   if (enabled.has('claude_desktop') && claudeDesktopConfigPath && claudeDesktopConfigLabel) {
     files[claudeDesktopConfigLabel] = await pathExists(claudeDesktopConfigPath)
   }
@@ -158,6 +162,9 @@ export async function runStatus(options: StatusOptions): Promise<void> {
       probes.antigravity = await probeAntigravity(paths.antigravityWorkspaceMcp, '.agents/mcp_config.json', expectedAntigravityServers)
     } else if (enabled.has('antigravity')) {
       probes.antigravity = 'MCP sync disabled by integrations.options.antigravityGlobalSync=false'
+    }
+    if (enabled.has('antigravity')) {
+      probes.antigravity_skills = await probeAntigravitySkills(paths.agentsSkillsDir, paths.geminiSkillsBridge)
     }
     if (enabled.has('windsurf')) {
       probes.windsurf = await probeWindsurf(windsurfGlobalPath, windsurfGlobalLabel, expectedWindsurfServers)
@@ -210,7 +217,7 @@ export async function runStatus(options: StatusOptions): Promise<void> {
     ui.keyValue('MCP', `${output.mcp.configured} configured, ${output.mcp.localOverrides} local override(s)`)
     ui.keyValue('Selected MCP', ui.formatList(output.selectedMcpServers))
 
-    const compactProbeOrder = ['codex', 'claude', 'claude_desktop', 'gemini', 'copilot_vscode', 'copilot_cli', 'cursor', 'antigravity', 'windsurf', 'opencode', 'junie']
+    const compactProbeOrder = ['codex', 'claude', 'claude_desktop', 'gemini', 'copilot_vscode', 'copilot_cli', 'cursor', 'antigravity', 'antigravity_skills', 'windsurf', 'opencode', 'junie']
     const compactProbes = compactProbeOrder
       .filter((name) => Boolean(output.probes[name]))
       .map((name) => `${name}: ${output.probes[name]}`)
@@ -450,6 +457,18 @@ async function probeSkills(skillsDir: string): Promise<string> {
 
   const existing = await listDirNames(skillsDir)
   return `${existing.length} skill folder(s) present`
+}
+
+/** Summarize Antigravity flat skill bridge health for status output. */
+async function probeAntigravitySkills(sourcePath: string, bridgePath: string): Promise<string> {
+  const health = await inspectAntigravitySkillsBridge(sourcePath, bridgePath)
+  if (health.expectedSkillNames.length === 0) return 'no skills configured'
+  if (health.duplicateNames.length > 0) return `duplicate skill names: ${health.duplicateNames.join(', ')}`
+  if (!health.exists) return 'missing .gemini/skills'
+  if (!health.physicalDirectory) return 'symlink bridge is incompatible with nested skills'
+  if (!health.managed) return 'unmanaged .gemini/skills bridge'
+  if (!health.inSync) return 'flat copy bridge out of sync'
+  return `${health.expectedSkillNames.length} skill(s) in flat copy bridge`
 }
 
 async function probeVscodeHidden(settingsPath: string): Promise<string> {

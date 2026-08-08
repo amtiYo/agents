@@ -1,6 +1,7 @@
 import path from 'node:path'
-import { ensureDir, pathExists, readJson, writeJsonAtomic } from '../core/fs.js'
+import { ensureDir, pathExists, readJson, readTextOrEmpty, writeJsonAtomic } from '../core/fs.js'
 import { writeManagedFile } from '../core/managedFiles.js'
+import { mergeCodexConfig } from '../core/codexConfig.js'
 import { getLegacyAntigravityGlobalMcpPath, normalizeAntigravityMcpPayload, readAntigravityMcp } from '../core/antigravity.js'
 import { getWindsurfGlobalMcpPath, normalizeWindsurfMcpPayload, readWindsurfMcp } from '../core/windsurf.js'
 import { normalizeOpencodeConfig } from '../core/opencode.js'
@@ -55,8 +56,16 @@ export const INTEGRATION_SYNC_HOOKS: IntegrationSyncHook[] = [
       }
     },
     materialize: async (context) => {
-      const content = context.generatedByIntegration.codex ?? ''
+      const generatedContent = context.generatedByIntegration.codex ?? ''
       const targetPath = context.paths.codexConfig
+      let content: string
+      try {
+        content = mergeCodexConfig(await readTextOrEmpty(targetPath), generatedContent)
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        context.warnings.push(`Failed to merge Codex config at ${targetPath}; skipped Codex sync. ${message}`)
+        return
+      }
       await writeManagedFile({
         absolutePath: targetPath,
         content,
@@ -87,11 +96,16 @@ export const INTEGRATION_SYNC_HOOKS: IntegrationSyncHook[] = [
       let existing: Record<string, unknown> = {}
       if (await pathExists(targetPath)) {
         try {
-          existing = await readJson<Record<string, unknown>>(targetPath)
+          const parsed = await readJson<unknown>(targetPath)
+          if (!isRecord(parsed)) {
+            context.warnings.push(`Existing Gemini config at ${targetPath} is not a JSON object; skipped Gemini sync.`)
+            return
+          }
+          existing = parsed
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error)
-          context.warnings.push(`Failed to read existing Gemini config at ${targetPath}; starting fresh. ${message}`)
-          existing = {}
+          context.warnings.push(`Failed to read existing Gemini config at ${targetPath}; skipped Gemini sync. ${message}`)
+          return
         }
       }
 
@@ -275,12 +289,17 @@ export const INTEGRATION_SYNC_HOOKS: IntegrationSyncHook[] = [
       let existing: Record<string, unknown> = {}
       if (await pathExists(targetPath)) {
         try {
-          existing = await readJson<Record<string, unknown>>(targetPath)
+          const parsed = await readJson<unknown>(targetPath)
+          if (!isRecord(parsed)) {
+            context.warnings.push(`Existing OpenCode config at ${targetPath} is not a JSON object; skipped OpenCode sync.`)
+            return
+          }
+          existing = parsed
         } catch (error) {
           context.warnings.push(
-            `Failed to read existing OpenCode config at ${targetPath}; starting fresh. ${error instanceof Error ? error.message : String(error)}`,
+            `Failed to read existing OpenCode config at ${targetPath}; skipped OpenCode sync. ${error instanceof Error ? error.message : String(error)}`,
           )
-          existing = {}
+          return
         }
       }
 
@@ -583,4 +602,9 @@ function recordFrom(value: unknown): Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
     ? value as Record<string, unknown>
     : {}
+}
+
+/** Return whether a value is a non-array object. */
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }

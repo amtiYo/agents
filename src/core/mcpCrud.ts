@@ -1,5 +1,5 @@
 import { loadAgentsConfig, saveAgentsConfig } from './config.js'
-import { pathExists, readJson, writeJsonAtomic } from './fs.js'
+import { pathExists, readJson, writePrivateJsonAtomic } from './fs.js'
 import { deepMerge } from './objectUtils.js'
 import { getProjectPaths } from './paths.js'
 import { acquireSyncLock } from './syncLock.js'
@@ -45,7 +45,7 @@ export async function loadMcpState(projectRoot: string): Promise<McpState> {
 export async function saveMcpState(projectRoot: string, state: McpState): Promise<void> {
   await saveAgentsConfig(projectRoot, state.config)
   const paths = getProjectPaths(projectRoot)
-  await writeJsonAtomic(paths.agentsLocal, state.local)
+  await writePrivateJsonAtomic(paths.agentsLocal, state.local)
 }
 
 export async function upsertMcpServers(args: {

@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - No changes yet.
 
+## [0.8.10] - 2026-08-09
+
+### Fixed
+
+- `agents connect --llm antigravity` now re-synchronizes already-enabled integrations and materializes the workspace MCP file at `.agents/mcp_config.json`.
+- `agents reset` now removes managed files and skill bridges without deleting unrelated files inside tool configuration directories.
+- Sync preserves malformed existing Gemini and OpenCode configuration files instead of replacing them with a fresh generated file.
+- Secret overrides in `.agents/local.json` are now written with owner-only permissions on supported filesystems.
+- Codex sync now preserves unmanaged project settings and replaces only the agents-managed MCP block, including migration from the legacy fully-generated Codex file.
+- Antigravity skill sync now recursively discovers nested `SKILL.md` files and materializes a managed physical flat copy at `.gemini/skills`, with duplicate-name protection and doctor/status diagnostics.
+- Legacy Codex migration now preserves user-defined TOML sections after old generated MCP tables.
+- Antigravity flat bridge updates are staged, dereference source symlinks, and remove stale managed bridges when skill names collide.
+- Safe reset now removes only agents-managed Gemini and OpenCode fields while preserving user settings and manual MCP entries.
+- Legacy Codex migration recognizes commented TOML table headers without deleting following user sections.
+- Invalid existing Codex TOML now skips only Codex materialization so other enabled integrations still synchronize.
+- Antigravity flat bridge comparison now handles shared symlink targets without permanent sync drift.
+- `agents doctor --fix` no longer reports stale Antigravity bridge warnings after synchronization.
+- Updated Vitest and audited development dependencies to remove known vulnerabilities.
+
 ## [0.8.9] - 2026-05-31
 
 ### Changed

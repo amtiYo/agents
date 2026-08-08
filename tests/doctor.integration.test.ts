@@ -1,6 +1,6 @@
 import os from 'node:os'
 import path from 'node:path'
-import { mkdtemp, rm, unlink, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, unlink, writeFile } from 'node:fs/promises'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { runInit } from '../src/commands/init.js'
 import { runDoctor } from '../src/commands/doctor.js'
@@ -150,6 +150,68 @@ describe('doctor command', () => {
 
     expect(output).not.toContain('Antigravity workspace MCP file missing')
   }, 15000)
+
+  it('reports and then accepts the Antigravity physical flat skills bridge', async () => {
+    const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-doctor-'))
+    tempDirs.push(projectRoot)
+
+    await runInit({ projectRoot, force: true })
+    const skillDir = path.join(projectRoot, '.agents', 'skills', 'doctor-skill')
+    await mkdir(skillDir, { recursive: true })
+    await writeFile(
+      path.join(skillDir, 'SKILL.md'),
+      '---\nname: doctor-skill\ndescription: Doctor skill\n---\n\nInstructions\n',
+      'utf8',
+    )
+    const config = await loadAgentsConfig(projectRoot)
+    config.integrations.enabled = ['antigravity']
+    await saveAgentsConfig(projectRoot, config)
+
+    const beforeSync = await captureStdout(async () => {
+      await runDoctor({ projectRoot, fix: false })
+    })
+    expect(beforeSync).toContain('Antigravity skills bridge missing: .gemini/skills')
+
+    await performSync({ projectRoot, check: false, verbose: false })
+    const afterSync = await captureStdout(async () => {
+      await runDoctor({ projectRoot, fix: false })
+    })
+    expect(afterSync).not.toContain('Antigravity skills bridge missing: .gemini/skills')
+    expect(afterSync).not.toContain('Antigravity skills bridge must be a physical flat directory')
+  }, 20000)
+
+  it('does not report a stale Antigravity bridge warning after applying fixes', async () => {
+    const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-doctor-'))
+    tempDirs.push(projectRoot)
+
+    await runInit({ projectRoot, force: true })
+    const config = await loadAgentsConfig(projectRoot)
+    config.integrations.enabled = ['antigravity']
+    await saveAgentsConfig(projectRoot, config)
+
+    const output = await captureStdout(async () => {
+      await runDoctor({ projectRoot, fix: true })
+    })
+
+    expect(output).not.toContain('Antigravity skills bridge missing: .gemini/skills')
+  }, 20000)
+
+  it('still reports an unmanaged Antigravity bridge after applying fixes', async () => {
+    const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-doctor-'))
+    tempDirs.push(projectRoot)
+
+    await runInit({ projectRoot, force: true })
+    const config = await loadAgentsConfig(projectRoot)
+    config.integrations.enabled = ['antigravity']
+    await saveAgentsConfig(projectRoot, config)
+    await mkdir(path.join(projectRoot, '.gemini', 'skills'), { recursive: true })
+
+    const output = await captureStdout(async () => {
+      await runDoctor({ projectRoot, fix: true })
+    })
+
+    expect(output).toContain('Existing .gemini/skills is not managed by agents')
+  }, 20000)
 
   it('reports missing Claude Desktop config when integration is enabled', async () => {
     const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-doctor-'))

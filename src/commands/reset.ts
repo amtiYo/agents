@@ -1,10 +1,17 @@
 import path from 'node:path'
+import { lstat, readlink, readdir, rmdir } from 'node:fs/promises'
 import { cleanupManagedGitignore } from '../core/gitignore.js'
 import { getProjectPaths } from '../core/paths.js'
-import { pathExists, removeIfExists } from '../core/fs.js'
+import { pathExists, readJson, readTextOrEmpty, removeIfExists, writeJsonAtomic, writeTextAtomic } from '../core/fs.js'
+import {
+  isLegacyGeneratedCodexConfig,
+  removeCodexManagedBlock,
+  removeLegacyGeneratedCodexMcp
+} from '../core/codexConfig.js'
 import { cleanupManagedClaudeInstructions } from '../core/claudeInstructions.js'
 import { cleanupManagedClaudeDesktopConfig } from '../core/claudeDesktop.js'
 import { cleanupVscodeSettingsIfManaged } from '../core/vscodeSettings.js'
+import { BRIDGE_MARKER_FILENAME } from '../core/skills.js'
 import * as ui from '../core/ui.js'
 
 export interface ResetOptions {
@@ -59,64 +66,58 @@ export async function runReset(options: ResetOptions): Promise<void> {
     changed: removed,
   })
 
-  const targets = options.hard
-    ? [
-        paths.agentsDir,
-        paths.rootAgentsMd,
-        paths.codexDir,
-        paths.geminiDir,
-        paths.cursorDir,
-        paths.antigravityDir,
-        paths.windsurfDir,
-        paths.opencodeDir,
-        paths.opencodeConfig,
-        legacyAgentDir,
-        paths.vscodeMcp,
-        paths.copilotCliMcp,
-        paths.claudeDir,
-        paths.junieDir
-      ]
-    : options.localOnly
-      ? [
-          paths.codexDir,
-          paths.geminiDir,
-          paths.cursorDir,
-          paths.antigravityWorkspaceMcp,
-          paths.antigravityDir,
-          paths.windsurfDir,
-          paths.opencodeDir,
-          paths.opencodeConfig,
-          legacyAgentDir,
-          paths.vscodeMcp,
-          paths.copilotCliMcp,
-          paths.claudeSkillsBridge,
-          paths.cursorSkillsBridge,
-          paths.junieMcpDir,
-          paths.junieSkillsBridge
-        ]
-      : [
-          paths.generatedDir,
-          paths.codexDir,
-          paths.geminiDir,
-          paths.cursorDir,
-          paths.antigravityWorkspaceMcp,
-          paths.antigravityDir,
-          paths.windsurfDir,
-          paths.opencodeDir,
-          paths.opencodeConfig,
-          legacyAgentDir,
-          paths.vscodeMcp,
-          paths.copilotCliMcp,
-          paths.claudeSkillsBridge,
-          paths.cursorSkillsBridge,
-          paths.junieMcpDir,
-          paths.junieSkillsBridge
-        ]
+  await cleanupCodexConfig({
+    projectRoot,
+    configPath: paths.codexConfig,
+    generatedPath: paths.generatedCodex,
+    removed,
+    warnings
+  })
+  await cleanupGeminiConfig({
+    projectRoot,
+    configPath: paths.geminiSettings,
+    generatedPath: paths.generatedGemini,
+    removed,
+    warnings
+  })
+  await cleanupOpencodeConfig({
+    projectRoot,
+    configPath: paths.opencodeConfig,
+    generatedPath: paths.generatedOpencode,
+    removed,
+    warnings
+  })
+
+  const bridges = [
+    { bridgePath: paths.claudeSkillsBridge, sourcePath: paths.agentsSkillsDir },
+    { bridgePath: paths.cursorSkillsBridge, sourcePath: paths.agentsSkillsDir },
+    { bridgePath: paths.geminiSkillsBridge, sourcePath: paths.agentsSkillsDir },
+    { bridgePath: paths.windsurfSkillsBridge, sourcePath: paths.agentsSkillsDir },
+    { bridgePath: paths.junieSkillsBridge, sourcePath: paths.agentsSkillsDir },
+    { bridgePath: path.join(legacyAgentDir, 'skills'), sourcePath: paths.agentsSkillsDir }
+  ]
+  for (const bridge of bridges) {
+    if (!(await isManagedSkillBridge(bridge.bridgePath, bridge.sourcePath))) continue
+    await removeResetTarget(bridge.bridgePath, projectRoot, removed)
+  }
+
+  const targets = [
+    paths.cursorMcp,
+    paths.antigravityWorkspaceMcp,
+    paths.antigravityProjectMcp,
+    paths.vscodeMcp,
+    paths.copilotCliMcp,
+    paths.junieMcp
+  ]
+  if (!options.localOnly) {
+    targets.push(paths.generatedDir)
+  }
+  if (options.hard) {
+    targets.push(paths.agentsDir, paths.rootAgentsMd)
+  }
 
   for (const target of targets) {
-    if (!(await pathExists(target))) continue
-    await removeIfExists(target)
-    removed.push(path.relative(projectRoot, target) || target)
+    await removeResetTarget(target, projectRoot, removed)
   }
 
   if (options.hard) {
@@ -145,4 +146,237 @@ export async function runReset(options: ResetOptions): Promise<void> {
     ui.blank()
     ui.hint('Safe reset keeps .agents source files, root AGENTS.md, and managed .gitignore entries. Use --hard to remove all agents-managed setup.')
   }
+}
+
+/** Remove only agents-managed Gemini fields while preserving unrelated user settings. */
+async function cleanupGeminiConfig(args: JsonConfigCleanupArgs): Promise<void> {
+  const existing = await readConfigObjectForCleanup(args.configPath, 'Gemini', args.warnings)
+  if (existing === null) return
+  if (Object.keys(existing).length === 0) {
+    await removeResetTarget(args.configPath, args.projectRoot, args.removed)
+    return
+  }
+
+  const generated = await readGeneratedObjectForCleanup(args.generatedPath, 'Gemini', args.warnings)
+  if (generated === null) return
+
+  const cleaned = { ...existing }
+  const existingContext = isRecord(existing.context) ? { ...existing.context } : null
+  const generatedContext = isRecord(generated.context) ? generated.context : null
+  if (existingContext && generatedContext && existingContext.fileName === generatedContext.fileName) {
+    delete existingContext.fileName
+    if (Object.keys(existingContext).length === 0) {
+      delete cleaned.context
+    } else {
+      cleaned.context = existingContext
+    }
+  }
+  if (cleaned.contextFileName === generated.contextFileName) {
+    delete cleaned.contextFileName
+  }
+  removeManagedMapEntries(cleaned, generated, 'mcpServers')
+
+  await persistCleanedJsonConfig(args, existing, cleaned)
+}
+
+/** Remove only agents-managed OpenCode MCP entries while preserving unrelated settings. */
+async function cleanupOpencodeConfig(args: JsonConfigCleanupArgs): Promise<void> {
+  const existing = await readConfigObjectForCleanup(args.configPath, 'OpenCode', args.warnings)
+  if (existing === null) return
+  if (Object.keys(existing).length === 0) {
+    await removeResetTarget(args.configPath, args.projectRoot, args.removed)
+    return
+  }
+
+  const generated = await readGeneratedObjectForCleanup(args.generatedPath, 'OpenCode', args.warnings)
+  if (generated === null) return
+
+  const cleaned = { ...existing }
+  removeManagedMapEntries(cleaned, generated, 'mcp')
+  await persistCleanedJsonConfig(args, existing, cleaned)
+}
+
+interface JsonConfigCleanupArgs {
+  projectRoot: string
+  configPath: string
+  generatedPath: string
+  removed: string[]
+  warnings: string[]
+}
+
+/** Read a materialized JSON object for reset, preserving malformed or non-object files. */
+async function readConfigObjectForCleanup(
+  configPath: string,
+  label: string,
+  warnings: string[],
+): Promise<Record<string, unknown> | null> {
+  if (!(await pathExists(configPath))) return null
+  try {
+    const parsed = await readJson<unknown>(configPath)
+    if (!isRecord(parsed)) {
+      warnings.push(`Failed to clean managed ${label} settings from ${configPath}; preserved the non-object JSON file.`)
+      return null
+    }
+    return parsed
+  } catch (error) {
+    warnings.push(
+      `Failed to clean managed ${label} settings from ${configPath}; preserved the file. ${error instanceof Error ? error.message : String(error)}`,
+    )
+    return null
+  }
+}
+
+/** Read generated ownership state used to identify managed JSON entries. */
+async function readGeneratedObjectForCleanup(
+  generatedPath: string,
+  label: string,
+  warnings: string[],
+): Promise<Record<string, unknown> | null> {
+  if (!(await pathExists(generatedPath))) {
+    warnings.push(`Could not identify managed ${label} settings because ${generatedPath} is missing; preserved the config file.`)
+    return null
+  }
+  try {
+    const parsed = await readJson<unknown>(generatedPath)
+    if (!isRecord(parsed)) {
+      warnings.push(`Could not identify managed ${label} settings because ${generatedPath} is not a JSON object; preserved the config file.`)
+      return null
+    }
+    return parsed
+  } catch (error) {
+    warnings.push(
+      `Could not identify managed ${label} settings because ${generatedPath} could not be read; preserved the config file. ${error instanceof Error ? error.message : String(error)}`,
+    )
+    return null
+  }
+}
+
+/** Remove generated map keys from a materialized JSON object without touching unknown entries. */
+function removeManagedMapEntries(
+  cleaned: Record<string, unknown>,
+  generated: Record<string, unknown>,
+  key: string,
+): void {
+  if (!isRecord(cleaned[key]) || !isRecord(generated[key])) return
+  const remaining = { ...cleaned[key] }
+  for (const managedName of Object.keys(generated[key])) {
+    delete remaining[managedName]
+  }
+  if (Object.keys(remaining).length === 0) {
+    delete cleaned[key]
+  } else {
+    cleaned[key] = remaining
+  }
+}
+
+/** Persist a cleaned JSON config or remove it when no user-owned fields remain. */
+async function persistCleanedJsonConfig(
+  args: JsonConfigCleanupArgs,
+  existing: Record<string, unknown>,
+  cleaned: Record<string, unknown>,
+): Promise<void> {
+  if (JSON.stringify(cleaned) === JSON.stringify(existing)) return
+  if (Object.keys(cleaned).length === 0) {
+    await removeResetTarget(args.configPath, args.projectRoot, args.removed)
+    return
+  }
+  await writeJsonAtomic(args.configPath, cleaned)
+  args.removed.push(path.relative(args.projectRoot, args.configPath) || args.configPath)
+}
+
+/** Return whether a value is a plain JSON object. */
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+/** Remove the agents-managed Codex block while preserving user-owned TOML. */
+async function cleanupCodexConfig(args: {
+  projectRoot: string
+  configPath: string
+  generatedPath: string
+  removed: string[]
+  warnings: string[]
+}): Promise<void> {
+  if (!(await pathExists(args.configPath))) return
+
+  try {
+    const existing = await readTextOrEmpty(args.configPath)
+    let cleaned = removeCodexManagedBlock(existing)
+    if (cleaned === existing && isLegacyGeneratedCodexConfig(existing)) {
+      const generated = await readTextOrEmpty(args.generatedPath)
+      if (generated === existing) {
+        cleaned = ''
+      } else {
+        cleaned = removeLegacyGeneratedCodexMcp(existing)
+      }
+    }
+
+    if (cleaned === existing) return
+    if (cleaned.trim().length === 0) {
+      await removeResetTarget(args.configPath, args.projectRoot, args.removed)
+      return
+    }
+
+    await writeTextAtomic(args.configPath, cleaned)
+    args.removed.push(path.relative(args.projectRoot, args.configPath) || args.configPath)
+  } catch (error) {
+    args.warnings.push(
+      `Failed to clean managed Codex MCP from ${args.configPath}; preserved the file. ${error instanceof Error ? error.message : String(error)}`,
+    )
+  }
+}
+
+/** Remove one reset target and prune empty parent directories inside the project. */
+async function removeResetTarget(target: string, projectRoot: string, removed: string[]): Promise<void> {
+  if (!(await pathExists(target))) return
+  await removeIfExists(target)
+  removed.push(path.relative(projectRoot, target) || target)
+  await removeEmptyParents(path.dirname(target), projectRoot)
+}
+
+/** Remove empty parent directories while tolerating expected concurrent filesystem changes. */
+async function removeEmptyParents(startPath: string, projectRoot: string): Promise<void> {
+  let current = startPath
+  const rootPrefix = `${projectRoot}${path.sep}`
+  while (current.startsWith(rootPrefix) && current !== projectRoot) {
+    let entries: string[]
+    try {
+      entries = await readdir(current)
+    } catch {
+      return
+    }
+    if (entries.length > 0) return
+    try {
+      await rmdir(current)
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code
+      if (code === 'ENOENT' || code === 'ENOTEMPTY') return
+      throw error
+    }
+    current = path.dirname(current)
+  }
+}
+
+/** Return whether a skill bridge is an agents-managed symlink or marked copy. */
+async function isManagedSkillBridge(bridgePath: string, sourcePath: string): Promise<boolean> {
+  if (!(await pathExists(bridgePath))) return false
+
+  let info
+  try {
+    info = await lstat(bridgePath)
+  } catch {
+    return false
+  }
+
+  if (info.isSymbolicLink()) {
+    try {
+      const current = await readlink(bridgePath)
+      const expected = path.relative(path.dirname(bridgePath), sourcePath) || '.'
+      return current === expected || path.resolve(path.dirname(bridgePath), current) === sourcePath
+    } catch {
+      return false
+    }
+  }
+
+  return info.isDirectory() && await pathExists(path.join(bridgePath, BRIDGE_MARKER_FILENAME))
 }
