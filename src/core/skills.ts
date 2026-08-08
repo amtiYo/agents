@@ -1,12 +1,13 @@
 import path from 'node:path'
 import { createHash, randomUUID } from 'node:crypto'
-import { lstat, readdir, readFile, readlink, realpath, rename, stat, symlink } from 'node:fs/promises'
-import { copyDir, ensureDir, pathExists, removeIfExists, writeTextAtomic } from './fs.js'
+import { lstat, readdir, readFile, readlink, rename, stat, symlink } from 'node:fs/promises'
+import { copyDir, ensureDir, pathExists, removeIfExists, resolveDirectoryPath, writeTextAtomic } from './fs.js'
 import { getProjectPaths } from './paths.js'
 import { discoverSkills, type DiscoveredSkill, type SkillDiscoveryResult } from './skillsDiscovery.js'
 import type { IntegrationName } from '../types.js'
 
-const BRIDGE_MARKER_FILENAME = '.agents_bridge'
+/** Marker used to identify physical skill bridges managed by agents. */
+export const BRIDGE_MARKER_FILENAME = '.agents_bridge'
 
 export interface AntigravitySkillsBridgeHealth {
   expectedSkillNames: string[]
@@ -83,7 +84,8 @@ export async function syncSkills(args: {
     await ensureDir(paths.agentsSkillsDir)
   }
 
-  const hasSkills = await hasSkillDirectories(paths.agentsSkillsDir)
+  const discovery = await discoverSkills(paths.agentsSkillsDir)
+  const hasSkills = discovery.skills.length > 0
   const antigravityEnabled = enabledIntegrations.includes('antigravity')
 
   await syncToolSkillsBridge({
@@ -120,7 +122,8 @@ export async function syncSkills(args: {
       label: '.gemini/skills',
       check,
       changed,
-      warnings
+      warnings,
+      discovery
     })
   } else {
     await syncToolSkillsBridge({
@@ -165,11 +168,6 @@ export async function syncSkills(args: {
     check,
     changed
   })
-}
-
-async function hasSkillDirectories(skillsDir: string): Promise<boolean> {
-  const discovery = await discoverSkills(skillsDir)
-  return discovery.skills.length > 0
 }
 
 async function syncToolSkillsBridge(args: {
@@ -246,6 +244,7 @@ async function syncToolSkillsBridge(args: {
   }
 }
 
+/** Synchronize the physical flat skill bridge required by Antigravity. */
 async function syncAntigravitySkillsBridge(args: {
   enabled: boolean
   projectRoot: string
@@ -256,8 +255,9 @@ async function syncAntigravitySkillsBridge(args: {
   check: boolean
   changed: string[]
   warnings: string[]
+  discovery: SkillDiscoveryResult
 }): Promise<void> {
-  const { enabled, projectRoot, parentDir, bridgePath, sourcePath, label, check, changed, warnings } = args
+  const { enabled, projectRoot, parentDir, bridgePath, sourcePath, label, check, changed, warnings, discovery } = args
   const expectedRelative = path.relative(path.dirname(bridgePath), sourcePath) || '.'
 
   if (!enabled) {
@@ -269,7 +269,6 @@ async function syncAntigravitySkillsBridge(args: {
     return
   }
 
-  const discovery = await discoverSkills(sourcePath)
   if (discovery.duplicates.length > 0) {
     warnings.push(formatAntigravityDuplicateWarning(discovery))
     const managedBridge = await cleanupManagedBridge(bridgePath, expectedRelative, sourcePath)
@@ -298,7 +297,13 @@ async function syncAntigravitySkillsBridge(args: {
     } else if (bridgeInfo.isDirectory()) {
       const marker = path.join(bridgePath, BRIDGE_MARKER_FILENAME)
       if (await pathExists(marker)) {
-        if (await flatSkillDirectoriesEqual(discovery.skills, bridgePath)) return
+        let inSync = false
+        try {
+          inSync = await flatSkillDirectoriesEqual(discovery.skills, bridgePath)
+        } catch {
+          inSync = false
+        }
+        if (inSync) return
         changed.push(path.relative(projectRoot, bridgePath) || bridgePath)
       } else {
         warnings.push(`Found existing ${label} that is not managed by agents: ${bridgePath}`)
@@ -321,6 +326,7 @@ async function syncAntigravitySkillsBridge(args: {
   }
 }
 
+/** Compare discovered skill sources with their physical flat bridge copies. */
 async function flatSkillDirectoriesEqual(skills: DiscoveredSkill[], bridgePath: string): Promise<boolean> {
   const entries = await readdir(bridgePath, { withFileTypes: true })
   const visibleEntries = entries.filter((entry) => entry.name !== BRIDGE_MARKER_FILENAME)
@@ -337,6 +343,7 @@ async function flatSkillDirectoriesEqual(skills: DiscoveredSkill[], bridgePath: 
   return true
 }
 
+/** Copy discovered skills into a flat physical bridge. */
 async function copyFlatSkillDirectories(skills: DiscoveredSkill[], bridgePath: string): Promise<void> {
   await ensureDir(bridgePath)
   for (const skill of skills) {
@@ -344,6 +351,7 @@ async function copyFlatSkillDirectories(skills: DiscoveredSkill[], bridgePath: s
   }
 }
 
+/** Atomically replace the Antigravity bridge from a staged directory. */
 async function replaceAntigravitySkillsBridge(skills: DiscoveredSkill[], bridgePath: string): Promise<void> {
   const stagingPath = path.join(path.dirname(bridgePath), `.agents-skills-${randomUUID()}`)
   try {
@@ -360,6 +368,7 @@ async function replaceAntigravitySkillsBridge(skills: DiscoveredSkill[], bridgeP
   }
 }
 
+/** Format duplicate skill names for a user-facing Antigravity warning. */
 function formatAntigravityDuplicateWarning(discovery: SkillDiscoveryResult): string {
   const details = discovery.duplicates
     .map((duplicate) => `"${duplicate.name}" (${duplicate.relativePaths.join(', ')})`)
@@ -409,6 +418,7 @@ async function cleanupLegacyAntigravityBridge(args: {
   }
 }
 
+/** Compare two skill directories by their deterministic signatures. */
 async function skillDirectoriesEqual(sourcePath: string, bridgePath: string, dereferenceSymlinks = false): Promise<boolean> {
   const [sourceSignature, bridgeSignature] = await Promise.all([
     directorySignature(sourcePath, false, dereferenceSymlinks),
@@ -417,6 +427,7 @@ async function skillDirectoriesEqual(sourcePath: string, bridgePath: string, der
   return sourceSignature === bridgeSignature
 }
 
+/** Build a deterministic content signature for a directory tree. */
 async function directorySignature(
   rootDir: string,
   ignoreBridgeMarker: boolean,
@@ -431,6 +442,7 @@ async function directorySignature(
   return entries.join('\n')
 }
 
+/** Walk a directory while preventing only cycles in the current recursion branch. */
 async function walkDirectory(
   rootDir: string,
   currentDir: string,
@@ -442,7 +454,7 @@ async function walkDirectory(
   if (dereferenceSymlinks) {
     const resolvedCurrentDir = await resolveDirectoryPath(currentDir)
     if (visitedDirectories.has(resolvedCurrentDir)) return
-    visitedDirectories.add(resolvedCurrentDir)
+    visitedDirectories = new Set(visitedDirectories).add(resolvedCurrentDir)
   }
 
   const children = await readdir(currentDir, { withFileTypes: true })
@@ -477,18 +489,11 @@ async function walkDirectory(
   }
 }
 
+/** Return whether a path resolves to a directory. */
 async function isDirectoryTarget(filePath: string): Promise<boolean> {
   try {
     return (await stat(filePath)).isDirectory()
   } catch {
     return false
-  }
-}
-
-async function resolveDirectoryPath(directoryPath: string): Promise<string> {
-  try {
-    return await realpath(directoryPath)
-  } catch {
-    return path.resolve(directoryPath)
   }
 }

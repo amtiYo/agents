@@ -154,8 +154,13 @@ describe('skills bridge sync', () => {
     await writeSkill(externalRoot, undefined, 'linked-skill', 'Linked skill')
     const externalSkill = path.join(externalRoot, 'linked-skill')
     const linkedResource = path.join(projectRoot, 'external-resource.md')
+    const sharedResourceDir = path.join(projectRoot, 'shared-resources')
     await writeFile(linkedResource, 'linked resource\n', 'utf8')
+    await mkdir(sharedResourceDir, { recursive: true })
+    await writeFile(path.join(sharedResourceDir, 'shared.md'), 'shared resource\n', 'utf8')
     await symlink(path.relative(externalSkill, linkedResource), path.join(externalSkill, 'RESOURCE.md'))
+    await symlink(path.relative(externalSkill, sharedResourceDir), path.join(externalSkill, 'alias-a'))
+    await symlink(path.relative(externalSkill, sharedResourceDir), path.join(externalSkill, 'alias-b'))
     await mkdir(sourceRoot, { recursive: true })
     await symlink(path.relative(sourceRoot, externalSkill), path.join(sourceRoot, 'linked-skill'))
 
@@ -165,9 +170,14 @@ describe('skills bridge sync', () => {
     expect((await lstat(bridgeSkill)).isSymbolicLink()).toBe(false)
     expect((await lstat(path.join(bridgeSkill, 'RESOURCE.md'))).isSymbolicLink()).toBe(false)
     expect(await readFile(path.join(bridgeSkill, 'RESOURCE.md'), 'utf8')).toBe('linked resource\n')
+    expect(await readFile(path.join(bridgeSkill, 'alias-a', 'shared.md'), 'utf8')).toBe('shared resource\n')
+    expect(await readFile(path.join(bridgeSkill, 'alias-b', 'shared.md'), 'utf8')).toBe('shared resource\n')
 
     const secondSync = await performSync({ projectRoot, check: false, verbose: false })
     expect(secondSync.changed).not.toContain('.gemini/skills')
+
+    const checkSync = await performSync({ projectRoot, check: true, verbose: false })
+    expect(checkSync.changed).not.toContain('.gemini/skills')
   })
 })
 

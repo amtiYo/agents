@@ -14,7 +14,14 @@ export async function validateSkillsDirectory(skillsDir: string): Promise<string
   }
 
   for (const skill of discovery.skills) {
-    const raw = await readFile(skill.skillFilePath, 'utf8')
+    let raw: string
+    try {
+      raw = await readFile(skill.skillFilePath, 'utf8')
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      warnings.push(`Skill "${skill.relativePath}" could not be read: ${message}`)
+      continue
+    }
     const frontmatter = extractFrontmatter(raw)
     if (!frontmatter) {
       warnings.push(`Skill "${skill.relativePath}" has no YAML frontmatter.`)
@@ -28,7 +35,7 @@ export async function validateSkillsDirectory(skillsDir: string): Promise<string
       warnings.push(`Skill "${skill.relativePath}" is missing required frontmatter field "name".`)
     } else {
       if (name !== skill.name) {
-        warnings.push(`Skill "${skill.relativePath}" must match frontmatter name "${name}".`)
+        warnings.push(`Skill directory "${skill.name}" at "${skill.relativePath}" does not match frontmatter name "${name}".`)
       }
       if (name.length > 64 || !SKILL_NAME_RE.test(name)) {
         warnings.push(`Skill "${skill.relativePath}" has invalid name format.`)

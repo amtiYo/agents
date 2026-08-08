@@ -155,8 +155,8 @@ describe('status command', () => {
 
     const parsed = JSON.parse(output) as { files: Record<string, boolean>; probes: Record<string, string> }
     expect(parsed.files['.gemini/skills']).toBe(true)
-    expect(parsed.probes.antigravity_skills).toContain('flat copy bridge')
-  })
+    expect(parsed.probes.antigravity_skills).toMatch(/^\d+ skill\(s\) in flat copy bridge$/)
+  }, 20_000)
 
   it('includes root CLAUDE.md file state when Claude is enabled', async () => {
     const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-status-'))

@@ -209,7 +209,7 @@ your-project/
 ├── opencode.json                     │
 ├── .claude/skills/ → .agents/skills  │  Claude workspace bridges
 ├── .cursor/skills/ → .agents/skills  │
-├── .gemini/skills/ → .agents/skills  │  Gemini bridge; flat copy for Antigravity
+├── .gemini/skills/                  │  Gemini symlink; physical flat copy for Antigravity
 ├── .windsurf/skills/ → .agents/skills│
 └── .junie/skills/ → .agents/skills   │
 ```

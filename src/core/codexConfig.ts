@@ -94,6 +94,7 @@ export function removeCodexManagedBlock(existingContent: string): string {
   return cleaned
 }
 
+/** Return whether content contains the legacy fully-generated Codex header. */
 export function isLegacyGeneratedCodexConfig(content: string): boolean {
   return findStandaloneCommentLines(content, LEGACY_GENERATED_HEADER).length === 1
 }
@@ -139,6 +140,7 @@ export function removeLegacyGeneratedCodexMcp(content: string): string {
   return result + content.slice(cursor)
 }
 
+/** Split TOML into source-position-aware lines. */
 function getTomlLines(content: string): TomlLine[] {
   const lines: TomlLine[] = []
   let lineStart = 0
@@ -158,10 +160,12 @@ function getTomlLines(content: string): TomlLine[] {
   return lines
 }
 
+/** Return the full line end for a known line start. */
 function getLineEnd(lines: TomlLine[], start: number, fallback: number): number {
   return lines.find((line) => line.start === start)?.end ?? fallback
 }
 
+/** Locate top-level TOML table headers outside multiline strings. */
 function findTableHeaderLines(content: string, lines: TomlLine[]): TomlLine[] {
   const headers: TomlLine[] = []
   let state: TomlLexState = 'normal'
@@ -176,16 +180,50 @@ function findTableHeaderLines(content: string, lines: TomlLine[]): TomlLine[] {
   return headers
 }
 
+/** Return whether a line contains only a valid TOML table header and optional comment. */
 function isTableHeader(line: string): boolean {
-  const trimmed = line.trim()
-  return trimmed.startsWith('[') && (trimmed.endsWith(']') || trimmed.endsWith(']]'))
+  const trimmed = stripTrailingTomlComment(line).trim()
+  if (!trimmed.startsWith('[')) return false
+  if (trimmed.startsWith('[[') ? !trimmed.endsWith(']]') : !trimmed.endsWith(']')) return false
+  try {
+    TOML.parse(trimmed)
+    return true
+  } catch {
+    return false
+  }
 }
 
+/** Return whether a TOML table header belongs to the MCP namespace. */
 function isMcpTableHeader(line: string): boolean {
-  const trimmed = line.trim()
+  const trimmed = stripTrailingTomlComment(line).trim()
   return /^\[{1,2}\s*mcp_servers(?:\s*\]|\.)/u.test(trimmed)
 }
 
+/** Strip a TOML comment that begins outside quoted strings. */
+function stripTrailingTomlComment(line: string): string {
+  let state: 'normal' | 'basic' | 'literal' = 'normal'
+  for (let index = 0; index < line.length; index += 1) {
+    const character = line[index]
+    if (state === 'normal') {
+      if (character === '#') return line.slice(0, index)
+      if (character === '"') state = 'basic'
+      if (character === "'") state = 'literal'
+      continue
+    }
+    if (state === 'basic') {
+      if (character === '\\') {
+        index += 1
+      } else if (character === '"') {
+        state = 'normal'
+      }
+      continue
+    }
+    if (character === "'") state = 'normal'
+  }
+  return line
+}
+
+/** Locate exact standalone marker comments outside TOML strings. */
 function findStandaloneCommentLines(content: string, marker: string): StandaloneCommentLine[] {
   const matches: StandaloneCommentLine[] = []
   let state: TomlLexState = 'normal'
@@ -210,6 +248,7 @@ function findStandaloneCommentLines(content: string, marker: string): Standalone
   return matches
 }
 
+/** Advance TOML string lexical state across one line. */
 function scanTomlLine(
   content: string,
   start: number,
@@ -279,12 +318,14 @@ function scanTomlLine(
   return state
 }
 
+/** Consume a contiguous run of matching quote characters. */
 function consumeQuoteRun(content: string, start: number, end: number, quote: '"' | "'"): number {
   let index = start
   while (index < end && content[index] === quote) index += 1
   return index
 }
 
+/** Parse TOML and attach a contextual label to syntax failures. */
 function validateToml(content: string, label: string): void {
   if (content.trim().length === 0) return
 

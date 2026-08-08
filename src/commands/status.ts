@@ -459,6 +459,7 @@ async function probeSkills(skillsDir: string): Promise<string> {
   return `${existing.length} skill folder(s) present`
 }
 
+/** Summarize Antigravity flat skill bridge health for status output. */
 async function probeAntigravitySkills(sourcePath: string, bridgePath: string): Promise<string> {
   const health = await inspectAntigravitySkillsBridge(sourcePath, bridgePath)
   if (health.expectedSkillNames.length === 0) return 'no skills configured'

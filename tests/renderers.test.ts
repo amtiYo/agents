@@ -84,7 +84,7 @@ describe('renderers', () => {
     expect(merged).toContain('[features]')
     expect(merged).toContain('[mcp_servers."new"]')
     expect(merged).not.toContain('[mcp_servers."old"]')
-    expect(merged.match(new RegExp(CODEX_MANAGED_MCP_BEGIN, 'g'))).toHaveLength(1)
+    expect(merged.split(CODEX_MANAGED_MCP_BEGIN)).toHaveLength(2)
     expect(() => TOML.parse(merged)).not.toThrow()
   })
 
@@ -98,7 +98,7 @@ describe('renderers', () => {
 
     const merged = mergeCodexConfig(generated, generated)
 
-    expect(merged.match(new RegExp(CODEX_MANAGED_MCP_BEGIN, 'g'))).toHaveLength(1)
+    expect(merged.split(CODEX_MANAGED_MCP_BEGIN)).toHaveLength(2)
     expect(merged).toContain('[mcp_servers."filesystem"]')
     expect(() => TOML.parse(merged)).not.toThrow()
   })
@@ -122,6 +122,43 @@ describe('renderers', () => {
     expect(merged).toContain('web_search = true')
     expect(merged).toContain('[mcp_servers."new"]')
     expect(merged).not.toContain('[mcp_servers."old"]')
+    expect(() => TOML.parse(merged)).not.toThrow()
+  })
+
+  it('preserves a commented user table after legacy generated Codex MCP tables', () => {
+    const legacy = renderCodexToml([{
+      name: 'old',
+      transport: 'stdio',
+      command: 'old-server'
+    }]).content
+    const existing = `${legacy}[features] # user settings\nweb_search = true\n`
+    const generated = renderCodexToml([{
+      name: 'new',
+      transport: 'stdio',
+      command: 'new-server'
+    }]).content
+
+    const merged = mergeCodexConfig(existing, generated)
+
+    expect(merged).toContain('[features] # user settings')
+    expect(merged).toContain('web_search = true')
+    expect(merged).not.toContain('[mcp_servers."old"]')
+    expect(() => TOML.parse(merged)).not.toThrow()
+  })
+
+  it('does not treat a multiline array item as a TOML table header', () => {
+    const legacy = renderCodexToml([{
+      name: 'old',
+      transport: 'stdio',
+      command: 'old-server'
+    }]).content
+    const existing = `${legacy}values = [\n  [1, 2]\n]\n`
+    const generated = renderCodexToml([]).content
+
+    const merged = mergeCodexConfig(existing, generated)
+
+    expect(merged).not.toContain('[mcp_servers."old"]')
+    expect(merged).not.toContain('values = [')
     expect(() => TOML.parse(merged)).not.toThrow()
   })
 

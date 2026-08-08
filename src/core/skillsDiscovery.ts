@@ -1,6 +1,6 @@
 import path from 'node:path'
-import { readdir, realpath, stat } from 'node:fs/promises'
-import { pathExists } from './fs.js'
+import { readdir, stat } from 'node:fs/promises'
+import { pathExists, resolveDirectoryPath } from './fs.js'
 
 const IGNORED_DIRECTORY_NAMES = new Set(['.git', 'node_modules'])
 
@@ -52,6 +52,7 @@ export async function discoverSkills(skillsDir: string): Promise<SkillDiscoveryR
   return { skills, duplicates }
 }
 
+/** Recursively collect skills while avoiding already-visited directory targets. */
 async function walk(
   rootPath: string,
   currentPath: string,
@@ -84,6 +85,7 @@ async function walk(
   }
 }
 
+/** Return whether a directory entry is or resolves to a directory. */
 async function isDirectoryEntry(absolutePath: string, isDirectory: boolean, isSymbolicLink: boolean): Promise<boolean> {
   if (isDirectory) return true
   if (!isSymbolicLink) return false
@@ -95,14 +97,7 @@ async function isDirectoryEntry(absolutePath: string, isDirectory: boolean, isSy
   }
 }
 
-async function resolveDirectoryPath(directoryPath: string): Promise<string> {
-  try {
-    return await realpath(directoryPath)
-  } catch {
-    return path.resolve(directoryPath)
-  }
-}
-
+/** Normalize a relative path to forward slashes for cross-platform output. */
 function toPortableRelativePath(relativePath: string): string {
   return relativePath.split(path.sep).join('/')
 }

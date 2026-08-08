@@ -5,6 +5,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { runInit } from '../src/commands/init.js'
 import { getConnectableIntegrations, runConnect } from '../src/commands/connect.js'
 import { loadAgentsConfig, saveAgentsConfig } from '../src/core/config.js'
+import * as sync from '../src/core/sync.js'
+import * as ui from '../src/core/ui.js'
 
 const tempDirs: string[] = []
 
@@ -92,5 +94,33 @@ describe('connect command', () => {
       mcpServers?: Record<string, unknown>
     }
     expect(payload.mcpServers).toHaveProperty('filesystem')
+
+    const afterConfig = await loadAgentsConfig(projectRoot)
+    expect(afterConfig.integrations.enabled).toEqual(['antigravity'])
   }, 20_000)
+
+  it('stops the spinner when synchronization fails', async () => {
+    const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-connect-error-'))
+    tempDirs.push(projectRoot)
+
+    await runInit({ projectRoot, force: true })
+    const config = await loadAgentsConfig(projectRoot)
+    config.integrations.enabled = ['antigravity']
+    await saveAgentsConfig(projectRoot, config)
+
+    const stop = vi.fn()
+    vi.spyOn(ui, 'spinner').mockReturnValue({
+      start: vi.fn(),
+      stop
+    })
+    vi.spyOn(sync, 'performSync').mockRejectedValue(new Error('sync failed'))
+
+    await expect(runConnect({
+      projectRoot,
+      llm: 'antigravity',
+      interactive: false,
+      verbose: false
+    })).rejects.toThrow('sync failed')
+    expect(stop).toHaveBeenCalledWith('Synchronization failed')
+  })
 })

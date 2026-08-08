@@ -45,6 +45,75 @@ describe('reset command', () => {
     }
   })
 
+  it('removes only managed Gemini and OpenCode fields', async () => {
+    const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-reset-json-'))
+
+    try {
+      const generatedDir = path.join(projectRoot, '.agents', 'generated')
+      const geminiPath = path.join(projectRoot, '.gemini', 'settings.json')
+      const opencodePath = path.join(projectRoot, 'opencode.json')
+      await mkdir(generatedDir, { recursive: true })
+      await mkdir(path.dirname(geminiPath), { recursive: true })
+
+      await writeFile(
+        path.join(generatedDir, 'gemini.settings.json'),
+        JSON.stringify({
+          context: { fileName: 'AGENTS.md' },
+          contextFileName: 'AGENTS.md',
+          mcpServers: { managed: { command: 'managed' } }
+        }, null, 2),
+      )
+      await writeFile(
+        geminiPath,
+        JSON.stringify({
+          theme: 'dark',
+          context: { fileName: 'AGENTS.md', custom: true },
+          contextFileName: 'AGENTS.md',
+          mcpServers: {
+            managed: { command: 'managed' },
+            manual: { command: 'manual' }
+          }
+        }, null, 2),
+      )
+      await writeFile(
+        path.join(generatedDir, 'opencode.json'),
+        JSON.stringify({ mcp: { managed: { type: 'local' } } }, null, 2),
+      )
+      await writeFile(
+        opencodePath,
+        JSON.stringify({
+          theme: 'dark',
+          mcp: {
+            managed: { type: 'local' },
+            manual: { type: 'remote' }
+          }
+        }, null, 2),
+      )
+
+      await runReset({ projectRoot, localOnly: false, hard: false })
+
+      const gemini = JSON.parse(await readFile(geminiPath, 'utf8')) as {
+        theme?: string
+        context?: Record<string, unknown>
+        contextFileName?: string
+        mcpServers?: Record<string, unknown>
+      }
+      expect(gemini.theme).toBe('dark')
+      expect(gemini.context).toEqual({ custom: true })
+      expect(gemini).not.toHaveProperty('contextFileName')
+      expect(Object.keys(gemini.mcpServers ?? {})).toEqual(['manual'])
+
+      const opencode = JSON.parse(await readFile(opencodePath, 'utf8')) as {
+        theme?: string
+        mcp?: Record<string, unknown>
+      }
+      expect(opencode.theme).toBe('dark')
+      expect(Object.keys(opencode.mcp ?? {})).toEqual(['manual'])
+    } finally {
+      await rm(projectRoot, { recursive: true, force: true })
+    }
+  })
+
   it('cleans local materialized files in local-only mode', async () => {
     const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-reset-local-'))
 

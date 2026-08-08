@@ -74,6 +74,38 @@ describe('sync validation', () => {
     expect(warnSpy).not.toHaveBeenCalled()
   })
 
+  it('skips malformed Codex config and continues syncing other integrations', async () => {
+    const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-sync-validation-'))
+    tempDirs.push(projectRoot)
+
+    await runInit({ projectRoot, force: true })
+    const config = await loadAgentsConfig(projectRoot)
+    config.integrations.enabled = ['codex', 'gemini']
+    await saveAgentsConfig(projectRoot, config)
+
+    const codexPath = path.join(projectRoot, '.codex', 'config.toml')
+    const geminiPath = path.join(projectRoot, '.gemini', 'settings.json')
+    await mkdir(path.dirname(codexPath), { recursive: true })
+    await mkdir(path.dirname(geminiPath), { recursive: true })
+    await writeFile(codexPath, '[invalid\n', 'utf8')
+    await writeFile(geminiPath, '{"theme":"dark"}\n', 'utf8')
+
+    const result = await performSync({
+      projectRoot,
+      check: false,
+      verbose: false
+    })
+
+    expect(result.warnings.some((warning) =>
+      warning.includes('Failed to merge Codex config at')
+      && warning.includes('skipped Codex sync')
+    )).toBe(true)
+    expect(await readFile(codexPath, 'utf8')).toBe('[invalid\n')
+    const gemini = JSON.parse(await readFile(geminiPath, 'utf8')) as Record<string, unknown>
+    expect(gemini.theme).toBe('dark')
+    expect(gemini).toHaveProperty('mcpServers')
+  })
+
   it('reports warning and preserves existing OpenCode settings when JSON is invalid', async () => {
     const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-sync-validation-'))
     tempDirs.push(projectRoot)

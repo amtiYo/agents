@@ -44,16 +44,21 @@ export async function runConnect(options: ConnectOptions): Promise<void> {
   const spin = ui.spinner()
   spin.start(added.length > 0 ? 'Updating integrations...' : 'Synchronizing integrations...')
 
-  if (added.length > 0) {
-    config.integrations.enabled = nextEnabled
-    await saveAgentsConfig(options.projectRoot, config)
+  let syncResult
+  try {
+    if (added.length > 0) {
+      config.integrations.enabled = nextEnabled
+      await saveAgentsConfig(options.projectRoot, config)
+    }
+    syncResult = await performSync({
+      projectRoot: options.projectRoot,
+      check: false,
+      verbose: options.verbose
+    })
+  } catch (error) {
+    spin.stop('Synchronization failed')
+    throw error
   }
-
-  const syncResult = await performSync({
-    projectRoot: options.projectRoot,
-    check: false,
-    verbose: options.verbose
-  })
 
   spin.stop(added.length > 0 ? 'Integrations updated' : 'Integrations synchronized')
 

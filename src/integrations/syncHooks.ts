@@ -58,7 +58,14 @@ export const INTEGRATION_SYNC_HOOKS: IntegrationSyncHook[] = [
     materialize: async (context) => {
       const generatedContent = context.generatedByIntegration.codex ?? ''
       const targetPath = context.paths.codexConfig
-      const content = mergeCodexConfig(await readTextOrEmpty(targetPath), generatedContent)
+      let content: string
+      try {
+        content = mergeCodexConfig(await readTextOrEmpty(targetPath), generatedContent)
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        context.warnings.push(`Failed to merge Codex config at ${targetPath}; skipped Codex sync. ${message}`)
+        return
+      }
       await writeManagedFile({
         absolutePath: targetPath,
         content,
@@ -597,6 +604,7 @@ function recordFrom(value: unknown): Record<string, unknown> {
     : {}
 }
 
+/** Return whether a value is a non-array object. */
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }

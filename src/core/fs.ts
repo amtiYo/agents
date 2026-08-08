@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { access, cp, lstat, mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises'
+import { access, cp, lstat, mkdir, readFile, readdir, realpath, rename, rm, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
 export async function pathExists(filePath: string): Promise<boolean> {
@@ -33,18 +33,22 @@ export async function writeJsonAtomic(filePath: string, value: unknown): Promise
   await writeTextAtomic(filePath, `${JSON.stringify(value, null, 2)}\n`)
 }
 
+/** Atomically write JSON with private target permissions (`0o600`). */
 export async function writePrivateJsonAtomic(filePath: string, value: unknown): Promise<void> {
   await writeTextAtomic(filePath, `${JSON.stringify(value, null, 2)}\n`, 0o600)
 }
 
+/** Atomically replace a text file, optionally setting the replacement file mode. */
 export async function writeTextAtomic(filePath: string, content: string, mode?: number): Promise<void> {
   await writeTextAtomicWithMode(filePath, content, mode)
 }
 
+/** Atomically write text with private target permissions (`0o600`). */
 export async function writePrivateTextAtomic(filePath: string, content: string): Promise<void> {
   await writeTextAtomicWithMode(filePath, content, 0o600)
 }
 
+/** Write through a sibling temporary file and atomically rename it into place. */
 async function writeTextAtomicWithMode(filePath: string, content: string, mode?: number): Promise<void> {
   await ensureDir(path.dirname(filePath))
   const tmpPath = `${filePath}.${randomUUID()}.tmp`
@@ -87,6 +91,7 @@ export async function listDirNames(dirPath: string): Promise<string[]> {
   return entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name)
 }
 
+/** Recursively copy a directory, optionally dereferencing symbolic links. */
 export async function copyDir(fromDir: string, toDir: string, options?: { dereference?: boolean }): Promise<void> {
   await ensureDir(path.dirname(toDir))
   await cp(fromDir, toDir, {
@@ -94,4 +99,13 @@ export async function copyDir(fromDir: string, toDir: string, options?: { derefe
     force: true,
     ...(options?.dereference === undefined ? {} : { dereference: options.dereference })
   })
+}
+
+/** Resolve a directory to its real path, falling back to an absolute path when resolution fails. */
+export async function resolveDirectoryPath(directoryPath: string): Promise<string> {
+  try {
+    return await realpath(directoryPath)
+  } catch {
+    return path.resolve(directoryPath)
+  }
 }
