@@ -22,18 +22,24 @@ import { CLI_VERSION } from './core/version.js'
 import { getHomeDir } from './core/paths.js'
 import * as ui from './core/ui.js'
 
+/** Resolve the effective project directory based on CLI options (`--path` or `--global`). */
 function resolveTargetDirectory(opts: { path?: string; global?: boolean }): string {
   if (opts.global) return getHomeDir()
   return resolvePath(opts.path)
 }
 
+/** Resolve and expand a target path, supporting tilde (`~` and `~/...`). */
 function resolvePath(input: string | undefined): string {
-  if (!input) return process.cwd()
-  if (input === '~') return getHomeDir()
-  if (input.startsWith('~/') || input.startsWith('~\\')) {
-    return path.join(getHomeDir(), input.slice(2))
+  if (input === undefined) return process.cwd()
+  const trimmed = input.trim()
+  if (trimmed.length === 0) {
+    throw new Error('Target path cannot be empty.')
   }
-  return path.resolve(input)
+  if (trimmed === '~') return getHomeDir()
+  if (trimmed.startsWith('~/') || trimmed.startsWith('~\\')) {
+    return path.join(getHomeDir(), trimmed.slice(2))
+  }
+  return path.resolve(trimmed)
 }
 
 async function main(): Promise<void> {

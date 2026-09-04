@@ -161,7 +161,7 @@ Add a server once in `.agents/agents.json`, then run `agents sync` to materializ
     <td align="center">✅</td>
     <td align="center">✅</td>
     <td align="center">✅</td>
-    <td>Writes project <code>opencode.json</code> (or global <code>~/.config/opencode/opencode.json</code>)</td>
+    <td>Writes project <code>opencode.json</code> (or global <code>~/.config/opencode/opencode.json</code> / <code>$XDG_CONFIG_HOME/opencode/opencode.json</code>)</td>
   </tr>
   <tr>
     <td><strong>Junie</strong></td>

@@ -217,7 +217,9 @@ export async function runDoctor(options: DoctorOptions): Promise<void> {
         ...(enabled.has('gemini') ? ['.gemini/skills'] : []),
         ...(enabled.has('junie') ? ['.junie/mcp/mcp.json', '.junie/skills'] : []),
         ...(enabled.has('antigravity') ? ['.agents/mcp_config.json'] : []),
-        ...(enabled.has('opencode') ? [paths.isHome ? '.config/opencode/opencode.json' : 'opencode.json'] : [])
+        ...(enabled.has('opencode') && !path.relative(options.projectRoot, paths.opencodeConfig).startsWith('..') && !path.isAbsolute(path.relative(options.projectRoot, paths.opencodeConfig))
+          ? [path.relative(options.projectRoot, paths.opencodeConfig)]
+          : [])
       ]
     : []
   trackedChecks.push('.agents/generated', '.agents/local.json')

@@ -2,6 +2,7 @@ import path from 'node:path'
 import { readFile } from 'node:fs/promises'
 import { getProjectPaths } from '../core/paths.js'
 import { discoverSkills } from '../core/skillsDiscovery.js'
+import { sanitizeTerminalOutput } from '../core/cursorCli.js'
 import * as ui from '../core/ui.js'
 
 export interface SkillsListOptions {
@@ -77,10 +78,12 @@ export async function runSkillsList(options: SkillsListOptions): Promise<void> {
   ui.blank()
   for (const item of payload.skills) {
     const symbol = ui.color.green(ui.symbols.success)
-    const pathSuffix = item.path !== item.name ? ` ${ui.color.dim(`(${item.path})`)}` : ''
-    ui.writeln(`  ${symbol} ${ui.color.bold(item.name)}${pathSuffix}`)
+    const sanitizedName = sanitizeTerminalOutput(item.name)
+    const sanitizedPath = sanitizeTerminalOutput(item.path)
+    const pathSuffix = sanitizedPath !== sanitizedName ? ` ${ui.color.dim(`(${sanitizedPath})`)}` : ''
+    ui.writeln(`  ${symbol} ${ui.color.bold(sanitizedName)}${pathSuffix}`)
     if (item.description) {
-      ui.writeln(`      ${ui.color.dim(item.description)}`)
+      ui.writeln(`      ${ui.color.dim(sanitizeTerminalOutput(item.description))}`)
     }
   }
 
