@@ -255,6 +255,13 @@ your-project/
 | `agents mcp test` | Validate server definitions |
 | `agents mcp test --runtime` | Live connectivity check via tool CLIs |
 
+### Skills Management
+
+| Command | Description |
+|:--------|:------------|
+| `agents skills list` | List configured skills across `.agents/skills/` (`ls` alias supported) |
+| `agents skills list -g` | List global skills in `~/.agents/skills/` |
+
 ### Integrations
 
 | Command | Description |

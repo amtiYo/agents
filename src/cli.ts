@@ -15,6 +15,7 @@ import { runStatus } from './commands/status.js'
 import { runSync } from './commands/sync.js'
 import { runUpdate } from './commands/update.js'
 import { runWatch } from './commands/watch.js'
+import { runSkillsList } from './commands/skills-list.js'
 import { CancelledError } from './core/errors.js'
 import { maybeNotifyAboutUpdate } from './core/updateCheck.js'
 import { CLI_VERSION } from './core/version.js'
@@ -385,6 +386,22 @@ async function main(): Promise<void> {
         json: Boolean(opts.json),
         runtime: Boolean(opts.runtime),
         runtimeTimeoutMs: Number.parseInt(opts.runtimeTimeoutMs, 10)
+      })
+    })
+
+  const skills = program.command('skills').description('Manage and inspect skills in .agents/skills')
+
+  skills
+    .command('list')
+    .alias('ls')
+    .description('List configured skills')
+    .option('--path <dir>', 'Target project directory', process.cwd())
+    .option('-g, --global', 'Target global user home directory (~/.agents)', false)
+    .option('--json', 'Output machine-readable JSON', false)
+    .action(async (opts: { path: string; global: boolean; json: boolean }) => {
+      await runSkillsList({
+        projectRoot: resolveTargetDirectory(opts),
+        json: Boolean(opts.json)
       })
     })
 

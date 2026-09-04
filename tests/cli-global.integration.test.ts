@@ -82,5 +82,13 @@ describe('CLI --global / -g flag integration', () => {
     })
     const mcpParsed = JSON.parse(mcpStdout) as { servers: Array<{ name: string }> }
     expect(mcpParsed.servers.map((s) => s.name)).toContain('filesystem')
+
+    // 5. Run skills list -g --json
+    const { stdout: skillsStdout } = await execFileAsync('npx', ['tsx', cliPath, 'skills', 'list', '-g', '--json'], {
+      cwd: randomWorkdir,
+      env
+    })
+    const skillsParsed = JSON.parse(skillsStdout) as { skills: Array<{ name: string }> }
+    expect(skillsParsed.skills.length).toBeGreaterThan(0)
   })
 })
