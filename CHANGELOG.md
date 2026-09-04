@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- No changes yet.
+
+## [0.8.11] - 2026-09-04
+
 ### Added
 
 - Support for global installation: all CLI commands accept `--global` / `-g` (or running from `$HOME`), syncing MCP servers and skills machine-wide.
