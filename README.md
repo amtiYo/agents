@@ -161,7 +161,7 @@ Add a server once in `.agents/agents.json`, then run `agents sync` to materializ
     <td align="center">✅</td>
     <td align="center">✅</td>
     <td align="center">✅</td>
-    <td>Writes project <code>opencode.json</code> (<code>mcp</code> block)</td>
+    <td>Writes project <code>opencode.json</code> (or global <code>~/.config/opencode/opencode.json</code>)</td>
   </tr>
   <tr>
     <td><strong>Junie</strong></td>
@@ -263,6 +263,22 @@ your-project/
 | `agents disconnect --llm codex` | Disable integrations |
 | `agents reset` | Remove generated files, keep `.agents/` |
 | `agents reset --hard` | Full cleanup — removes all agents-managed setup |
+
+### Global Usage (`--global` / `-g`)
+
+Run any command with `--global` (or `-g`, or from `$HOME`) to manage MCP servers and skills across your entire system:
+
+```bash
+agents init -g
+agents connect -g --llm opencode,codex,cursor
+agents sync -g
+```
+
+In global mode:
+- Machine-wide source of truth lives in `~/.agents/agents.json`.
+- OpenCode configuration is materialized at `~/.config/opencode/opencode.json` (or `$XDG_CONFIG_HOME/opencode/opencode.json`).
+- All tools (Codex, Cursor, Gemini, Copilot, Antigravity, Claude) sync to their standard user-level configuration directories.
+- CLI `--path` arguments automatically expand `~` and `~/...`.
 
 ---
 

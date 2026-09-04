@@ -11,7 +11,7 @@ import { commandExists } from '../core/shell.js'
 import { syncProjectDocsSections } from '../core/projectDocs.js'
 import type { AgentsConfig, IntegrationName, SyncMode } from '../types.js'
 import { INTEGRATIONS } from '../integrations/registry.js'
-import { getProjectPaths } from '../core/paths.js'
+import { getProjectPaths, toHomeRelativePath } from '../core/paths.js'
 import { runReset } from './reset.js'
 import { ensureCodexProjectTrusted, getCodexTrustState } from '../core/trust.js'
 import { formatWarnings, normalizeWarnings } from '../core/warnings.js'
@@ -244,6 +244,7 @@ async function resolveIntegrationAccess(args: {
   warnings: string[]
 }> {
   const { projectRoot, selectedIntegrations, interactive, autoApprove, integrationOptions: baseOptions, allowOptionPrompts } = args
+  const paths = getProjectPaths(projectRoot)
 
   const summaries: Record<string, string> = {}
   const warnings: string[] = []
@@ -336,7 +337,7 @@ async function resolveIntegrationAccess(args: {
   }
 
   if (selectedIntegrations.includes('opencode')) {
-    summaries.opencode = 'project opencode.json'
+    summaries.opencode = paths.isHome ? `global ${toHomeRelativePath(paths.opencodeConfig)}` : 'project opencode.json'
   }
 
   if (selectedIntegrations.includes('junie')) {

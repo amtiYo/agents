@@ -1,5 +1,11 @@
 import path from 'node:path'
 import { ensureDir, pathExists, readJson, writeJsonAtomic } from './fs.js'
+export {
+  getOpencodeConfigPath,
+  getOpencodeDir,
+  getOpencodeGlobalConfigDir,
+  getOpencodeGlobalConfigPath
+} from './paths.js'
 
 export interface OpencodeConfig {
   mcp?: Record<string, unknown>

@@ -5,7 +5,7 @@ import { parse, type ParseError } from 'jsonc-parser'
 import { loadAgentsConfig } from '../core/config.js'
 import { listDirNames, pathExists, readJson } from '../core/fs.js'
 import { loadResolvedRegistry } from '../core/mcp.js'
-import { getProjectPaths } from '../core/paths.js'
+import { getProjectPaths, toHomeRelativePath } from '../core/paths.js'
 import {
   getClaudeDesktopConfigPath,
   getClaudeDesktopConfigUnavailableDetail,
@@ -119,7 +119,8 @@ export async function runStatus(options: StatusOptions): Promise<void> {
     files[windsurfGlobalLabel] = await pathExists(windsurfGlobalPath)
   }
   if (enabled.has('opencode')) {
-    files['opencode.json'] = await pathExists(paths.opencodeConfig)
+    const opencodeLabel = paths.isHome ? toHomeRelativePath(paths.opencodeConfig) : 'opencode.json'
+    files[opencodeLabel] = await pathExists(paths.opencodeConfig)
   }
   if (enabled.has('junie')) {
     files['.junie/mcp/mcp.json'] = await pathExists(paths.junieMcp)
@@ -512,12 +513,4 @@ function extractCodexServerNames(entries: Array<Record<string, unknown>>): strin
     }
   }
   return [...new Set(names)].sort((a, b) => a.localeCompare(b))
-}
-
-function toHomeRelativePath(filePath: string): string {
-  const home = os.homedir()
-  const relative = path.relative(home, filePath)
-  if (relative.length === 0) return '~'
-  if (relative.startsWith('..') || path.isAbsolute(relative)) return filePath
-  return path.join('~', relative)
 }

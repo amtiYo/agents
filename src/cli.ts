@@ -18,10 +18,21 @@ import { runWatch } from './commands/watch.js'
 import { CancelledError } from './core/errors.js'
 import { maybeNotifyAboutUpdate } from './core/updateCheck.js'
 import { CLI_VERSION } from './core/version.js'
+import { getHomeDir } from './core/paths.js'
 import * as ui from './core/ui.js'
 
+function resolveTargetDirectory(opts: { path?: string; global?: boolean }): string {
+  if (opts.global) return getHomeDir()
+  return resolvePath(opts.path)
+}
+
 function resolvePath(input: string | undefined): string {
-  return path.resolve(input ?? process.cwd())
+  if (!input) return process.cwd()
+  if (input === '~') return getHomeDir()
+  if (input.startsWith('~/') || input.startsWith('~\\')) {
+    return path.join(getHomeDir(), input.slice(2))
+  }
+  return path.resolve(input)
 }
 
 async function main(): Promise<void> {
@@ -34,14 +45,14 @@ async function main(): Promise<void> {
     .option('--no-update-check', 'Disable update availability checks')
 
   program.hook('preAction', async (_thisCommand, actionCommand) => {
-    const opts = actionCommand.optsWithGlobals() as { updateCheck?: boolean; path?: string }
+    const opts = actionCommand.optsWithGlobals() as { updateCheck?: boolean; path?: string; global?: boolean }
     if (opts.updateCheck === false) return
     if (process.argv.includes('--no-update-check')) return
     if (process.env.AGENTS_NO_UPDATE_CHECK === '1') return
     if (process.argv.includes('--json') || process.argv.includes('--quiet')) return
     if (actionCommand.name() === 'update') return
 
-    const projectRoot = resolvePath(typeof opts.path === 'string' ? opts.path : process.cwd())
+    const projectRoot = resolveTargetDirectory(opts)
     void maybeNotifyAboutUpdate({
       currentVersion: CLI_VERSION,
       projectRoot
@@ -52,13 +63,14 @@ async function main(): Promise<void> {
     .command('start')
     .description('Guided setup wizard: init + integrations + MCP + skills + sync')
     .option('--path <dir>', 'Target project directory', process.cwd())
+    .option('-g, --global', 'Target global user home directory (~/.agents)', false)
     .option('--non-interactive', 'Disable interactive wizard and use defaults', false)
     .option('--yes', 'Auto-confirm defaults (non-interactive)', false)
     .option('--reinit', 'Reinitialize existing .agents/agents.json with wizard/default values', false)
     .option('--inject-docs', 'Insert agents usage section into README/CONTRIBUTING when starting', false)
-    .action(async (opts: { path: string; nonInteractive: boolean; yes: boolean; reinit: boolean; injectDocs: boolean }) => {
+    .action(async (opts: { path: string; global: boolean; nonInteractive: boolean; yes: boolean; reinit: boolean; injectDocs: boolean }) => {
       await runStart({
-        projectRoot: resolvePath(opts.path),
+        projectRoot: resolveTargetDirectory(opts),
         nonInteractive: Boolean(opts.nonInteractive),
         yes: Boolean(opts.yes),
         reinit: Boolean(opts.reinit),
@@ -70,10 +82,11 @@ async function main(): Promise<void> {
     .command('init')
     .description('Initialize .agents scaffold (without full guided setup)')
     .option('--path <dir>', 'Target project directory', process.cwd())
+    .option('-g, --global', 'Target global user home directory (~/.agents)', false)
     .option('--force', 'Overwrite scaffold files when possible', false)
-    .action(async (opts: { path: string; force: boolean }) => {
+    .action(async (opts: { path: string; global: boolean; force: boolean }) => {
       await runInit({
-        projectRoot: resolvePath(opts.path),
+        projectRoot: resolveTargetDirectory(opts),
         force: Boolean(opts.force)
       })
     })
@@ -82,12 +95,13 @@ async function main(): Promise<void> {
     .command('connect')
     .description('Enable LLM integrations and sync')
     .option('--path <dir>', 'Target project directory', process.cwd())
+    .option('-g, --global', 'Target global user home directory (~/.agents)', false)
     .option('--llm <list>', 'Comma-separated list: codex,claude,claude_desktop,gemini,copilot_vscode,copilot_cli,cursor,antigravity,windsurf,opencode,junie')
     .option('--interactive', 'Open interactive selector')
     .option('--verbose', 'Print detailed sync output', false)
-    .action(async (opts: { path: string; llm?: string; interactive?: boolean; verbose: boolean }) => {
+    .action(async (opts: { path: string; global: boolean; llm?: string; interactive?: boolean; verbose: boolean }) => {
       await runConnect({
-        projectRoot: resolvePath(opts.path),
+        projectRoot: resolveTargetDirectory(opts),
         llm: opts.llm,
         interactive: opts.interactive ?? !opts.llm,
         verbose: Boolean(opts.verbose)
@@ -98,12 +112,13 @@ async function main(): Promise<void> {
     .command('disconnect')
     .description('Disable LLM integrations and sync')
     .option('--path <dir>', 'Target project directory', process.cwd())
+    .option('-g, --global', 'Target global user home directory (~/.agents)', false)
     .option('--llm <list>', 'Comma-separated list: codex,claude,claude_desktop,gemini,copilot_vscode,copilot_cli,cursor,antigravity,windsurf,opencode,junie')
     .option('--interactive', 'Open interactive selector')
     .option('--verbose', 'Print detailed sync output', false)
-    .action(async (opts: { path: string; llm?: string; interactive?: boolean; verbose: boolean }) => {
+    .action(async (opts: { path: string; global: boolean; llm?: string; interactive?: boolean; verbose: boolean }) => {
       await runDisconnect({
-        projectRoot: resolvePath(opts.path),
+        projectRoot: resolveTargetDirectory(opts),
         llm: opts.llm,
         interactive: opts.interactive ?? !opts.llm,
         verbose: Boolean(opts.verbose)
@@ -114,11 +129,12 @@ async function main(): Promise<void> {
     .command('sync')
     .description('Generate and materialize configs from .agents source-of-truth')
     .option('--path <dir>', 'Target project directory', process.cwd())
+    .option('-g, --global', 'Target global user home directory (~/.agents)', false)
     .option('--check', 'Check for pending changes without writing files', false)
     .option('--verbose', 'Print detailed sync output', false)
-    .action(async (opts: { path: string; check: boolean; verbose: boolean }) => {
+    .action(async (opts: { path: string; global: boolean; check: boolean; verbose: boolean }) => {
       await runSync({
-        projectRoot: resolvePath(opts.path),
+        projectRoot: resolveTargetDirectory(opts),
         check: Boolean(opts.check),
         verbose: Boolean(opts.verbose)
       })
@@ -128,12 +144,13 @@ async function main(): Promise<void> {
     .command('watch')
     .description('Watch .agents source files and auto-run sync on changes')
     .option('--path <dir>', 'Target project directory', process.cwd())
+    .option('-g, --global', 'Target global user home directory (~/.agents)', false)
     .option('--interval <ms>', 'Polling interval in milliseconds', '1200')
     .option('--once', 'Run one sync pass and exit', false)
     .option('--quiet', 'Reduce periodic output', false)
-    .action(async (opts: { path: string; interval: string; once: boolean; quiet: boolean }) => {
+    .action(async (opts: { path: string; global: boolean; interval: string; once: boolean; quiet: boolean }) => {
       await runWatch({
-        projectRoot: resolvePath(opts.path),
+        projectRoot: resolveTargetDirectory(opts),
         intervalMs: Number.parseInt(opts.interval, 10),
         once: Boolean(opts.once),
         quiet: Boolean(opts.quiet)
@@ -144,12 +161,13 @@ async function main(): Promise<void> {
     .command('status')
     .description('Show enabled integrations, MCP servers, files and probes')
     .option('--path <dir>', 'Target project directory', process.cwd())
+    .option('-g, --global', 'Target global user home directory (~/.agents)', false)
     .option('--json', 'Output machine-readable JSON', false)
     .option('--verbose', 'Show full files/probes breakdown', false)
     .option('--fast', 'Skip external CLI probes for quicker output', false)
-    .action(async (opts: { path: string; json: boolean; verbose: boolean; fast: boolean }) => {
+    .action(async (opts: { path: string; global: boolean; json: boolean; verbose: boolean; fast: boolean }) => {
       await runStatus({
-        projectRoot: resolvePath(opts.path),
+        projectRoot: resolveTargetDirectory(opts),
         json: Boolean(opts.json),
         verbose: Boolean(opts.verbose),
         fast: Boolean(opts.fast)
@@ -160,11 +178,12 @@ async function main(): Promise<void> {
     .command('doctor')
     .description('Validate setup and detect configuration problems')
     .option('--path <dir>', 'Target project directory', process.cwd())
+    .option('-g, --global', 'Target global user home directory (~/.agents)', false)
     .option('--fix', 'Apply safe automatic fixes', false)
     .option('--fix-dry-run', 'Preview what --fix would change without applying it', false)
-    .action(async (opts: { path: string; fix: boolean; fixDryRun: boolean }) => {
+    .action(async (opts: { path: string; global: boolean; fix: boolean; fixDryRun: boolean }) => {
       await runDoctor({
-        projectRoot: resolvePath(opts.path),
+        projectRoot: resolveTargetDirectory(opts),
         fix: Boolean(opts.fix),
         fixDryRun: Boolean(opts.fixDryRun)
       })
@@ -174,11 +193,12 @@ async function main(): Promise<void> {
     .command('update')
     .description('Check for a newer CLI version')
     .option('--path <dir>', 'Project directory used for local update-check cache', process.cwd())
+    .option('-g, --global', 'Target global user home directory (~/.agents)', false)
     .option('--json', 'Output machine-readable JSON', false)
     .option('--check', 'Set exit code only (0 up-to-date, 10 outdated, 1 check failure)', false)
-    .action(async (opts: { path: string; json: boolean; check: boolean }) => {
+    .action(async (opts: { path: string; global: boolean; json: boolean; check: boolean }) => {
       await runUpdate({
-        projectRoot: resolvePath(opts.path),
+        projectRoot: resolveTargetDirectory(opts),
         json: Boolean(opts.json),
         check: Boolean(opts.check)
       })
@@ -188,11 +208,12 @@ async function main(): Promise<void> {
     .command('reset')
     .description('Clean generated/materialized files safely')
     .option('--path <dir>', 'Target project directory', process.cwd())
+    .option('-g, --global', 'Target global user home directory (~/.agents)', false)
     .option('--local-only', 'Clean only materialized integration files', false)
     .option('--hard', 'Remove all agents-managed setup (including .agents, root AGENTS.md, and managed CLAUDE.md)', false)
-    .action(async (opts: { path: string; localOnly: boolean; hard: boolean }) => {
+    .action(async (opts: { path: string; global: boolean; localOnly: boolean; hard: boolean }) => {
       await runReset({
-        projectRoot: resolvePath(opts.path),
+        projectRoot: resolveTargetDirectory(opts),
         localOnly: Boolean(opts.localOnly),
         hard: Boolean(opts.hard)
       })
@@ -204,10 +225,11 @@ async function main(): Promise<void> {
     .command('list')
     .description('List project MCP servers')
     .option('--path <dir>', 'Target project directory', process.cwd())
+    .option('-g, --global', 'Target global user home directory (~/.agents)', false)
     .option('--json', 'Output machine-readable JSON', false)
-    .action(async (opts: { path: string; json: boolean }) => {
+    .action(async (opts: { path: string; global: boolean; json: boolean }) => {
       await runMcpList({
-        projectRoot: resolvePath(opts.path),
+        projectRoot: resolveTargetDirectory(opts),
         json: Boolean(opts.json)
       })
     })
@@ -216,6 +238,7 @@ async function main(): Promise<void> {
     .command('add [name]')
     .description('Add a project MCP server (or auto-import when [name] is a URL)')
     .option('--path <dir>', 'Target project directory', process.cwd())
+    .option('-g, --global', 'Target global user home directory (~/.agents)', false)
     .option('--transport <type>', 'stdio|http|sse')
     .option('--command <cmd>', 'Command for stdio transport')
     .option('--arg <value>', 'Argument for stdio transport (repeatable)', collectOption, [])
@@ -234,6 +257,7 @@ async function main(): Promise<void> {
     .action(
       async (name: string | undefined, opts: {
         path: string
+        global: boolean
         transport?: string
         command?: string
         arg: string[]
@@ -251,7 +275,7 @@ async function main(): Promise<void> {
         nonInteractive: boolean
       }) => {
         await runMcpAdd({
-          projectRoot: resolvePath(opts.path),
+          projectRoot: resolveTargetDirectory(opts),
           name,
           transport: opts.transport,
           command: opts.command,
@@ -276,6 +300,7 @@ async function main(): Promise<void> {
     .command('import')
     .description('Import MCP server definitions from JSON/JSONC or URL')
     .option('--path <dir>', 'Target project directory', process.cwd())
+    .option('-g, --global', 'Target global user home directory (~/.agents)', false)
     .option('--file <path>', 'Load JSON/JSONC payload from file')
     .option('--json <text>', 'Inline JSON/JSONC payload')
     .option('--url <url>', 'Load MCP payload from URL (extract JSON snippet)')
@@ -287,6 +312,7 @@ async function main(): Promise<void> {
     .action(
       async (opts: {
         path: string
+        global: boolean
         file?: string
         json?: string
         url?: string
@@ -297,7 +323,7 @@ async function main(): Promise<void> {
         nonInteractive: boolean
       }) => {
         await runMcpImport({
-          projectRoot: resolvePath(opts.path),
+          projectRoot: resolveTargetDirectory(opts),
           file: opts.file,
           json: opts.json,
           url: opts.url,
@@ -314,11 +340,12 @@ async function main(): Promise<void> {
     .command('remove <name>')
     .description('Remove a project MCP server')
     .option('--path <dir>', 'Target project directory', process.cwd())
+    .option('-g, --global', 'Target global user home directory (~/.agents)', false)
     .option('--ignore-missing', 'Do not fail if server does not exist', false)
     .option('--no-sync', 'Skip automatic sync after update')
-    .action(async (name: string, opts: { path: string; ignoreMissing: boolean; sync: boolean }) => {
+    .action(async (name: string, opts: { path: string; global: boolean; ignoreMissing: boolean; sync: boolean }) => {
       await runMcpRemove({
-        projectRoot: resolvePath(opts.path),
+        projectRoot: resolveTargetDirectory(opts),
         name,
         ignoreMissing: Boolean(opts.ignoreMissing),
         noSync: opts.sync === false
@@ -329,12 +356,13 @@ async function main(): Promise<void> {
     .command('test [name]')
     .description('Validate MCP server definitions')
     .option('--path <dir>', 'Target project directory', process.cwd())
+    .option('-g, --global', 'Target global user home directory (~/.agents)', false)
     .option('--json', 'Output machine-readable JSON', false)
     .option('--runtime', 'Run runtime health checks via integration CLIs (best-effort)', false)
     .option('--runtime-timeout-ms <ms>', 'Timeout for each runtime CLI probe', '8000')
-    .action(async (name: string | undefined, opts: { path: string; json: boolean; runtime: boolean; runtimeTimeoutMs: string }) => {
+    .action(async (name: string | undefined, opts: { path: string; global: boolean; json: boolean; runtime: boolean; runtimeTimeoutMs: string }) => {
       await runMcpTest({
-        projectRoot: resolvePath(opts.path),
+        projectRoot: resolveTargetDirectory(opts),
         name,
         json: Boolean(opts.json),
         runtime: Boolean(opts.runtime),
@@ -346,12 +374,13 @@ async function main(): Promise<void> {
     .command('doctor [name]')
     .description('Alias for "agents mcp test"')
     .option('--path <dir>', 'Target project directory', process.cwd())
+    .option('-g, --global', 'Target global user home directory (~/.agents)', false)
     .option('--json', 'Output machine-readable JSON', false)
     .option('--runtime', 'Run runtime health checks via integration CLIs (best-effort)', false)
     .option('--runtime-timeout-ms <ms>', 'Timeout for each runtime CLI probe', '8000')
-    .action(async (name: string | undefined, opts: { path: string; json: boolean; runtime: boolean; runtimeTimeoutMs: string }) => {
+    .action(async (name: string | undefined, opts: { path: string; global: boolean; json: boolean; runtime: boolean; runtimeTimeoutMs: string }) => {
       await runMcpTest({
-        projectRoot: resolvePath(opts.path),
+        projectRoot: resolveTargetDirectory(opts),
         name,
         json: Boolean(opts.json),
         runtime: Boolean(opts.runtime),
