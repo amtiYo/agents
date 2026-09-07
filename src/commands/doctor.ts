@@ -1,3 +1,4 @@
+import path from 'node:path'
 import TOML from '@iarna/toml'
 import { loadAgentsConfig } from '../core/config.js'
 import { getClaudeInstructionsHealth } from '../core/claudeInstructions.js'
@@ -7,7 +8,7 @@ import {
 } from '../core/claudeDesktop.js'
 import { pathExists, readJson, readTextOrEmpty } from '../core/fs.js'
 import { loadResolvedRegistry } from '../core/mcp.js'
-import { getProjectPaths } from '../core/paths.js'
+import { getProjectPaths, toHomeRelativePath } from '../core/paths.js'
 import type { ProjectPaths } from '../core/paths.js'
 import { getWindsurfGlobalMcpPath } from '../core/windsurf.js'
 import { commandExists, runCommand } from '../core/shell.js'
@@ -216,7 +217,9 @@ export async function runDoctor(options: DoctorOptions): Promise<void> {
         ...(enabled.has('gemini') ? ['.gemini/skills'] : []),
         ...(enabled.has('junie') ? ['.junie/mcp/mcp.json', '.junie/skills'] : []),
         ...(enabled.has('antigravity') ? ['.agents/mcp_config.json'] : []),
-        ...(enabled.has('opencode') ? ['opencode.json'] : [])
+        ...(enabled.has('opencode') && !path.relative(options.projectRoot, paths.opencodeConfig).startsWith('..') && !path.isAbsolute(path.relative(options.projectRoot, paths.opencodeConfig))
+          ? [path.relative(options.projectRoot, paths.opencodeConfig)]
+          : [])
       ]
     : []
   trackedChecks.push('.agents/generated', '.agents/local.json')
@@ -324,9 +327,17 @@ export async function runDoctor(options: DoctorOptions): Promise<void> {
   }
 
   if (enabled.has('opencode') && !(await pathExists(paths.opencodeConfig)) && !applyFixes) {
+    const opencodeLabel = paths.isHome ? toHomeRelativePath(paths.opencodeConfig) : 'opencode.json'
     issues.push({
       level: 'warning',
-      message: 'OpenCode config missing: opencode.json (run agents sync).'
+      message: `OpenCode config missing: ${opencodeLabel} (run agents sync).`
+    })
+  }
+
+  if (paths.isHome && (await pathExists(path.join(paths.root, 'opencode.json')))) {
+    issues.push({
+      level: 'warning',
+      message: 'Found opencode.json in home directory (~/opencode.json). In global mode, OpenCode uses ~/.config/opencode/opencode.json.'
     })
   }
 
@@ -646,7 +657,8 @@ async function validateManagedConfigSyntax(
     )
   }
   if (enabledIntegrations.includes('opencode')) {
-    await validateJsonIfExists(paths.opencodeConfig, 'opencode.json', issues)
+    const opencodeLabel = paths.isHome ? toHomeRelativePath(paths.opencodeConfig) : 'opencode.json'
+    await validateJsonIfExists(paths.opencodeConfig, opencodeLabel, issues)
   }
   if (enabledIntegrations.includes('junie')) {
     await validateJsonIfExists(paths.junieMcp, '.junie/mcp/mcp.json', issues)

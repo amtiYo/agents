@@ -5,7 +5,7 @@ import { parse, type ParseError } from 'jsonc-parser'
 import { loadAgentsConfig } from '../core/config.js'
 import { listDirNames, pathExists, readJson } from '../core/fs.js'
 import { loadResolvedRegistry } from '../core/mcp.js'
-import { getProjectPaths } from '../core/paths.js'
+import { getProjectPaths, toHomeRelativePath } from '../core/paths.js'
 import {
   getClaudeDesktopConfigPath,
   getClaudeDesktopConfigUnavailableDetail,
@@ -83,6 +83,7 @@ export async function runStatus(options: StatusOptions): Promise<void> {
   const expectedWindsurfServers = resolved.serversByTarget.windsurf.map((server) => server.name)
   const expectedOpencodeServers = resolved.serversByTarget.opencode.map((server) => server.name)
   const expectedJunieServers = resolved.serversByTarget.junie.map((server) => server.name)
+  const opencodeConfigLabel = paths.isHome ? toHomeRelativePath(paths.opencodeConfig) : 'opencode.json'
 
   const files: Record<string, boolean> = {
     '.agents/agents.json': await pathExists(paths.agentsConfig),
@@ -119,7 +120,7 @@ export async function runStatus(options: StatusOptions): Promise<void> {
     files[windsurfGlobalLabel] = await pathExists(windsurfGlobalPath)
   }
   if (enabled.has('opencode')) {
-    files['opencode.json'] = await pathExists(paths.opencodeConfig)
+    files[opencodeConfigLabel] = await pathExists(paths.opencodeConfig)
   }
   if (enabled.has('junie')) {
     files['.junie/mcp/mcp.json'] = await pathExists(paths.junieMcp)
@@ -170,7 +171,7 @@ export async function runStatus(options: StatusOptions): Promise<void> {
       probes.windsurf = await probeWindsurf(windsurfGlobalPath, windsurfGlobalLabel, expectedWindsurfServers)
     }
     if (enabled.has('opencode')) {
-      probes.opencode = await probeOpencode(paths.opencodeConfig, expectedOpencodeServers)
+      probes.opencode = await probeOpencode(paths.opencodeConfig, expectedOpencodeServers, opencodeConfigLabel)
     }
     if (enabled.has('junie')) {
       probes.junie = await probeMcpServersFile(paths.junieMcp, '.junie/mcp/mcp.json', 'mcpServers', expectedJunieServers)
@@ -437,8 +438,9 @@ async function probeClaudeDesktop(
   }
 }
 
-async function probeOpencode(configPath: string, expectedServerNames: string[]): Promise<string> {
-  if (!(await pathExists(configPath))) return 'missing opencode.json'
+/** Probe the OpenCode configuration and verify expected MCP servers. */
+async function probeOpencode(configPath: string, expectedServerNames: string[], label = 'opencode.json'): Promise<string> {
+  if (!(await pathExists(configPath))) return `missing ${label}`
   try {
     const parsed = await readJson<{ mcp?: Record<string, unknown> }>(configPath)
     const names = Object.keys(parsed.mcp ?? {})
@@ -448,7 +450,7 @@ async function probeOpencode(configPath: string, expectedServerNames: string[]):
     }
     return `${names.length} server(s) configured`
   } catch {
-    return 'invalid opencode.json'
+    return `invalid ${label}`
   }
 }
 
@@ -512,12 +514,4 @@ function extractCodexServerNames(entries: Array<Record<string, unknown>>): strin
     }
   }
   return [...new Set(names)].sort((a, b) => a.localeCompare(b))
-}
-
-function toHomeRelativePath(filePath: string): string {
-  const home = os.homedir()
-  const relative = path.relative(home, filePath)
-  if (relative.length === 0) return '~'
-  if (relative.startsWith('..') || path.isAbsolute(relative)) return filePath
-  return path.join('~', relative)
 }

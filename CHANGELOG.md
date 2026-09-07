@@ -9,6 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - No changes yet.
 
+## [0.8.11] - 2026-09-04
+
+### Added
+
+- Support for global installation: all CLI commands accept `--global` / `-g` (or running from `$HOME`), syncing MCP servers and skills machine-wide.
+- OpenCode global configuration support: when run in global mode, OpenCode config is materialized at `~/.config/opencode/opencode.json` (or `$XDG_CONFIG_HOME/opencode/opencode.json`), preserving non-MCP settings and automatically migrating legacy `~/opencode.json`.
+- New CLI command: `agents skills list` (alias `agents skills ls`) to inspect and list discovered skills, paths, and descriptions.
+- Automatic tilde expansion (`~` and `~/...`) for CLI `--path` arguments.
+
+### Changed
+
+- `agents doctor` now detects misplaced legacy `~/opencode.json` files and validates global OpenCode configuration paths when run in home directory mode.
+- `agents status` labels the OpenCode configuration as `~/.config/opencode/opencode.json` when running in global mode.
+
+### Fixed
+
+- Updated `@humanfs/node` to `0.16.8` to fix path traversal security vulnerability during recursive copies (Dependabot alert #13 / GHSA-p498-v437-472g).
+
 ## [0.8.10] - 2026-08-09
 
 ### Fixed

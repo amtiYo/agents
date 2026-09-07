@@ -287,17 +287,30 @@ export const INTEGRATION_SYNC_HOOKS: IntegrationSyncHook[] = [
       }
 
       let existing: Record<string, unknown> = {}
-      if (await pathExists(targetPath)) {
+      let sourcePath = targetPath
+      let migratedFromLegacy = false
+      if (!(await pathExists(targetPath)) && context.paths.isHome) {
+        const legacyPath = path.join(context.projectRoot, 'opencode.json')
+        if (await pathExists(legacyPath)) {
+          sourcePath = legacyPath
+          migratedFromLegacy = true
+        }
+      }
+
+      if (await pathExists(sourcePath)) {
         try {
-          const parsed = await readJson<unknown>(targetPath)
+          const parsed = await readJson<unknown>(sourcePath)
           if (!isRecord(parsed)) {
-            context.warnings.push(`Existing OpenCode config at ${targetPath} is not a JSON object; skipped OpenCode sync.`)
+            context.warnings.push(`Existing OpenCode config at ${sourcePath} is not a JSON object; skipped OpenCode sync.`)
             return
           }
           existing = parsed
+          if (migratedFromLegacy) {
+            context.warnings.push('Migrated existing OpenCode settings from legacy ~/opencode.json to ~/.config/opencode/opencode.json.')
+          }
         } catch (error) {
           context.warnings.push(
-            `Failed to read existing OpenCode config at ${targetPath}; skipped OpenCode sync. ${error instanceof Error ? error.message : String(error)}`,
+            `Failed to read existing OpenCode config at ${sourcePath}; skipped OpenCode sync. ${error instanceof Error ? error.message : String(error)}`,
           )
           return
         }
