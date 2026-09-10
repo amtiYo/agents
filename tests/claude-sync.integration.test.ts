@@ -30,6 +30,8 @@ describe('claude sync idempotency', () => {
     await runInit({ projectRoot, force: true })
     const config = await loadAgentsConfig(projectRoot)
     config.integrations.enabled = ['claude']
+    // Local scope is the only mode that shells out to the claude CLI.
+    config.integrations.options.claudeScope = 'local'
     config.mcp.servers.docs = {
       transport: 'http',
       url: 'https://example.com/mcp',

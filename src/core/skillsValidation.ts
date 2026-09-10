@@ -2,6 +2,11 @@ import { readFile } from 'node:fs/promises'
 import { discoverSkills } from './skillsDiscovery.js'
 
 const SKILL_NAME_RE = /^[\p{Ll}\p{Nd}]+(?:-[\p{Ll}\p{Nd}]+)*$/u
+/** Agent Skills allows descriptions up to 1024 characters. */
+const MAX_DESCRIPTION_LENGTH = 1024
+const MAX_NAME_LENGTH = 64
+/** Optional frontmatter fields defined by the Agent Skills specification. */
+const KNOWN_OPTIONAL_FIELDS = new Set(['license', 'compatibility', 'metadata', 'allowed-tools'])
 
 export async function validateSkillsDirectory(skillsDir: string): Promise<string[]> {
   const warnings: string[] = []
@@ -37,15 +42,29 @@ export async function validateSkillsDirectory(skillsDir: string): Promise<string
       if (name !== skill.name) {
         warnings.push(`Skill directory "${skill.name}" at "${skill.relativePath}" does not match frontmatter name "${name}".`)
       }
-      if (name.length > 64 || !SKILL_NAME_RE.test(name)) {
-        warnings.push(`Skill "${skill.relativePath}" has invalid name format.`)
+      if (name.length > MAX_NAME_LENGTH || !SKILL_NAME_RE.test(name)) {
+        warnings.push(
+          `Skill "${skill.relativePath}" has an invalid name: use 1-${String(MAX_NAME_LENGTH)} lowercase letters, digits and single hyphens.`,
+        )
+      } else if (name.includes('--')) {
+        warnings.push(`Skill "${skill.relativePath}" has consecutive hyphens in its name, which the spec disallows.`)
       }
     }
 
     if (!description) {
       warnings.push(`Skill "${skill.relativePath}" is missing required frontmatter field "description".`)
-    } else if (description.length > 300) {
-      warnings.push(`Skill "${skill.relativePath}" description is longer than 300 characters.`)
+    } else if (description.length > MAX_DESCRIPTION_LENGTH) {
+      warnings.push(
+        `Skill "${skill.relativePath}" description is longer than ${String(MAX_DESCRIPTION_LENGTH)} characters.`,
+      )
+    }
+
+    for (const key of Object.keys(frontmatter)) {
+      if (key === 'name' || key === 'description') continue
+      if (KNOWN_OPTIONAL_FIELDS.has(key)) continue
+      warnings.push(
+        `Skill "${skill.relativePath}" has frontmatter field "${key}", which is not part of the Agent Skills spec.`,
+      )
     }
   }
 
@@ -60,6 +79,10 @@ function extractFrontmatter(raw: string): Record<string, string> | null {
 
   const out: Record<string, string> = {}
   for (const line of body.split('\n')) {
+    // Indented lines belong to a nested block (for example the `metadata` map),
+    // so they are not top-level frontmatter fields.
+    if (/^\s/.test(line)) continue
+    if (line.trimStart().startsWith('-')) continue
     const trimmed = line.trim()
     if (!trimmed || trimmed.startsWith('#')) continue
     const idx = trimmed.indexOf(':')

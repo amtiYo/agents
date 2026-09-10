@@ -6,6 +6,7 @@ import { loadAgentsConfig } from '../core/config.js'
 import { listDirNames, pathExists, readJson } from '../core/fs.js'
 import { loadResolvedRegistry } from '../core/mcp.js'
 import { getProjectPaths, toHomeRelativePath } from '../core/paths.js'
+import { hasNativeSkillsDiscovery } from '../integrations/registry.js'
 import {
   getClaudeDesktopConfigPath,
   getClaudeDesktopConfigUnavailableDetail,
@@ -230,6 +231,10 @@ export async function runStatus(options: StatusOptions): Promise<void> {
       )
     }
     probes.skills = await probeSkills(paths.agentsSkillsDir)
+    const nativeSkillReaders = config.integrations.enabled.filter((id) => hasNativeSkillsDiscovery(id))
+    if (nativeSkillReaders.length > 0) {
+      probes.skills_native = `${nativeSkillReaders.join(', ')} read .agents/skills directly`
+    }
     probes.vscode_hidden = await probeVscodeHidden(paths.vscodeSettings)
   }
 
@@ -274,7 +279,7 @@ export async function runStatus(options: StatusOptions): Promise<void> {
     const compactProbeOrder = [
       'codex', 'claude', 'claude_desktop', 'gemini', 'copilot_vscode', 'copilot_cli', 'cursor',
       'antigravity', 'antigravity_skills', 'windsurf', 'opencode', 'junie',
-      'grok', 'amp', 'droid', 'kilo', 'devin', 'zed', 'goose'
+      'grok', 'amp', 'droid', 'kilo', 'devin', 'zed', 'goose', 'skills_native'
     ]
     const compactProbes = compactProbeOrder
       .filter((name) => Boolean(output.probes[name]))

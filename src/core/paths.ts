@@ -76,6 +76,7 @@ export interface ProjectPaths {
   generatedGoose: string
   generatedGooseState: string
   generatedClaudeProjectMcp: string
+  generatedProjectMcpState: string
   geminiSkillsBridge: string
   claudeSkillsBridge: string
   cursorSkillsBridge: string
@@ -294,6 +295,7 @@ export function getProjectPaths(projectRoot: string): ProjectPaths {
     generatedGoose: path.join(generatedDir, 'goose.config.yaml'),
     generatedGooseState: path.join(generatedDir, 'goose.state.json'),
     generatedClaudeProjectMcp: path.join(generatedDir, 'claude.project.mcp.json'),
+    generatedProjectMcpState: path.join(generatedDir, 'project-mcp.state.json'),
     geminiSkillsBridge: path.join(root, '.gemini', 'skills'),
     claudeSkillsBridge: path.join(root, '.claude', 'skills'),
     cursorSkillsBridge: path.join(root, '.cursor', 'skills'),
