@@ -61,22 +61,43 @@ project/
 | `agents watch` | Auto-sync on changes |
 | `agents mcp add <url>` | Add MCP server |
 | `agents mcp test --runtime` | Live connectivity check |
+| `agents mcp budget` | Measure the context cost of each server |
+| `agents profile use <name>` | Switch to a named subset of servers |
+| `agents plugin export` | Package `.agents` as an Agent Plugins bundle |
 
 ## Integration Mapping
 
 | Tool | Generated Config |
 |:-----|:-----------------|
-| **Codex** | `.codex/config.toml` |
-| **Claude Code** | `claude mcp add -s local` (CLI) + root `CLAUDE.md` wrapper |
-| **Claude Desktop** | Global `claude_desktop_config.json` for local stdio MCP (preserves non-agents MCP entries) |
+| **Codex** | `.codex/config.toml`, managed block only |
+| **Claude Code** | `.mcp.json` (project scope) + root `CLAUDE.md` wrapper; `claude mcp add -s local` when `claudeScope` is `local` |
+| **Claude Desktop** | Global `claude_desktop_config.json`, local stdio MCP only, preserving other entries |
 | **Gemini** | `.gemini/settings.json` |
 | **Cursor** | `.cursor/mcp.json` + CLI enable |
 | **Copilot VS Code** | `.vscode/mcp.json` |
-| **Copilot CLI** | `.mcp.json` |
-| **Antigravity** | `.agents/mcp_config.json` for Antigravity CLI workspace MCP |
-| **Windsurf** | Global user profile `~/.codeium/windsurf/mcp_config.json` (preserves unmanaged entries) |
-| **OpenCode** | `opencode.json` (`mcp` block) |
+| **Copilot CLI** | `.mcp.json`, or `.github/mcp.json` when `copilotCliPath` says so |
+| **Antigravity** | `.agents/mcp_config.json` workspace MCP |
+| **Devin Desktop (Windsurf)** | Global `~/.codeium/windsurf/mcp_config.json`, preserving unmanaged entries |
+| **OpenCode** | `opencode.json` (`mcp`) |
 | **Junie** | `.junie/mcp/mcp.json` |
+| **Grok Build** | `.grok/config.toml`, managed block only |
+| **Amp** | `.amp/settings.json` (`amp.mcpServers`) |
+| **Factory Droid** | `.factory/mcp.json` (`mcpServers`) |
+| **Kilo** | `.kilo/kilo.jsonc` (`mcp`), comments preserved |
+| **Devin CLI** | `.devin/mcp_config.json` (`mcpServers`) |
+| **Zed** | `.zed/settings.json` (`context_servers`), comments preserved |
+| **Goose** | `~/.config/goose/config.yaml` (`extensions`), secrets as `env_keys` |
+
+### Files shared with the tool's own settings
+
+Amp, Zed, Kilo, Gemini, OpenCode, Droid, Devin and Goose keep settings this CLI knows
+nothing about in the same file. For those, sync owns only the entries it wrote: the
+names are recorded in `.agents/generated/<tool>.state.json`, so a later run removes
+exactly those and leaves everything else, including entries added by hand.
+
+`.mcp.json` is a second kind of sharing: two different tools read the same file.
+Claude Code (project scope) and Copilot CLI both do, so it is written once for both,
+and `agents sync` reports that per-tool `targets` cannot isolate servers inside it.
 
 ## Claude Instructions
 
@@ -162,12 +183,53 @@ project/
 ## Sync Process
 
 ```
-1. Read .agents/agents.json
-2. Merge with .agents/local.json
-3. Generate tool-specific configs
-4. Write atomically (temp + rename)
-5. Acquire lock (prevent race conditions)
+1. Acquire the sync lock
+2. Read .agents/agents.json, migrating the schema if needed
+3. Merge with .agents/local.json
+4. Apply the active profile, if one is set
+5. Resolve ${PROJECT_ROOT}, ${VAR} and ${VAR:-default}
+6. Render each enabled tool's format
+7. Write atomically (temp + rename), merging into shared files
 ```
+
+Warnings come only from integrations that are enabled, so a project without Goose is
+never told how Goose handles secrets.
+
+## Profiles
+
+A profile names a subset of servers:
+
+```json
+{
+  "profiles": {
+    "ci": { "description": "Minimal set for pipelines", "servers": ["docs", "git"] }
+  },
+  "activeProfile": "ci"
+}
+```
+
+`agents sync` uses `activeProfile`; `agents sync --profile ci` applies one for a single
+run. A `--profile` naming something that does not exist is an error, because silently
+syncing every server is the opposite of what was asked for.
+
+## Context Budget
+
+`agents mcp budget` speaks MCP directly: JSON-RPC `initialize` then `tools/list`, over
+stdio or streamable HTTP. It reports tool counts and an estimate of the context each
+server occupies, derived from the size of the tool definitions.
+
+Servers whose configuration still contains an unresolved `${VAR}` are skipped rather
+than started, and every probe has a timeout.
+
+## Agent Plugins
+
+`agents plugin export` writes an [Agent Plugins 1.0.0](https://agent-plugins.org/specification)
+package: `plugin.json`, `mcp.json` and `skills/`. It reads `.agents/agents.json` only,
+never `local.json`, so a package carries `${VAR}` placeholders instead of secrets.
+`${PROJECT_ROOT}` becomes the specification's `${PLUGIN_ROOT}`.
+
+`agents plugin import` goes the other way, prefixing imported server names with the
+plugin name so nothing already defined is replaced.
 
 ## MCP Server Format
 
@@ -213,6 +275,7 @@ project/
 - ❌ `.agents/mcp_config.json`
 - ❌ `.codex/`, `.claude/`, `.cursor/`, `.gemini/`
 - ❌ `.windsurf/`, `.opencode/`, `.junie/`, `.mcp.json`, `opencode.json`
+- ❌ `.grok/config.toml`, `.amp/settings.json`, `.factory/mcp.json`, `.kilo/kilo.jsonc`, `.devin/mcp_config.json`, `.zed/settings.json`, `.github/mcp.json`
 - ❌ legacy `.antigravity/` (if present from older versions)
 
 ---

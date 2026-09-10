@@ -4,14 +4,14 @@ Instructions for AI coding agents working on the `@agents-dev/cli` project.
 
 ## Project Overview
 
-**@agents-dev/cli** is a CLI tool that provides a practical standard layer for multi-LLM development. It solves the configuration fragmentation problem by syncing MCP servers, skills, and instructions across multiple AI coding tools (Codex, Claude Code, Gemini CLI, Cursor, Copilot, Antigravity) from a single source of truth.
+**@agents-dev/cli** is a CLI tool that provides a practical standard layer for multi-LLM development. It solves the configuration fragmentation problem by syncing MCP servers, skills and instructions across 18 AI coding tools from a single source of truth, and packages the result as an Agent Plugins bundle.
 
 **Key Principle:** One `.agents/` folder syncs to all tools. Add an MCP server once, it appears everywhere.
 
 ## Tech Stack
 
 - **Language:** TypeScript (strict mode)
-- **Runtime:** Node.js 20+
+- **Runtime:** Node.js 20.12+
 - **Build:** tsc (TypeScript compiler)
 - **Tests:** Vitest
 - **CLI Framework:** Commander.js
@@ -112,26 +112,44 @@ Projects have:
 
 Each tool has a renderer that converts `.agents/agents.json` to tool-specific format:
 - **Codex:** TOML (`.codex/config.toml`)
-- **Claude:** JSON (`.claude/mcp.json`)
+- **Claude Code:** JSON (`.mcp.json`, project scope, shared with Copilot CLI)
 - **Gemini:** JSON (`.gemini/settings.json`)
 - **Cursor:** JSON (`.cursor/mcp.json`)
-- **Copilot:** JSON (`.vscode/mcp.json`)
-- **Antigravity:** JSON (`.antigravity/mcp.json`)
+- **Copilot VS Code:** JSON (`.vscode/mcp.json`)
+- **Antigravity:** JSON (`.agents/mcp_config.json`)
+- **Grok Build:** TOML (`.grok/config.toml`), same dialect as Codex with a `headers` table
+- **Amp:** JSON (`.amp/settings.json`, key `amp.mcpServers`)
+- **Droid / Devin:** JSON (`.factory/mcp.json`, `.devin/mcp_config.json`)
+- **Kilo:** JSONC (`.kilo/kilo.jsonc`, key `mcp`)
+- **Zed:** JSONC (`.zed/settings.json`, key `context_servers`)
+- **Goose:** YAML (`~/.config/goose/config.yaml`, key `extensions`)
+
+Two renderers are shared: Codex and Grok use `renderMcpToml` with different options,
+OpenCode and Kilo use the same local/remote shape.
 
 ### 4. MCP Server Management (`core/mcp.ts`)
 
 MCP servers have:
-- **Transport:** `stdio` (command-based) or `http`/`sse` (URL-based)
-- **Config:** command, args, env, headers
-- **Secrets:** Stored in `.agents/local.json`
+- **Transport:** `stdio` (command-based) or `http`/`sse` (URL-based). `sse` is deprecated
+  by the MCP 2026-07-28 specification and flagged by `agents doctor`.
+- **Config:** command, args, env, headers, cwd, plus the optional `timeout`,
+  `connectTimeout`, `tools`, `disabledTools`, `oauth`, `headersHelper`,
+  `bearerTokenEnvVar` and `envFile`, each rendered only where the tool supports it
+- **Secrets:** Stored in `.agents/local.json`, never exported into a plugin
 - **Validation:** Keys must be shell-safe (env) or HTTP token format (headers)
+- **Profiles:** `profiles` and `activeProfile` select a subset of servers for a sync
 
 ### 5. Trust Management (`core/trust.ts`)
 
-Codex requires explicit trust per project. We:
-- Check trust state via `codex trust list`
-- Set trust via `codex trust set --path <project>`
-- Store trust in Codex global config
+Codex ignores a project-local `.codex/config.toml` unless the project is trusted, and
+there is no `codex trust` command to do it. Trust lives in the `[projects."<path>"]`
+section of the global `~/.codex/config.toml`, which we edit in place:
+
+- Read the section with a line scan, so a syntax error elsewhere does not hide it
+- Refuse to touch a file Codex itself cannot parse; `agents doctor` reports the error
+- Refuse to append when the project is recorded in another valid TOML shape, which
+  would create a duplicate key and break the file
+- Never reserialize the whole config: it carries comments and settings we do not own
 
 ### 6. File Safety (`core/fs.ts`)
 
@@ -152,6 +170,10 @@ Critical operations use atomic writes:
 6. Update CHANGELOG.md
 
 ### Adding a New Tool Integration
+
+**Before writing code:** confirm the config path and schema in the vendor's own
+documentation, and run the tool's CLI against a generated file if it is installed.
+Integrations verified that way are marked in the README table; the rest say so.
 
 1. Create `src/integrations/your-tool.ts`
 2. Implement integration interface (id, name, paths)
@@ -426,6 +448,9 @@ git push origin feature/my-feature
 - **Sync logic:** `src/core/sync.ts`
 - **MCP management:** `src/core/mcp.ts`, `src/core/mcpCrud.ts`
 - **Renderers:** `src/core/renderers.ts`
+- **Project MCP (.mcp.json):** `src/core/projectMcp.ts`
+- **Agent Plugins:** `src/core/agentPlugin.ts`
+- **MCP client for budget:** `src/core/mcpProbe.ts`
 - **Types:** `src/types.ts`
 - **File I/O:** `src/core/fs.ts`
 - **Paths:** `src/core/paths.ts`
