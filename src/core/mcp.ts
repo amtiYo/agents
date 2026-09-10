@@ -1,6 +1,7 @@
 import type {
   IntegrationName,
   LocalOverridesFile,
+  McpProfile,
   McpServerDefinition,
   ResolvedMcpServer,
   ResolvedRegistry
@@ -29,40 +30,45 @@ export async function loadLocalOverrides(projectRoot: string): Promise<LocalOver
   }
 }
 
-export async function loadResolvedRegistry(projectRoot: string): Promise<ResolvedRegistry> {
+export async function loadResolvedRegistry(
+  projectRoot: string,
+  options?: { profile?: string | null },
+): Promise<ResolvedRegistry> {
   const config = await loadAgentsConfig(projectRoot)
   const local = await loadLocalOverrides(projectRoot)
 
-  return resolveFromConfigAndLocal({
+  const profileName = options?.profile === undefined ? config.activeProfile : options.profile
+  const profile = profileName ? config.profiles?.[profileName] : undefined
+  const warnings: string[] = []
+  if (profileName && !profile) {
+    warnings.push(`Profile "${profileName}" is not defined in .agents/agents.json; using every server.`)
+  }
+
+  const resolved = resolveFromConfigAndLocal({
     projectRoot,
     servers: config.mcp.servers,
-    local
+    local,
+    profile
   })
+
+  return { ...resolved, warnings: [...warnings, ...resolved.warnings] }
 }
 
 export function resolveFromConfigAndLocal(input: {
   projectRoot: string
   servers: Record<string, McpServerDefinition>
   local: LocalOverridesFile
+  profile?: McpProfile
 }): ResolvedRegistry {
-  const { projectRoot, servers, local } = input
+  const { projectRoot, servers, local, profile } = input
+  const profileServers = profile ? new Set(profile.servers) : null
 
   const warnings: string[] = []
   const missingRequiredEnv: string[] = []
 
-  const serversByTarget: Record<IntegrationName, ResolvedMcpServer[]> = {
-    codex: [],
-    claude: [],
-    claude_desktop: [],
-    gemini: [],
-    copilot_vscode: [],
-    copilot_cli: [],
-    cursor: [],
-    antigravity: [],
-    windsurf: [],
-    opencode: [],
-    junie: []
-  }
+  const serversByTarget = Object.fromEntries(
+    ALL_INTEGRATIONS.map((id) => [id, [] as ResolvedMcpServer[]]),
+  ) as Record<IntegrationName, ResolvedMcpServer[]>
 
   const selectedServerNames: string[] = []
   const localOverrides = local?.mcpServers ?? {}
@@ -78,6 +84,7 @@ export function resolveFromConfigAndLocal(input: {
     }
 
     if (merged.enabled === false) continue
+    if (profileServers && !profileServers.has(name)) continue
 
     const missing = (merged.requiredEnv ?? []).filter((envName) => !process.env[envName])
     if (missing.length > 0) {
@@ -144,16 +151,19 @@ function resolveServer(
 ): ResolvedMcpServer {
   const resolveValue = (value: string | undefined): string | undefined => {
     if (!value) return value
-    return value.replace(/\$\{([A-Z0-9_]+)\}/g, (_full, key: string) => {
+    // ${VAR} and ${VAR:-fallback}; the fallback form never warns because it always resolves.
+    return value.replace(/\$\{([A-Z0-9_]+)(?::-([^}]*))?\}/g, (_full, key: string, fallback?: string) => {
       if (key === 'PROJECT_ROOT') return projectRoot
       const envValue = process.env[key]
-      if (envValue === undefined) {
-        warnings.push(`Environment variable "${key}" is not set (server: ${name}).`)
-        return `\${${key}}`
-      }
-      return envValue
+      if (envValue !== undefined) return envValue
+      if (fallback !== undefined) return fallback
+      warnings.push(`Environment variable "${key}" is not set (server: ${name}).`)
+      return `\${${key}}`
     })
   }
+
+  const resolveRecord = (record: Record<string, string> | undefined): Record<string, string> | undefined =>
+    record ? Object.fromEntries(Object.entries(record).map(([k, v]) => [k, resolveValue(v) ?? v])) : undefined
 
   return {
     name,
@@ -161,12 +171,24 @@ function resolveServer(
     command: resolveValue(server.command),
     args: server.args?.map((item) => resolveValue(item) ?? item),
     url: resolveValue(server.url),
-    headers: server.headers
-      ? Object.fromEntries(Object.entries(server.headers).map(([k, v]) => [k, resolveValue(v) ?? v]))
-      : undefined,
-    env: server.env
-      ? Object.fromEntries(Object.entries(server.env).map(([k, v]) => [k, resolveValue(v) ?? v]))
-      : undefined,
-    cwd: resolveValue(server.cwd)
+    headers: resolveRecord(server.headers),
+    env: resolveRecord(server.env),
+    cwd: resolveValue(server.cwd),
+    ...(typeof server.timeout === 'number' ? { timeout: server.timeout } : {}),
+    ...(typeof server.connectTimeout === 'number' ? { connectTimeout: server.connectTimeout } : {}),
+    ...(server.tools ? { tools: [...server.tools] } : {}),
+    ...(server.disabledTools ? { disabledTools: [...server.disabledTools] } : {}),
+    ...(server.oauth
+      ? {
+          oauth: {
+            ...server.oauth,
+            ...(server.oauth.clientId ? { clientId: resolveValue(server.oauth.clientId) } : {}),
+            ...(server.oauth.clientSecret ? { clientSecret: resolveValue(server.oauth.clientSecret) } : {})
+          }
+        }
+      : {}),
+    ...(server.headersHelper ? { headersHelper: resolveValue(server.headersHelper) } : {}),
+    ...(server.bearerTokenEnvVar ? { bearerTokenEnvVar: server.bearerTokenEnvVar } : {}),
+    ...(server.envFile ? { envFile: resolveValue(server.envFile) } : {})
   }
 }

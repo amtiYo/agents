@@ -66,7 +66,7 @@ describe('start + sync flow', () => {
     expect(await exists(path.join(projectRoot, '.vscode', 'settings.json'))).toBe(true)
 
     const projectConfig = JSON.parse(await readFile(path.join(projectRoot, '.agents', 'agents.json'), 'utf8'))
-    expect(projectConfig.schemaVersion).toBe(3)
+    expect(projectConfig.schemaVersion).toBe(4)
     expect(projectConfig.syncMode).toBe('source-only')
     expect(projectConfig.integrations.enabled).toContain('codex')
     expect(projectConfig.workspace.vscode.hideGenerated).toBe(true)

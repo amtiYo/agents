@@ -1,7 +1,16 @@
 import path from 'node:path'
-import { ensureDir, pathExists, readJson, writeJsonAtomic } from './fs.js'
+import { copyFile, ensureDir, pathExists, readJson, writeJsonAtomic } from './fs.js'
 import { getProjectPaths } from './paths.js'
-import type { AgentsConfig, IntegrationName, McpServerDefinition, SyncMode } from '../types.js'
+import { INTEGRATION_IDS } from '../integrations/registry.js'
+import type {
+  AgentsConfig,
+  ClaudeScope,
+  CopilotCliPath,
+  IntegrationName,
+  McpProfile,
+  McpServerDefinition,
+  SyncMode
+} from '../types.js'
 import { AGENTS_SCHEMA_VERSION } from '../types.js'
 
 export const DEFAULT_VSCODE_HIDDEN_PATHS = [
@@ -16,22 +25,17 @@ export const DEFAULT_VSCODE_HIDDEN_PATHS = [
   '**/.junie',
   '**/.mcp.json',
   '**/opencode.json',
-  '**/.agents/generated'
+  '**/.agents/generated',
+  '**/.grok',
+  '**/.amp',
+  '**/.factory',
+  '**/.kilo',
+  '**/kilo.jsonc',
+  '**/.devin',
+  '**/.zed'
 ]
 
-const DEFAULT_TARGETS: IntegrationName[] = [
-  'codex',
-  'claude',
-  'claude_desktop',
-  'gemini',
-  'copilot_vscode',
-  'copilot_cli',
-  'cursor',
-  'antigravity',
-  'windsurf',
-  'opencode',
-  'junie'
-]
+const DEFAULT_TARGETS: IntegrationName[] = [...INTEGRATION_IDS]
 
 const DEFAULT_MCP_SERVERS: Record<string, McpServerDefinition> = {
   filesystem: {
@@ -74,6 +78,8 @@ export function createDefaultAgentsConfig(args?: {
   integrationOptions?: {
     cursorAutoApprove: boolean
     antigravityGlobalSync: boolean
+    claudeScope?: ClaudeScope
+    copilotCliPath?: CopilotCliPath
   }
   syncMode?: SyncMode
   hideGenerated?: boolean
@@ -89,7 +95,9 @@ export function createDefaultAgentsConfig(args?: {
       enabled: [...(args?.enabledIntegrations ?? [])],
       options: {
         cursorAutoApprove: args?.integrationOptions?.cursorAutoApprove !== false,
-        antigravityGlobalSync: args?.integrationOptions?.antigravityGlobalSync !== false
+        antigravityGlobalSync: args?.integrationOptions?.antigravityGlobalSync !== false,
+        claudeScope: normalizeClaudeScope(args?.integrationOptions?.claudeScope),
+        copilotCliPath: normalizeCopilotCliPath(args?.integrationOptions?.copilotCliPath)
       }
     },
     syncMode: args?.syncMode ?? 'source-only',
@@ -109,18 +117,84 @@ export function createDefaultAgentsConfig(args?: {
   }
 }
 
+/** Lowest schema version this CLI can read and migrate forward. */
+export const MIN_SUPPORTED_SCHEMA_VERSION = 3
+
+function normalizeClaudeScope(value: unknown): ClaudeScope {
+  return value === 'local' ? 'local' : 'project'
+}
+
+function normalizeCopilotCliPath(value: unknown): CopilotCliPath {
+  return value === '.github/mcp.json' ? '.github/mcp.json' : '.mcp.json'
+}
+
+function normalizeProfiles(value: unknown): Record<string, McpProfile> | undefined {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined
+
+  const out: Record<string, McpProfile> = {}
+  for (const [name, raw] of Object.entries(value as Record<string, unknown>)) {
+    if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) continue
+    const entry = raw as { description?: unknown; servers?: unknown }
+    if (!Array.isArray(entry.servers)) continue
+    out[name] = {
+      ...(typeof entry.description === 'string' ? { description: entry.description } : {}),
+      servers: entry.servers.filter((item): item is string => typeof item === 'string')
+    }
+  }
+
+  return Object.keys(out).length > 0 ? out : undefined
+}
+
+/**
+ * Bring an on-disk config up to the current schema version.
+ *
+ * @returns The schema version the config was migrated from, or `null` when it was already current.
+ */
+export function migrateAgentsConfig(config: AgentsConfig): number | null {
+  const found = typeof config.schemaVersion === 'number' ? config.schemaVersion : 0
+
+  if (found === AGENTS_SCHEMA_VERSION) return null
+  if (found < MIN_SUPPORTED_SCHEMA_VERSION || found > AGENTS_SCHEMA_VERSION) {
+    throw new Error(
+      `Unsupported agents schema version ${String(config.schemaVersion)}. Expected ${String(AGENTS_SCHEMA_VERSION)}.`,
+    )
+  }
+
+  // 3 -> 4: Claude Code moved to project scope, Copilot CLI gained a second config path.
+  // Existing projects keep the behavior they were set up with, so claudeScope stays `local`.
+  if (found === 3) {
+    config.integrations = {
+      ...config.integrations,
+      options: {
+        ...config.integrations?.options,
+        claudeScope: 'local',
+        copilotCliPath: '.mcp.json'
+      }
+    }
+  }
+
+  config.schemaVersion = AGENTS_SCHEMA_VERSION
+  return found
+}
+
+export interface LoadedAgentsConfig {
+  config: AgentsConfig
+  /** Schema version the file was migrated from, or `null` when it was already current. */
+  migratedFrom: number | null
+}
+
 export async function loadAgentsConfig(projectRoot: string): Promise<AgentsConfig> {
+  return (await loadAgentsConfigDetailed(projectRoot)).config
+}
+
+export async function loadAgentsConfigDetailed(projectRoot: string): Promise<LoadedAgentsConfig> {
   const paths = getProjectPaths(projectRoot)
   if (!(await pathExists(paths.agentsConfig))) {
     throw new Error(`Missing config: ${paths.agentsConfig}. Run "agents start" first.`)
   }
 
   const config = await readJson<AgentsConfig>(paths.agentsConfig)
-  if (config.schemaVersion !== AGENTS_SCHEMA_VERSION) {
-    throw new Error(
-      `Unsupported agents schema version ${String(config.schemaVersion)}. Expected ${String(AGENTS_SCHEMA_VERSION)}.`,
-    )
-  }
+  const migratedFrom = migrateAgentsConfig(config)
 
   config.instructions = {
     path: config.instructions?.path?.trim() || 'AGENTS.md'
@@ -132,8 +206,21 @@ export async function loadAgentsConfig(projectRoot: string): Promise<AgentsConfi
       : [],
     options: {
       cursorAutoApprove: config.integrations?.options?.cursorAutoApprove !== false,
-      antigravityGlobalSync: config.integrations?.options?.antigravityGlobalSync !== false
+      antigravityGlobalSync: config.integrations?.options?.antigravityGlobalSync !== false,
+      claudeScope: normalizeClaudeScope(config.integrations?.options?.claudeScope),
+      copilotCliPath: normalizeCopilotCliPath(config.integrations?.options?.copilotCliPath)
     }
+  }
+
+  const profiles = normalizeProfiles(config.profiles)
+  if (profiles) {
+    config.profiles = profiles
+  } else {
+    delete config.profiles
+  }
+
+  if (typeof config.activeProfile !== 'string' || !profiles?.[config.activeProfile]) {
+    config.activeProfile = null
   }
 
   if (config.syncMode !== 'source-only' && config.syncMode !== 'commit-generated') {
@@ -163,11 +250,30 @@ export async function loadAgentsConfig(projectRoot: string): Promise<AgentsConfi
     config.lastSyncSourceHash = null
   }
 
-  return config
+  return { config, migratedFrom }
 }
 
 export async function saveAgentsConfig(projectRoot: string, config: AgentsConfig): Promise<void> {
   const paths = getProjectPaths(projectRoot)
   await ensureDir(path.dirname(paths.agentsConfig))
   await writeJsonAtomic(paths.agentsConfig, config)
+}
+
+/**
+ * Write a migrated config back to disk, keeping a copy of the previous file next to it.
+ *
+ * @returns Path of the backup file that was written.
+ */
+export async function persistMigratedConfig(
+  projectRoot: string,
+  config: AgentsConfig,
+  migratedFrom: number,
+): Promise<string> {
+  const paths = getProjectPaths(projectRoot)
+  const backupPath = `${paths.agentsConfig}.v${String(migratedFrom)}.bak`
+  if (await pathExists(paths.agentsConfig)) {
+    await copyFile(paths.agentsConfig, backupPath)
+  }
+  await saveAgentsConfig(projectRoot, config)
+  return backupPath
 }

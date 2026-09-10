@@ -16,6 +16,13 @@ import { runReset } from './reset.js'
 import { ensureCodexProjectTrusted, getCodexTrustState } from '../core/trust.js'
 import { formatWarnings, normalizeWarnings } from '../core/warnings.js'
 
+const DEFAULT_INTEGRATION_OPTIONS: AgentsConfig['integrations']['options'] = {
+  cursorAutoApprove: true,
+  antigravityGlobalSync: true,
+  claudeScope: 'project',
+  copilotCliPath: '.mcp.json'
+}
+
 export interface StartOptions {
   projectRoot: string
   nonInteractive: boolean
@@ -105,8 +112,8 @@ export async function runStart(options: StartOptions): Promise<void> {
     interactive,
     autoApprove: options.yes || options.nonInteractive,
     integrationOptions: preserveExistingConfig
-      ? (existingConfig?.integrations.options ?? { cursorAutoApprove: true, antigravityGlobalSync: true })
-      : { cursorAutoApprove: true, antigravityGlobalSync: true },
+      ? (existingConfig?.integrations.options ?? DEFAULT_INTEGRATION_OPTIONS)
+      : DEFAULT_INTEGRATION_OPTIONS,
     allowOptionPrompts: !preserveExistingConfig
   })
 
@@ -239,7 +246,7 @@ async function resolveIntegrationAccess(args: {
   integrationOptions: AgentsConfig['integrations']['options']
   allowOptionPrompts: boolean
 }): Promise<{
-  integrationOptions: { cursorAutoApprove: boolean; antigravityGlobalSync: boolean }
+  integrationOptions: AgentsConfig['integrations']['options']
   summaries: Record<string, string>
   warnings: string[]
 }> {
@@ -249,9 +256,11 @@ async function resolveIntegrationAccess(args: {
   const summaries: Record<string, string> = {}
   const warnings: string[] = []
 
-  const integrationOptions = {
+  const integrationOptions: AgentsConfig['integrations']['options'] = {
     cursorAutoApprove: baseOptions.cursorAutoApprove,
-    antigravityGlobalSync: baseOptions.antigravityGlobalSync
+    antigravityGlobalSync: baseOptions.antigravityGlobalSync,
+    claudeScope: baseOptions.claudeScope ?? 'project',
+    copilotCliPath: baseOptions.copilotCliPath ?? '.mcp.json'
   }
 
   if (selectedIntegrations.includes('codex')) {
