@@ -85,7 +85,7 @@ export async function runMcpAdd(options: McpAddOptions): Promise<void> {
       const selected = await promptSelect<McpTransportType>('Transport', [
         { label: 'stdio', value: 'stdio' },
         { label: 'http', value: 'http' },
-        { label: 'sse', value: 'sse' }
+        { label: 'sse (deprecated by MCP 2026-07-28, prefer http)', value: 'sse' }
       ])
       transport = selected
     }
@@ -112,6 +112,10 @@ export async function runMcpAdd(options: McpAddOptions): Promise<void> {
   }
   if ((finalTransport === 'http' || finalTransport === 'sse') && !url) {
     throw new Error('Missing --url for http/sse transport.')
+  }
+
+  if (finalTransport === 'sse') {
+    ui.warning('The sse transport is deprecated by the MCP 2026-07-28 specification. Use http (streamable HTTP) where the server offers it.')
   }
 
   const parsedTargets = parseTargetOptions(options.targets)

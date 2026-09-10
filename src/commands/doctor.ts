@@ -13,7 +13,7 @@ import type { ProjectPaths } from '../core/paths.js'
 import { getWindsurfGlobalMcpPath } from '../core/windsurf.js'
 import { commandExists, runCommand } from '../core/shell.js'
 import { performSync } from '../core/sync.js'
-import { ensureCodexProjectTrusted, getCodexTrustState } from '../core/trust.js'
+import { ensureCodexProjectTrusted, getCodexTrustState, inspectCodexGlobalConfig } from '../core/trust.js'
 import { inspectAntigravitySkillsBridge } from '../core/skills.js'
 import { validateSkillsDirectory } from '../core/skillsValidation.js'
 import { validateVscodeSettingsParse } from '../core/vscodeSettings.js'
@@ -122,6 +122,12 @@ export async function runDoctor(options: DoctorOptions): Promise<void> {
       for (const message of collectInvalidKeyIssues(entry.name, entry.server, entry.localOverride)) {
         issues.push({ level: 'error', message })
       }
+      if (entry.server.transport === 'sse') {
+        issues.push({
+          level: 'warning',
+          message: `MCP server "${entry.name}" uses the sse transport, deprecated by the MCP 2026-07-28 specification. Switch it to http when the server supports streamable HTTP.`
+        })
+      }
     }
   } catch (error) {
     issues.push({
@@ -167,6 +173,13 @@ export async function runDoctor(options: DoctorOptions): Promise<void> {
   const codexEnabled = config.integrations.enabled.includes('codex')
   let codexTrustNeedsFix = false
   if (codexEnabled) {
+    const codexGlobal = await inspectCodexGlobalConfig()
+    if (!codexGlobal.ok) {
+      issues.push({
+        level: 'error',
+        message: `Codex global config at ${codexGlobal.path} cannot be parsed (${codexGlobal.error ?? 'unknown error'}). Codex ignores every project until this is fixed.`
+      })
+    }
     const codexTrust = await getCodexTrustState(options.projectRoot)
     codexTrustNeedsFix = codexTrust !== 'trusted'
     if (codexTrustNeedsFix && !applyFixes && !previewFixes) {

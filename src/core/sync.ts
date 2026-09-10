@@ -27,6 +27,7 @@ import { listClaudeManagedServerNames } from './claudeCli.js'
 import { renderClaudeDesktopMcp } from './renderers.js'
 import { validateEnvKey, validateEnvValueForShell, validateHeaderKey, validateServerName } from './mcpValidation.js'
 import { acquireSyncLock } from './syncLock.js'
+import { planProjectMcp, syncProjectMcpFile } from './projectMcp.js'
 import * as ui from './ui.js'
 import type { IntegrationName, ResolvedMcpServer, SyncOptions, SyncResult } from '../types.js'
 
@@ -113,8 +114,31 @@ export async function performSync(options: SyncOptions): Promise<SyncResult> {
       })
     }
 
+    const claudeScope = config.integrations.options.claudeScope
+    const projectMcpPlan = planProjectMcp({
+      config,
+      claudeEnabled: enabled.has('claude'),
+      copilotCliEnabled: enabled.has('copilot_cli'),
+      claudeServers: resolved.serversByTarget.claude,
+      copilotServers: resolved.serversByTarget.copilot_cli,
+      paths
+    })
+
+    await syncProjectMcpFile({
+      plan: projectMcpPlan,
+      statePath: paths.generatedProjectMcpState,
+      generatedPath: paths.generatedClaudeProjectMcp,
+      projectRoot,
+      check,
+      changed,
+      warnings
+    })
+
     await syncClaude({
-      enabled: enabled.has('claude'),
+      // Project scope is a file, so the CLI path only runs when the user opted into local scope.
+      // When switching from local to project, this still runs once with `enabled: false` to
+      // remove the servers previously registered in ~/.claude.json.
+      enabled: enabled.has('claude') && claudeScope === 'local',
       check,
       projectRoot,
       servers: resolved.serversByTarget.claude,

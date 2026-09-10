@@ -171,17 +171,8 @@ export const INTEGRATION_SYNC_HOOKS: IntegrationSyncHook[] = [
         warnings: copilot.warnings
       }
     },
-    materialize: async (context) => {
-      const targetPath = context.paths.copilotCliMcp
-      const content = context.generatedByIntegration.copilot_cli ?? ''
-      await writeManagedFile({
-        absolutePath: targetPath,
-        content,
-        projectRoot: context.projectRoot,
-        check: context.check,
-        changed: context.changed
-      })
-    }
+    // `.mcp.json` is shared with Claude Code's project scope, so both writers are
+    // merged in core/sync.ts instead of materialising here.
   },
   {
     id: 'cursor',
