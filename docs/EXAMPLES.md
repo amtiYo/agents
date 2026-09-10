@@ -149,9 +149,13 @@ agents sync
 ```
 
 **Result:**
-- Claude: `claude-artifacts` + `context7`
+- Claude Code: `claude-artifacts` + `context7` in `.mcp.json`
 - Claude Desktop: `desktop-files` only through local JSON; add remote `context7` in Claude custom connectors or wrap it with a stdio bridge
 - Cursor: `context7` only
+
+Targets isolate a server everywhere except `.mcp.json`, which Claude Code and Copilot
+CLI both read. With both enabled, everything in that file is visible to both, and the
+sync says so.
 
 ---
 
@@ -196,16 +200,81 @@ PS1='$(agents_prompt) '"$PS1"
 
 ---
 
-## Windsurf + OpenCode
+## Devin Desktop + OpenCode
 
 ```bash
 cd ~/my-project
 agents init
-agents connect --llm windsurf,opencode
+agents connect --llm devin_desktop,opencode
 agents sync
 ```
 
 **Result:**
-- Windsurf MCP is written to `~/.codeium/windsurf/mcp_config.json`
+- Devin Desktop MCP is written to `~/.codeium/windsurf/mcp_config.json` (the data directory kept its name after the rename)
 - OpenCode MCP is written to project `opencode.json`
-- Skills are available from `.agents/skills` (Windsurf also gets `.windsurf/skills`)
+- Skills are available from `.agents/skills` (Devin Desktop also gets `.windsurf/skills`)
+
+---
+
+## Terminal agents on one project
+
+```bash
+cd ~/my-project
+agents connect --llm codex,claude,grok,amp,droid
+agents sync
+```
+
+**Result:**
+- Codex reads `.codex/config.toml`, Grok Build reads `.grok/config.toml`
+- Claude Code reads `.mcp.json`, which is committed for the whole team
+- Amp reads `.amp/settings.json` and finds skills in `.agents/skills` by itself
+- Factory Droid reads `.factory/mcp.json`
+
+Workspace MCP servers need approval in Amp before they run:
+
+```bash
+amp mcp approve context7
+```
+
+---
+
+## Trimming context for CI
+
+An agent in CI rarely needs every server, and each one costs context before any work
+starts.
+
+```bash
+# What does the full set cost?
+agents mcp budget
+
+# Keep only what the pipeline uses
+agents profile set ci --server git --server filesystem --description "Pipeline set"
+agents sync --profile ci
+
+# What does that cost?
+agents mcp budget --profile ci
+```
+
+`agents profile use ci` makes the choice permanent for the project; `agents profile use`
+with no name goes back to every server.
+
+---
+
+## Sharing a stack as a plugin
+
+```bash
+agents plugin export --name backend-stack --plugin-version 1.0.0 --out dist/backend-stack
+agents plugin validate dist/backend-stack
+```
+
+The package is a directory with `plugin.json`, `mcp.json` and `skills/`, in the
+[Agent Plugins 1.0.0](https://agent-plugins.org/specification) format that Codex, Cursor,
+Copilot, Kiro and VS Code read. Push it to a git repository and other people install it
+from there, or add it to another project directly:
+
+```bash
+agents plugin import ../backend-stack
+```
+
+Secrets never travel: the package carries the `${VAR}` placeholders from the committed
+config, and the export prints which variables it needs.
