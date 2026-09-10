@@ -44,14 +44,14 @@ interface ClaudeDesktopState {
 }
 
 export async function performSync(options: SyncOptions): Promise<SyncResult> {
-  const { projectRoot, check, verbose } = options
+  const { projectRoot, check, verbose, profile } = options
   const paths = getProjectPaths(projectRoot)
   const releaseLock = check ? null : await acquireSyncLock(paths.generatedSyncLock)
   try {
     const config = await loadAgentsConfig(projectRoot)
     const sourceFingerprint = await computeSharedSourceFingerprint(projectRoot, config)
 
-    const resolved = await loadResolvedRegistry(projectRoot)
+    const resolved = await loadResolvedRegistry(projectRoot, profile === undefined ? undefined : { profile })
     const warnings = [...resolved.warnings]
     if (resolved.missingRequiredEnv.length > 0) {
       warnings.push(`Skipped servers because required env vars are missing: ${resolved.missingRequiredEnv.join('; ')}`)
