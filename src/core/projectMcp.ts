@@ -148,6 +148,15 @@ interface ProjectMcpStateFile {
   files: Record<string, string[]>
 }
 
+/**
+ * Read which servers agents wrote into each project MCP file.
+ *
+ * @returns A map of absolute file path to the server names agents owns in it.
+ */
+export async function readProjectMcpManagedNames(statePath: string): Promise<Record<string, string[]>> {
+  return readStateFiles(statePath)
+}
+
 async function readStateFiles(statePath: string): Promise<Record<string, string[]>> {
   if (!(await pathExists(statePath))) return {}
   try {

@@ -3,9 +3,11 @@ import path from 'node:path'
 import { readFile } from 'node:fs/promises'
 import { parse, type ParseError } from 'jsonc-parser'
 import { loadAgentsConfig } from '../core/config.js'
-import { listDirNames, pathExists, readJson } from '../core/fs.js'
+import { listDirNames, pathExists, readJson, readTextOrEmpty } from '../core/fs.js'
 import { loadResolvedRegistry } from '../core/mcp.js'
+import { parse as parseJsonc } from 'jsonc-parser'
 import { getProjectPaths, toHomeRelativePath } from '../core/paths.js'
+import { readGooseDocument, readGooseExtensions } from '../core/goose.js'
 import { hasNativeSkillsDiscovery } from '../integrations/registry.js'
 import {
   getClaudeDesktopConfigPath,
@@ -240,11 +242,36 @@ export async function runStatus(options: StatusOptions): Promise<void> {
       )
     }
     if (enabled.has('zed')) {
+      // Zed ships settings.json with comments.
       probes.zed = await probeMcpServersFile(
         paths.zedSettings,
         toHomeRelativePath(paths.zedSettings),
         'context_servers',
         resolved.serversByTarget.zed.map((server) => server.name),
+        { jsonc: true },
+      )
+    }
+    if (enabled.has('kilo')) {
+      probes.kilo = await probeMcpServersFile(
+        paths.kiloConfig,
+        toHomeRelativePath(paths.kiloConfig),
+        'mcp',
+        resolved.serversByTarget.kilo.map((server) => server.name),
+        { jsonc: true },
+      )
+    }
+    if (enabled.has('grok')) {
+      probes.grok = await probeTomlMcpFile(
+        paths.grokConfig,
+        toHomeRelativePath(paths.grokConfig),
+        resolved.serversByTarget.grok.map((server) => server.name),
+      )
+    }
+    if (enabled.has('goose')) {
+      probes.goose = await probeGooseFile(
+        paths.gooseConfig,
+        toHomeRelativePath(paths.gooseConfig),
+        resolved.serversByTarget.goose.map((server) => server.name),
       )
     }
     probes.skills = await probeSkills(paths.agentsSkillsDir)
@@ -429,10 +456,13 @@ async function probeMcpServersFile(
   label: string,
   key: string,
   expectedServerNames: string[],
+  options?: { jsonc?: boolean },
 ): Promise<string> {
   if (!(await pathExists(filePath))) return `missing ${label}`
   try {
-    const parsed = await readJson<Record<string, Record<string, unknown> | undefined>>(filePath)
+    const parsed = options?.jsonc
+      ? await readJsoncObject(filePath)
+      : await readJson<Record<string, Record<string, unknown> | undefined>>(filePath)
     const names = Object.keys(parsed[key] ?? {})
     const missing = expectedServerNames.filter((name) => !names.includes(name))
     if (missing.length > 0) {
@@ -610,4 +640,46 @@ function extractCodexServerNames(entries: Array<Record<string, unknown>>): strin
     }
   }
   return [...new Set(names)].sort((a, b) => a.localeCompare(b))
+}
+
+/** Read a JSONC settings file, tolerating comments and trailing commas. */
+async function readJsoncObject(filePath: string): Promise<Record<string, Record<string, unknown> | undefined>> {
+  const raw = await readTextOrEmpty(filePath)
+  const errors: { error: number; offset: number; length: number }[] = []
+  const parsed = parseJsonc(raw, errors, { allowTrailingComma: true }) as unknown
+  if (errors.length > 0) {
+    throw new Error('invalid JSONC')
+  }
+  return (typeof parsed === 'object' && parsed !== null ? parsed : {}) as Record<
+    string,
+    Record<string, unknown> | undefined
+  >
+}
+
+/** Count agents-managed servers in a TOML config that uses `[mcp_servers.*]` tables. */
+async function probeTomlMcpFile(filePath: string, label: string, expectedServerNames: string[]): Promise<string> {
+  if (!(await pathExists(filePath))) return `missing ${label}`
+  const raw = await readTextOrEmpty(filePath)
+  const found = new Set<string>()
+  for (const match of raw.matchAll(/^\s*\[mcp_servers\.(?:"([^"]+)"|([^.\]]+))\]/gm)) {
+    const name = match[1] ?? match[2]
+    if (name) found.add(name)
+  }
+  const missing = expectedServerNames.filter((name) => !found.has(name))
+  if (missing.length > 0) return `missing servers in ${label}: ${missing.join(', ')}`
+  return `${String(found.size)} server(s) configured`
+}
+
+/** Count agents-managed extensions in the Goose YAML config. */
+async function probeGooseFile(filePath: string, label: string, expectedServerNames: string[]): Promise<string> {
+  if (!(await pathExists(filePath))) return `missing ${label}`
+  try {
+    const doc = await readGooseDocument(filePath)
+    const extensions = readGooseExtensions(doc)
+    const missing = expectedServerNames.filter((name) => !(name in extensions))
+    if (missing.length > 0) return `missing extensions in ${label}: ${missing.join(', ')}`
+    return `${String(Object.keys(extensions).length)} extension(s) configured`
+  } catch (error) {
+    return `invalid ${label} (${error instanceof Error ? error.message : String(error)})`
+  }
 }

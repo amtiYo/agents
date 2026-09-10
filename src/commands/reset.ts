@@ -4,6 +4,9 @@ import { applyEdits as applyJsoncEdits, modify as modifyJsonc, parse as parseJso
 import { cleanupManagedGitignore } from '../core/gitignore.js'
 import { readGooseDocument, readGooseExtensions, setGooseExtensions, writeGooseConfig } from '../core/goose.js'
 import { getProjectPaths } from '../core/paths.js'
+import type { ProjectPaths } from '../core/paths.js'
+import { loadAgentsConfig } from '../core/config.js'
+import { readProjectMcpManagedNames } from '../core/projectMcp.js'
 import { pathExists, readJson, readTextOrEmpty, removeIfExists, writeJsonAtomic, writeTextAtomic } from '../core/fs.js'
 import {
   isLegacyGeneratedCodexConfig,
@@ -138,15 +141,12 @@ export async function runReset(options: ResetOptions): Promise<void> {
     removed,
     warnings
   }, 'Devin', 'mcpServers')
-  for (const projectMcpPath of [paths.copilotCliMcp, paths.copilotCliGithubMcp]) {
-    await cleanupKeyedJsonConfig({
-      projectRoot,
-      configPath: projectMcpPath,
-      generatedPath: paths.generatedClaudeProjectMcp,
-      removed,
-      warnings
-    }, 'project MCP', 'mcpServers')
-  }
+  await cleanupProjectMcpFiles({
+    projectRoot,
+    paths,
+    removed,
+    warnings
+  })
 
   const bridges = [
     { bridgePath: paths.claudeSkillsBridge, sourcePath: paths.agentsSkillsDir },
@@ -595,4 +595,66 @@ async function cleanupGooseConfig(args: {
 
   await writeGooseConfig(args.configPath, content)
   args.removed.push(args.configPath)
+}
+
+/**
+ * Clean `.mcp.json` and `.github/mcp.json`.
+ *
+ * The managed names come from the sync state; a project synced by 0.8.x has none, and
+ * that release rewrote the file wholesale, so the servers named in agents.json are used
+ * instead. Servers added by hand are always kept.
+ */
+async function cleanupProjectMcpFiles(args: {
+  projectRoot: string
+  paths: ProjectPaths
+  removed: string[]
+  warnings: string[]
+}): Promise<void> {
+  const { projectRoot, paths, removed, warnings } = args
+
+  const managedByFile = await readProjectMcpManagedNames(paths.generatedProjectMcpState)
+  let fallbackNames: string[] = []
+  try {
+    const config = await loadAgentsConfig(projectRoot)
+    fallbackNames = Object.keys(config.mcp.servers)
+  } catch {
+    fallbackNames = []
+  }
+
+  for (const targetPath of [paths.copilotCliMcp, paths.copilotCliGithubMcp]) {
+    if (!(await pathExists(targetPath))) continue
+
+    const managedNames = managedByFile[targetPath] ?? fallbackNames
+
+    let parsed: unknown
+    try {
+      parsed = await readJson<unknown>(targetPath)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      warnings.push(`Failed to read ${targetPath}; preserved the file. ${message}`)
+      continue
+    }
+    if (!isRecord(parsed)) continue
+
+    const servers = isRecord(parsed.mcpServers) ? { ...parsed.mcpServers } : {}
+    let changed = false
+    for (const name of managedNames) {
+      if (name in servers) {
+        delete servers[name]
+        changed = true
+      }
+    }
+
+    const otherKeys = Object.keys(parsed).filter((key) => key !== 'mcpServers')
+    // A file with nothing left in it is removed even when no managed name matched:
+    // it holds no configuration for anyone.
+    if (!changed && !(Object.keys(servers).length === 0 && otherKeys.length === 0)) continue
+    if (Object.keys(servers).length === 0 && otherKeys.length === 0) {
+      await removeResetTarget(targetPath, projectRoot, removed)
+      continue
+    }
+
+    await writeJsonAtomic(targetPath, { ...parsed, mcpServers: servers })
+    removed.push(path.relative(projectRoot, targetPath) || targetPath)
+  }
 }

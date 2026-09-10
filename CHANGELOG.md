@@ -49,6 +49,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `agents mcp budget` rejects a non-numeric or non-positive `--timeout`.
 - `agents mcp add --url` and `--command` no longer prompt for a transport that the flag already implies.
 - Servers whose schema 3 target list named all eleven integrations of that release now reach the integrations added since.
+- `agents doctor --fix` no longer runs `git rm --cached` on `.zed/settings.json`, `.amp/settings.json`, `.kilo/kilo.jsonc` or `.github/mcp.json`: those files belong to the tool or the team, and this CLI never adds them to `.gitignore`.
+- `agents reset` removes its servers from `.mcp.json` in projects synced by 0.8.x, which have no state file, and deletes a project MCP file that holds nothing.
+- `agents status` reads Zed and Kilo settings as JSONC, and reports Grok, Kilo and Goose, which were listed in the probe order but never filled in.
+- A profile whose `servers` is not a list is kept in the config instead of being dropped by the next save.
+- `agents plugin import` writes `${PROJECT_ROOT}` rather than an absolute path, so an imported server works for everyone who clones the repository.
+- `agents profile remove` re-syncs when the profile it removed was the active one.
+- `envFile` reaches Cursor's config; it was accepted by the schema and then dropped by every renderer.
 - `agents status` counts Claude Code servers under both project-scope and local-scope names, and reports servers waiting for approval.
 - `agents status` and `agents doctor` follow `copilotCliPath` instead of always looking at `.mcp.json`.
 - A project upgrading from 0.8.x loses servers it disabled after the upgrade, instead of keeping them in `.mcp.json` forever.

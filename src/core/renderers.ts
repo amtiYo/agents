@@ -746,3 +746,25 @@ export function renderGooseExtensions(servers: ResolvedMcpServer[]): {
 
   return { extensions: out, warnings }
 }
+
+/**
+ * Render Cursor's `.cursor/mcp.json`.
+ *
+ * Same shape as VS Code, plus `envFile`, which Cursor documents and VS Code does not.
+ */
+export function renderCursorMcp(servers: ResolvedMcpServer[]): {
+  servers: Record<string, unknown>
+  warnings: string[]
+} {
+  const rendered = renderVscodeMcp(servers)
+  const out: Record<string, unknown> = {}
+
+  for (const [name, value] of Object.entries(rendered.servers)) {
+    const server = servers.find((item) => item.name === name)
+    out[name] = server?.envFile
+      ? { ...(value as Record<string, unknown>), envFile: server.envFile }
+      : value
+  }
+
+  return { servers: out, warnings: rendered.warnings }
+}

@@ -128,17 +128,28 @@ function normalizeCopilotCliPath(value: unknown): CopilotCliPath {
   return value === '.github/mcp.json' ? '.github/mcp.json' : '.mcp.json'
 }
 
+/**
+ * Normalize the profile map without losing entries.
+ *
+ * A profile whose `servers` is not an array is kept as written rather than dropped:
+ * the next `saveAgentsConfig` would otherwise delete a user's profile silently. It is
+ * normalized to an empty server list so the rest of the code can rely on the shape.
+ */
 function normalizeProfiles(value: unknown): Record<string, McpProfile> | undefined {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined
 
   const out: Record<string, McpProfile> = {}
   for (const [name, raw] of Object.entries(value as Record<string, unknown>)) {
-    if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) continue
+    if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+      out[name] = { servers: [] }
+      continue
+    }
     const entry = raw as { description?: unknown; servers?: unknown }
-    if (!Array.isArray(entry.servers)) continue
     out[name] = {
       ...(typeof entry.description === 'string' ? { description: entry.description } : {}),
-      servers: entry.servers.filter((item): item is string => typeof item === 'string')
+      servers: Array.isArray(entry.servers)
+        ? entry.servers.filter((item): item is string => typeof item === 'string')
+        : []
     }
   }
 
