@@ -16,6 +16,9 @@ import { runSync } from './commands/sync.js'
 import { runUpdate } from './commands/update.js'
 import { runWatch } from './commands/watch.js'
 import { runSkillsList } from './commands/skills-list.js'
+import { runPluginExport, runPluginImport, runPluginValidate } from './commands/plugin.js'
+import { runProfileList, runProfileRemove, runProfileSet, runProfileUse } from './commands/profile.js'
+import { runMcpBudget } from './commands/mcp-budget.js'
 import { CancelledError } from './core/errors.js'
 import { maybeNotifyAboutUpdate } from './core/updateCheck.js'
 import { CLI_VERSION } from './core/version.js'
@@ -138,11 +141,13 @@ async function main(): Promise<void> {
     .option('--path <dir>', 'Target project directory', process.cwd())
     .option('-g, --global', 'Target global user home directory (~/.agents)', false)
     .option('--check', 'Check for pending changes without writing files', false)
+    .option('--profile <name>', 'Sync only the servers of this profile')
     .option('--verbose', 'Print detailed sync output', false)
-    .action(async (opts: { path: string; global: boolean; check: boolean; verbose: boolean }) => {
+    .action(async (opts: { path: string; global: boolean; check: boolean; profile?: string; verbose: boolean }) => {
       await runSync({
         projectRoot: resolveTargetDirectory(opts),
         check: Boolean(opts.check),
+        profile: opts.profile,
         verbose: Boolean(opts.verbose)
       })
     })
@@ -407,6 +412,169 @@ async function main(): Promise<void> {
     .action(async (opts: { path: string; global: boolean; json: boolean }) => {
       await runSkillsList({
         projectRoot: resolveTargetDirectory(opts),
+        json: Boolean(opts.json)
+      })
+    })
+
+
+  mcp
+    .command('budget')
+    .description('Measure how much context each MCP server adds by listing its tools')
+    .option('--path <dir>', 'Target project directory', process.cwd())
+    .option('-g, --global', 'Target global user home directory (~/.agents)', false)
+    .option('--profile <name>', 'Measure only the servers of this profile')
+    .option('--timeout <ms>', 'Per-server timeout in milliseconds', '15000')
+    .option('--verbose', 'List individual tools per server', false)
+    .option('--json', 'Output machine-readable JSON', false)
+    .action(async (opts: {
+      path: string
+      global: boolean
+      profile?: string
+      timeout: string
+      verbose: boolean
+      json: boolean
+    }) => {
+      await runMcpBudget({
+        projectRoot: resolveTargetDirectory(opts),
+        profile: opts.profile,
+        timeoutMs: Number.parseInt(opts.timeout, 10),
+        verbose: Boolean(opts.verbose),
+        json: Boolean(opts.json)
+      })
+    })
+
+  const profile = program
+    .command('profile')
+    .description('Manage named subsets of MCP servers')
+
+  profile
+    .command('list')
+    .alias('ls')
+    .description('List profiles and show the active one')
+    .option('--path <dir>', 'Target project directory', process.cwd())
+    .option('-g, --global', 'Target global user home directory (~/.agents)', false)
+    .option('--json', 'Output machine-readable JSON', false)
+    .action(async (opts: { path: string; global: boolean; json: boolean }) => {
+      await runProfileList({ projectRoot: resolveTargetDirectory(opts), json: Boolean(opts.json) })
+    })
+
+  profile
+    .command('set <name>')
+    .description('Create or replace a profile')
+    .option('--path <dir>', 'Target project directory', process.cwd())
+    .option('-g, --global', 'Target global user home directory (~/.agents)', false)
+    .option('--server <name>', 'MCP server to include (repeatable)', collectOption, [])
+    .option('--description <text>', 'Short description of the profile')
+    .option('--json', 'Output machine-readable JSON', false)
+    .action(async (name: string, opts: {
+      path: string
+      global: boolean
+      server: string[]
+      description?: string
+      json: boolean
+    }) => {
+      await runProfileSet({
+        projectRoot: resolveTargetDirectory(opts),
+        name,
+        servers: opts.server,
+        description: opts.description,
+        json: Boolean(opts.json)
+      })
+    })
+
+  profile
+    .command('use [name]')
+    .description('Activate a profile, or clear it when no name is given')
+    .option('--path <dir>', 'Target project directory', process.cwd())
+    .option('-g, --global', 'Target global user home directory (~/.agents)', false)
+    .option('--no-sync', 'Do not run sync after switching')
+    .option('--json', 'Output machine-readable JSON', false)
+    .action(async (name: string | undefined, opts: { path: string; global: boolean; sync: boolean; json: boolean }) => {
+      await runProfileUse({
+        projectRoot: resolveTargetDirectory(opts),
+        name: name ?? null,
+        sync: opts.sync !== false,
+        json: Boolean(opts.json)
+      })
+    })
+
+  profile
+    .command('remove <name>')
+    .description('Delete a profile')
+    .option('--path <dir>', 'Target project directory', process.cwd())
+    .option('-g, --global', 'Target global user home directory (~/.agents)', false)
+    .option('--json', 'Output machine-readable JSON', false)
+    .action(async (name: string, opts: { path: string; global: boolean; json: boolean }) => {
+      await runProfileRemove({ projectRoot: resolveTargetDirectory(opts), name, json: Boolean(opts.json) })
+    })
+
+  const plugin = program
+    .command('plugin')
+    .description('Package and consume Agent Plugins (agent-plugins.org) bundles')
+
+  plugin
+    .command('export')
+    .description('Write an Agent Plugins v1 package from .agents')
+    .option('--path <dir>', 'Target project directory', process.cwd())
+    .option('-g, --global', 'Target global user home directory (~/.agents)', false)
+    .option('--out <dir>', 'Output directory (default: dist/agent-plugin)')
+    .option('--name <name>', 'Plugin name (default: project directory name)')
+    .option('--plugin-version <version>', 'Plugin version')
+    .option('--description <text>', 'Plugin description')
+    .option('--author <name>', 'Plugin author')
+    .option('--license <spdx>', 'Plugin license')
+    .option('--json', 'Output machine-readable JSON', false)
+    .action(async (opts: {
+      path: string
+      global: boolean
+      out?: string
+      name?: string
+      pluginVersion?: string
+      description?: string
+      author?: string
+      license?: string
+      json: boolean
+    }) => {
+      await runPluginExport({
+        projectRoot: resolveTargetDirectory(opts),
+        out: opts.out,
+        name: opts.name,
+        version: opts.pluginVersion,
+        description: opts.description,
+        author: opts.author,
+        license: opts.license,
+        json: Boolean(opts.json)
+      })
+    })
+
+  plugin
+    .command('validate <dir>')
+    .description('Check a plugin directory against the Agent Plugins 1.0.0 specification')
+    .option('--json', 'Output machine-readable JSON', false)
+    .action(async (dir: string, opts: { json: boolean }) => {
+      await runPluginValidate({ pluginDir: dir, json: Boolean(opts.json) })
+    })
+
+  plugin
+    .command('import <dir>')
+    .description('Add the MCP servers and skills of a plugin to this project')
+    .option('--path <dir>', 'Target project directory', process.cwd())
+    .option('-g, --global', 'Target global user home directory (~/.agents)', false)
+    .option('--prefix <name>', 'Prefix for imported server names (default: plugin name)')
+    .option('--no-sync', 'Do not run sync after importing')
+    .option('--json', 'Output machine-readable JSON', false)
+    .action(async (dir: string, opts: {
+      path: string
+      global: boolean
+      prefix?: string
+      sync: boolean
+      json: boolean
+    }) => {
+      await runPluginImport({
+        projectRoot: resolveTargetDirectory(opts),
+        pluginDir: dir,
+        prefix: opts.prefix,
+        sync: opts.sync !== false,
         json: Boolean(opts.json)
       })
     })

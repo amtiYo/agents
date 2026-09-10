@@ -6,6 +6,8 @@ export interface SyncCommandOptions {
   projectRoot: string
   check: boolean
   verbose: boolean
+  /** Restrict this run to one profile; omit to use the active profile from config. */
+  profile?: string | null
 }
 
 export async function runSync(options: SyncCommandOptions): Promise<void> {
@@ -15,7 +17,8 @@ export async function runSync(options: SyncCommandOptions): Promise<void> {
   const result = await performSync({
     projectRoot: options.projectRoot,
     check: options.check,
-    verbose: options.verbose
+    verbose: options.verbose,
+    ...(options.profile === undefined ? {} : { profile: options.profile })
   })
 
   spin.stop(options.check ? 'Check complete' : 'Sync complete')
