@@ -1,0 +1,91 @@
+{
+  "schemaVersion": 4,
+  "instructions": {
+    "path": "AGENTS.md"
+  },
+  "integrations": {
+    "enabled": [
+      "codex",
+      "claude",
+      "cursor",
+      "gemini",
+      "opencode",
+      "grok"
+    ],
+    "options": {
+      "cursorAutoApprove": true,
+      "antigravityGlobalSync": true,
+      "claudeScope": "project",
+      "copilotCliPath": ".mcp.json"
+    }
+  },
+  "syncMode": "source-only",
+  "mcp": {
+    "servers": {
+      "filesystem": {
+        "label": "Filesystem",
+        "description": "Read and write files in this repository",
+        "transport": "stdio",
+        "command": "npx",
+        "args": [
+          "-y",
+          "@modelcontextprotocol/server-filesystem",
+          "${PROJECT_ROOT}"
+        ],
+        "enabled": true
+      },
+      "git": {
+        "label": "Git",
+        "description": "Repository-aware git operations",
+        "transport": "stdio",
+        "command": "uvx",
+        "args": [
+          "mcp-server-git",
+          "--repository",
+          "${PROJECT_ROOT}"
+        ],
+        "env": {
+          "FASTMCP_LOG_LEVEL": "ERROR"
+        },
+        "enabled": true
+      }
+    }
+  },
+  "workspace": {
+    "vscode": {
+      "hideGenerated": true,
+      "hiddenPaths": [
+        "**/.codex",
+        "**/.claude",
+        "**/.gemini",
+        "**/.cursor",
+        "**/.antigravity",
+        "**/.agents/mcp_config.json",
+        "**/.windsurf",
+        "**/.opencode",
+        "**/.junie",
+        "**/.mcp.json",
+        "**/opencode.json",
+        "**/.agents/generated",
+        "**/.grok",
+        "**/.amp",
+        "**/.factory",
+        "**/.kilo",
+        "**/kilo.jsonc",
+        "**/.devin",
+        "**/.zed"
+      ]
+    }
+  },
+  "lastSync": "2026-09-10T21:45:22.878Z",
+  "lastSyncSourceHash": "ae98debae6aaa7234aaa38835398796866936a6bc7bdb16452edea020ee4fad8",
+  "profiles": {
+    "minimal": {
+      "description": "Filesystem only, for low-context sessions",
+      "servers": [
+        "filesystem"
+      ]
+    }
+  },
+  "activeProfile": null
+}
