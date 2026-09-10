@@ -18,7 +18,14 @@ const SOURCE_ONLY_ENTRIES = [
   '.opencode/',
   'opencode.json',
   '.junie/mcp/',
-  '.junie/skills'
+  '.junie/skills',
+  '.grok/config.toml',
+  '.amp/settings.json',
+  '.factory/mcp.json',
+  '.kilo/kilo.jsonc',
+  '.devin/mcp_config.json',
+  '.zed/settings.json',
+  '.github/mcp.json'
 ]
 
 export async function ensureProjectGitignore(projectRoot: string, syncMode: SyncMode): Promise<boolean> {

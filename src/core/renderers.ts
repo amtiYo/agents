@@ -241,7 +241,7 @@ export function renderAntigravityMcp(servers: ResolvedMcpServer[]): {
       continue
     }
     if (server.transport === 'sse') {
-      warnings.push(`Server "${server.name}" uses legacy sse transport; rendering as serverUrl for Antigravity compatibility.`)
+      warnings.push(`Server "${server.name}" uses the deprecated sse transport; rendering as serverUrl for Antigravity compatibility.`)
     }
     out[server.name] = {
       serverUrl: server.url,

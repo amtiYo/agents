@@ -126,6 +126,27 @@ export async function runStatus(options: StatusOptions): Promise<void> {
     files['.junie/mcp/mcp.json'] = await pathExists(paths.junieMcp)
     files['.junie/skills'] = await pathExists(paths.junieSkillsBridge)
   }
+  if (enabled.has('grok')) {
+    files[toHomeRelativePath(paths.grokConfig)] = await pathExists(paths.grokConfig)
+  }
+  if (enabled.has('amp')) {
+    files[toHomeRelativePath(paths.ampSettings)] = await pathExists(paths.ampSettings)
+  }
+  if (enabled.has('droid')) {
+    files[toHomeRelativePath(paths.droidMcp)] = await pathExists(paths.droidMcp)
+  }
+  if (enabled.has('kilo')) {
+    files[toHomeRelativePath(paths.kiloConfig)] = await pathExists(paths.kiloConfig)
+  }
+  if (enabled.has('devin')) {
+    files[toHomeRelativePath(paths.devinMcp)] = await pathExists(paths.devinMcp)
+  }
+  if (enabled.has('zed')) {
+    files[toHomeRelativePath(paths.zedSettings)] = await pathExists(paths.zedSettings)
+  }
+  if (enabled.has('goose')) {
+    files[toHomeRelativePath(paths.gooseConfig)] = await pathExists(paths.gooseConfig)
+  }
   if (enabled.has('claude')) {
     files['CLAUDE.md'] = await pathExists(paths.rootClaudeMd)
     files['.claude/skills'] = await pathExists(paths.claudeSkillsBridge)
@@ -176,6 +197,38 @@ export async function runStatus(options: StatusOptions): Promise<void> {
     if (enabled.has('junie')) {
       probes.junie = await probeMcpServersFile(paths.junieMcp, '.junie/mcp/mcp.json', 'mcpServers', expectedJunieServers)
     }
+    if (enabled.has('droid')) {
+      probes.droid = await probeMcpServersFile(
+        paths.droidMcp,
+        toHomeRelativePath(paths.droidMcp),
+        'mcpServers',
+        resolved.serversByTarget.droid.map((server) => server.name),
+      )
+    }
+    if (enabled.has('devin')) {
+      probes.devin = await probeMcpServersFile(
+        paths.devinMcp,
+        toHomeRelativePath(paths.devinMcp),
+        'mcpServers',
+        resolved.serversByTarget.devin.map((server) => server.name),
+      )
+    }
+    if (enabled.has('amp')) {
+      probes.amp = await probeMcpServersFile(
+        paths.ampSettings,
+        toHomeRelativePath(paths.ampSettings),
+        'amp.mcpServers',
+        resolved.serversByTarget.amp.map((server) => server.name),
+      )
+    }
+    if (enabled.has('zed')) {
+      probes.zed = await probeMcpServersFile(
+        paths.zedSettings,
+        toHomeRelativePath(paths.zedSettings),
+        'context_servers',
+        resolved.serversByTarget.zed.map((server) => server.name),
+      )
+    }
     probes.skills = await probeSkills(paths.agentsSkillsDir)
     probes.vscode_hidden = await probeVscodeHidden(paths.vscodeSettings)
   }
@@ -218,7 +271,11 @@ export async function runStatus(options: StatusOptions): Promise<void> {
     ui.keyValue('MCP', `${output.mcp.configured} configured, ${output.mcp.localOverrides} local override(s)`)
     ui.keyValue('Selected MCP', ui.formatList(output.selectedMcpServers))
 
-    const compactProbeOrder = ['codex', 'claude', 'claude_desktop', 'gemini', 'copilot_vscode', 'copilot_cli', 'cursor', 'antigravity', 'antigravity_skills', 'windsurf', 'opencode', 'junie']
+    const compactProbeOrder = [
+      'codex', 'claude', 'claude_desktop', 'gemini', 'copilot_vscode', 'copilot_cli', 'cursor',
+      'antigravity', 'antigravity_skills', 'windsurf', 'opencode', 'junie',
+      'grok', 'amp', 'droid', 'kilo', 'devin', 'zed', 'goose'
+    ]
     const compactProbes = compactProbeOrder
       .filter((name) => Boolean(output.probes[name]))
       .map((name) => `${name}: ${output.probes[name]}`)
@@ -331,7 +388,7 @@ async function probeCopilot(vscodeMcpPath: string): Promise<string> {
 async function probeMcpServersFile(
   filePath: string,
   label: string,
-  key: 'mcpServers' | 'servers',
+  key: string,
   expectedServerNames: string[],
 ): Promise<string> {
   if (!(await pathExists(filePath))) return `missing ${label}`
