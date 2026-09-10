@@ -1,7 +1,7 @@
 import path from 'node:path'
 import { ensureDir, pathExists, readJson, readTextOrEmpty, removeIfExists, writeJsonAtomic } from '../core/fs.js'
 import { toChangedEntry, writeManagedFile } from '../core/managedFiles.js'
-import { mergeCodexConfig } from '../core/codexConfig.js'
+import { mergeCodexConfig, removeCodexManagedBlock } from '../core/codexConfig.js'
 import { getLegacyAntigravityGlobalMcpPath, normalizeAntigravityMcpPayload, readAntigravityMcp } from '../core/antigravity.js'
 import { getWindsurfGlobalMcpPath, normalizeWindsurfMcpPayload, readWindsurfMcp } from '../core/windsurf.js'
 import { normalizeOpencodeConfig } from '../core/opencode.js'
@@ -64,23 +64,13 @@ export const INTEGRATION_SYNC_HOOKS: IntegrationSyncHook[] = [
         warnings: codex.warnings
       }
     },
+    materializeWhenDisabled: true,
     materialize: async (context) => {
-      const generatedContent = context.generatedByIntegration.codex ?? ''
-      const targetPath = context.paths.codexConfig
-      let content: string
-      try {
-        content = mergeCodexConfig(await readTextOrEmpty(targetPath), generatedContent)
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error)
-        context.warnings.push(`Failed to merge Codex config at ${targetPath}; skipped Codex sync. ${message}`)
-        return
-      }
-      await writeManagedFile({
-        absolutePath: targetPath,
-        content,
-        projectRoot: path.dirname(path.dirname(targetPath)),
-        check: context.check,
-        changed: context.changed
+      await materializeTomlConfig({
+        context,
+        targetPath: context.paths.codexConfig,
+        generatedContent: context.generatedByIntegration.codex ?? '',
+        label: 'Codex'
       })
     }
   },
@@ -375,23 +365,13 @@ export const INTEGRATION_SYNC_HOOKS: IntegrationSyncHook[] = [
       const grok = buildGrokConfig(servers)
       return { content: grok.content, warnings: grok.warnings }
     },
+    materializeWhenDisabled: true,
     materialize: async (context) => {
-      const generatedContent = context.generatedByIntegration.grok ?? ''
-      const targetPath = context.paths.grokConfig
-      let content: string
-      try {
-        content = mergeCodexConfig(await readTextOrEmpty(targetPath), generatedContent)
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error)
-        context.warnings.push(`Failed to merge Grok config at ${targetPath}; skipped Grok sync. ${message}`)
-        return
-      }
-      await writeManagedFile({
-        absolutePath: targetPath,
-        content,
-        projectRoot: context.projectRoot,
-        check: context.check,
-        changed: context.changed
+      await materializeTomlConfig({
+        context,
+        targetPath: context.paths.grokConfig,
+        generatedContent: context.generatedByIntegration.grok ?? '',
+        label: 'Grok'
       })
     }
   },
@@ -413,7 +393,8 @@ export const INTEGRATION_SYNC_HOOKS: IntegrationSyncHook[] = [
         rawGenerated: context.generatedByIntegration.amp ?? '',
         key: AMP_MCP_KEY,
         label: 'Amp',
-        statePath: context.paths.generatedAmpState
+        statePath: context.paths.generatedAmpState,
+        removeEmptyFile: true
       })
     }
   },
@@ -458,7 +439,8 @@ export const INTEGRATION_SYNC_HOOKS: IntegrationSyncHook[] = [
         rawGenerated: context.generatedByIntegration.kilo ?? '',
         key: 'mcp',
         label: 'Kilo',
-        statePath: context.paths.generatedKiloState
+        statePath: context.paths.generatedKiloState,
+        removeEmptyFile: true
       })
     }
   },
@@ -504,7 +486,8 @@ export const INTEGRATION_SYNC_HOOKS: IntegrationSyncHook[] = [
         rawGenerated: context.generatedByIntegration.zed ?? '',
         key: ZED_CONTEXT_SERVERS_KEY,
         label: 'Zed',
-        statePath: context.paths.generatedZedState
+        statePath: context.paths.generatedZedState,
+        removeEmptyFile: true
       })
     }
   },
@@ -777,6 +760,69 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
+
+/**
+ * Write the agents-managed MCP block into a TOML config (Codex, Grok).
+ *
+ * When the integration is disabled the block is removed instead, and a file that held
+ * nothing else is deleted, so turning an integration off actually stops the servers.
+ */
+async function materializeTomlConfig(args: {
+  context: HookContext
+  targetPath: string
+  generatedContent: string
+  label: string
+}): Promise<void> {
+  const { context, targetPath, generatedContent, label } = args
+  const existingText = await readTextOrEmpty(targetPath)
+
+  if (!context.enabled) {
+    if (existingText.trim().length === 0) return
+
+    let cleaned: string
+    try {
+      cleaned = removeCodexManagedBlock(existingText)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      context.warnings.push(`Failed to clean ${label} config at ${targetPath}; left unchanged. ${message}`)
+      return
+    }
+
+    if (cleaned === existingText) return
+
+    if (cleaned.trim().length === 0) {
+      context.changed.push(toChangedEntry(context.projectRoot, targetPath))
+      if (!context.check) await removeIfExists(targetPath)
+      return
+    }
+
+    await writeManagedFile({
+      absolutePath: targetPath,
+      content: cleaned,
+      projectRoot: context.projectRoot,
+      check: context.check,
+      changed: context.changed
+    })
+    return
+  }
+
+  let content: string
+  try {
+    content = mergeCodexConfig(existingText, generatedContent)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    context.warnings.push(`Failed to merge ${label} config at ${targetPath}; skipped ${label} sync. ${message}`)
+    return
+  }
+
+  await writeManagedFile({
+    absolutePath: targetPath,
+    content,
+    projectRoot: context.projectRoot,
+    check: context.check,
+    changed: context.changed
+  })
+}
 
 /**
  * Merge the agents-managed entries into one top-level key of a settings file the tool

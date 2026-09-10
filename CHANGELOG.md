@@ -37,6 +37,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Disabling an integration now removes its servers. `agents disconnect --llm codex` left the managed block in `.codex/config.toml`, so the tool kept starting the servers; the same held for every config written through a managed block or key. Files that held nothing but managed entries are deleted, files with user settings keep them.
+- `agents reset` removes managed entries from `.mcp.json`, `.github/mcp.json`, `.factory/mcp.json` and `.devin/mcp_config.json` instead of deleting the files, which could contain servers added by hand.
 - Sync bookkeeping (`lastSync`, `lastSyncSourceHash`) moved from the committed `.agents/agents.json` to `.agents/generated/sync.state.json`. Every teammate's sync used to produce a diff in a file under version control (issue #6). Existing values are moved on the first sync.
 - Configs shared with a tool's own settings (Amp, Zed, Kilo, Droid, Devin) keep entries added by hand: the sync owns only the servers it wrote, tracked per file.
 - Zed `settings.json` is parsed as JSONC, so a settings file with comments no longer skips the integration.
