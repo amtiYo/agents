@@ -44,6 +44,15 @@ async function exists(filePath: string): Promise<boolean> {
   }
 }
 
+async function readSyncState(projectRoot: string): Promise<{ lastSync: string | null }> {
+  const statePath = path.join(projectRoot, '.agents', 'generated', 'sync.state.json')
+  try {
+    return JSON.parse(await readFile(statePath, 'utf8')) as { lastSync: string | null }
+  } catch {
+    return { lastSync: null }
+  }
+}
+
 describe('start + sync flow', () => {
   it('bootstraps project from one command and stays idempotent', async () => {
     const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-start-'))
@@ -70,7 +79,7 @@ describe('start + sync flow', () => {
     expect(projectConfig.syncMode).toBe('source-only')
     expect(projectConfig.integrations.enabled).toContain('codex')
     expect(projectConfig.workspace.vscode.hideGenerated).toBe(true)
-    expect(typeof projectConfig.lastSync).toBe('string')
+    expect(typeof (await readSyncState(projectRoot)).lastSync).toBe('string')
 
     expect(Object.keys(projectConfig.mcp.servers).sort()).toEqual(['fetch', 'filesystem', 'git'])
     expect(await exists(path.join(projectRoot, '.agents', 'skills', 'skill-guide', 'SKILL.md'))).toBe(true)
@@ -87,7 +96,7 @@ describe('start + sync flow', () => {
     expect(migratedCodexConfig.match(/# BEGIN agents-sync managed MCP/g)).toHaveLength(1)
     expect(() => TOML.parse(migratedCodexConfig)).not.toThrow()
 
-    const firstLastSync = projectConfig.lastSync
+    const firstLastSync = (await readSyncState(projectRoot)).lastSync
 
     const configWithHttp = await loadAgentsConfig(projectRoot)
     configWithHttp.mcp.servers.remoteDocs = {
@@ -106,8 +115,9 @@ describe('start + sync flow', () => {
     const configAfterDriftSync = JSON.parse(
       await readFile(path.join(projectRoot, '.agents', 'agents.json'), 'utf8'),
     ) as { lastSync: string | null }
-    expect(typeof configAfterDriftSync.lastSync).toBe('string')
-    expect(configAfterDriftSync.lastSync).not.toBe(firstLastSync)
+    const stateAfterDriftSync = await readSyncState(projectRoot)
+    expect(typeof stateAfterDriftSync.lastSync).toBe('string')
+    expect(stateAfterDriftSync.lastSync).not.toBe(firstLastSync)
 
     await waitForTimestampTick()
     await performSync({ projectRoot, check: false, verbose: false })
@@ -115,7 +125,7 @@ describe('start + sync flow', () => {
     const configAfterNoopSync = JSON.parse(
       await readFile(path.join(projectRoot, '.agents', 'agents.json'), 'utf8'),
     ) as { lastSync: string | null }
-    expect(configAfterNoopSync.lastSync).toBe(configAfterDriftSync.lastSync)
+    expect((await readSyncState(projectRoot)).lastSync).toBe(stateAfterDriftSync.lastSync)
 
     await writeFile(path.join(projectRoot, '.codex', 'config.toml'), '', 'utf8')
     const check = await performSync({ projectRoot, check: true, verbose: false })
@@ -141,26 +151,24 @@ describe('start + sync flow', () => {
       yes: true
     })
 
-    const configBeforeReset = JSON.parse(
-      await readFile(path.join(projectRoot, '.agents', 'agents.json'), 'utf8'),
-    ) as { lastSync: string | null; lastSyncSourceHash?: string | null }
-
-    expect(typeof configBeforeReset.lastSync).toBe('string')
-    expect(typeof configBeforeReset.lastSyncSourceHash).toBe('string')
+    const stateBeforeReset = await readSyncState(projectRoot)
+    expect(typeof stateBeforeReset.lastSync).toBe('string')
 
     await runReset({ projectRoot, localOnly: false, hard: false })
     await waitForTimestampTick()
     await performSync({ projectRoot, check: false, verbose: false })
 
+    // A safe reset removes generated files, so the sync writes state again, but the
+    // committed config stays untouched.
     const configAfterResetSync = JSON.parse(
       await readFile(path.join(projectRoot, '.agents', 'agents.json'), 'utf8'),
     ) as { lastSync: string | null; lastSyncSourceHash?: string | null }
 
-    expect(configAfterResetSync.lastSync).toBe(configBeforeReset.lastSync)
-    expect(configAfterResetSync.lastSyncSourceHash).toBe(configBeforeReset.lastSyncSourceHash)
+    expect(configAfterResetSync.lastSync).toBeNull()
+    expect(configAfterResetSync.lastSyncSourceHash).toBeNull()
   })
 
-  it('backfills source hash for legacy configs without bumping lastSync', async () => {
+  it('moves bookkeeping out of a legacy config that still carries it', async () => {
     const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-start-legacy-'))
     const codexDir = await mkdtemp(path.join(os.tmpdir(), 'agents-codex-'))
     tempDirs.push(projectRoot, codexDir)
@@ -180,7 +188,8 @@ describe('start + sync flow', () => {
       lastSyncSourceHash?: string | null
     }
 
-    const lastSyncBeforeBackfill = legacyConfig.lastSync
+    // A config written by 0.8.x kept both fields inline.
+    legacyConfig.lastSync = '2026-01-01T00:00:00.000Z'
     delete legacyConfig.lastSyncSourceHash
     await writeFile(configPath, `${JSON.stringify(legacyConfig, null, 2)}\n`, 'utf8')
 
@@ -193,8 +202,9 @@ describe('start + sync flow', () => {
       lastSyncSourceHash?: string | null
     }
 
-    expect(configAfterBackfill.lastSync).toBe(lastSyncBeforeBackfill)
-    expect(typeof configAfterBackfill.lastSyncSourceHash).toBe('string')
+    expect(configAfterBackfill.lastSync).toBeNull()
+    expect(configAfterBackfill.lastSyncSourceHash).toBeNull()
+    expect(typeof (await readSyncState(projectRoot)).lastSync).toBe('string')
   })
 
   it('preserves existing AGENTS.md during start even with force setup', async () => {

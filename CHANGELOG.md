@@ -37,6 +37,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Sync bookkeeping (`lastSync`, `lastSyncSourceHash`) moved from the committed `.agents/agents.json` to `.agents/generated/sync.state.json`. Every teammate's sync used to produce a diff in a file under version control (issue #6). Existing values are moved on the first sync.
+- Configs shared with a tool's own settings (Amp, Zed, Kilo, Droid, Devin) keep entries added by hand: the sync owns only the servers it wrote, tracked per file.
+- Zed `settings.json` is parsed as JSONC, so a settings file with comments no longer skips the integration.
+- Project MCP files keep their other top-level keys, such as Copilot's `inputs`.
+- `agents reset` cleans Kilo files that contain comments and removes Goose extensions it created.
+- `agents sync --profile` with an unknown name fails instead of silently syncing every server.
+- `agents mcp budget` rejects a non-numeric or non-positive `--timeout`.
+- Servers whose schema 3 target list named all eleven integrations of that release now reach the integrations added since.
 - `agents doctor` reports when `~/.codex/config.toml` cannot be parsed, with the parse error, instead of failing silently. Codex ignores every project while that file is broken.
 - Setting Codex trust no longer throws on a config with a syntax error elsewhere; the file is left untouched and the reason is reported.
 - The `sse` transport is marked deprecated in `agents mcp add` and flagged by `agents doctor`, following the MCP 2026-07-28 specification.
