@@ -68,7 +68,7 @@ Eighteen tools. "Verified" means the tool's own CLI was run against the file thi
 | Claude Desktop | `claude_desktop` | global `claude_desktop_config.json`, stdio servers only | — | ✅ |
 | Gemini CLI | `gemini` | `.gemini/settings.json` | bridge | ✅ |
 | Cursor | `cursor` | `.cursor/mcp.json` + CLI enable | bridge | ✅ |
-| Copilot VS Code | `copilot_vscode` | `.vscode/mcp.json` | — | ✅ |
+| Copilot VS Code | `copilot_vscode` | `.vscode/mcp.json` | native | ✅ |
 | Copilot CLI | `copilot_cli` | `.mcp.json`, or `.github/mcp.json` | native | ✅ |
 | Antigravity | `antigravity` | `.agents/mcp_config.json` | flat copy | ✅ |
 | Devin Desktop (Windsurf) | `windsurf`, `devin_desktop` | global `~/.codeium/windsurf/mcp_config.json` | bridge | ✅ |
