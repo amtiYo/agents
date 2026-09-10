@@ -1,5 +1,5 @@
 import path from 'node:path'
-import { ensureDir, pathExists, readJson, readTextOrEmpty, writeJsonAtomic } from '../core/fs.js'
+import { ensureDir, pathExists, readJson, readTextOrEmpty, removeIfExists, writeJsonAtomic } from '../core/fs.js'
 import { toChangedEntry, writeManagedFile } from '../core/managedFiles.js'
 import { mergeCodexConfig } from '../core/codexConfig.js'
 import { getLegacyAntigravityGlobalMcpPath, normalizeAntigravityMcpPayload, readAntigravityMcp } from '../core/antigravity.js'
@@ -397,6 +397,7 @@ export const INTEGRATION_SYNC_HOOKS: IntegrationSyncHook[] = [
   },
   {
     id: 'amp',
+    materializeWhenDisabled: true,
     generatedPath: (paths) => paths.generatedAmp,
     buildGenerated: (servers) => {
       const amp = buildAmpPayload(servers)
@@ -411,7 +412,8 @@ export const INTEGRATION_SYNC_HOOKS: IntegrationSyncHook[] = [
         targetPath: context.paths.ampSettings,
         rawGenerated: context.generatedByIntegration.amp ?? '',
         key: AMP_MCP_KEY,
-        label: 'Amp'
+        label: 'Amp',
+        statePath: context.paths.generatedAmpState
       })
     }
   },
@@ -425,18 +427,22 @@ export const INTEGRATION_SYNC_HOOKS: IntegrationSyncHook[] = [
         warnings: droid.warnings
       }
     },
+    materializeWhenDisabled: true,
     materialize: async (context) => {
-      await writeManagedFile({
-        absolutePath: context.paths.droidMcp,
-        content: context.generatedByIntegration.droid ?? '',
-        projectRoot: context.projectRoot,
-        check: context.check,
-        changed: context.changed
+      await mergeJsonKey({
+        context,
+        targetPath: context.paths.droidMcp,
+        rawGenerated: context.generatedByIntegration.droid ?? '',
+        key: 'mcpServers',
+        label: 'Droid',
+        statePath: context.paths.generatedDroidState,
+        removeEmptyFile: true
       })
     }
   },
   {
     id: 'kilo',
+    materializeWhenDisabled: true,
     generatedPath: (paths) => paths.generatedKilo,
     buildGenerated: (servers) => {
       const kilo = buildKiloPayload(servers)
@@ -451,7 +457,8 @@ export const INTEGRATION_SYNC_HOOKS: IntegrationSyncHook[] = [
         targetPath: context.paths.kiloConfig,
         rawGenerated: context.generatedByIntegration.kilo ?? '',
         key: 'mcp',
-        label: 'Kilo'
+        label: 'Kilo',
+        statePath: context.paths.generatedKiloState
       })
     }
   },
@@ -465,18 +472,22 @@ export const INTEGRATION_SYNC_HOOKS: IntegrationSyncHook[] = [
         warnings: devin.warnings
       }
     },
+    materializeWhenDisabled: true,
     materialize: async (context) => {
-      await writeManagedFile({
-        absolutePath: context.paths.devinMcp,
-        content: context.generatedByIntegration.devin ?? '',
-        projectRoot: context.projectRoot,
-        check: context.check,
-        changed: context.changed
+      await mergeJsonKey({
+        context,
+        targetPath: context.paths.devinMcp,
+        rawGenerated: context.generatedByIntegration.devin ?? '',
+        key: 'mcpServers',
+        label: 'Devin',
+        statePath: context.paths.generatedDevinState,
+        removeEmptyFile: true
       })
     }
   },
   {
     id: 'zed',
+    materializeWhenDisabled: true,
     generatedPath: (paths) => paths.generatedZed,
     buildGenerated: (servers) => {
       const zed = buildZedPayload(servers)
@@ -486,12 +497,14 @@ export const INTEGRATION_SYNC_HOOKS: IntegrationSyncHook[] = [
       }
     },
     materialize: async (context) => {
-      await mergeJsonKey({
+      // Zed ships settings.json with comments, so it has to be edited as JSONC.
+      await mergeJsoncKey({
         context,
         targetPath: context.paths.zedSettings,
         rawGenerated: context.generatedByIntegration.zed ?? '',
         key: ZED_CONTEXT_SERVERS_KEY,
-        label: 'Zed'
+        label: 'Zed',
+        statePath: context.paths.generatedZedState
       })
     }
   },
@@ -766,91 +779,123 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 
 /**
- * Replace a single top-level key of a JSON settings file that the tool owns,
- * leaving every other setting written by the user untouched.
+ * Merge the agents-managed entries into one top-level key of a settings file the tool
+ * also owns (Amp, Zed, Kilo, Droid, Devin).
+ *
+ * Entries a user added by hand stay; entries agents wrote on a previous run and no
+ * longer needs are removed, which is what the state file records.
  */
+async function mergeManagedKey(args: {
+  context: HookContext
+  targetPath: string
+  rawGenerated: string
+  key: string
+  label: string
+  statePath: string
+  jsonc: boolean
+  removeEmptyFile?: boolean
+}): Promise<void> {
+  const { context, targetPath, rawGenerated, key, label, statePath, jsonc, removeEmptyFile } = args
+
+  const previousNames = await readManagedGlobalNames(statePath)
+  if (!context.enabled && previousNames.length === 0) return
+
+  let generated: Record<string, unknown> = {}
+  if (context.enabled && rawGenerated.trim()) {
+    generated = parseJsonObject(rawGenerated, `generated ${label} config`)
+  }
+  const managed = recordFrom(generated[key])
+
+  const existingText = await readTextOrEmpty(targetPath)
+  let existing: Record<string, unknown> = {}
+  if (existingText.trim().length > 0) {
+    if (jsonc) {
+      const errors: { error: number; offset: number; length: number }[] = []
+      const parsed = parseJsonc(existingText, errors, { allowTrailingComma: true }) as unknown
+      if (errors.length > 0 || (parsed !== undefined && !isRecord(parsed))) {
+        context.warnings.push(`Existing ${label} config at ${targetPath} is not valid JSONC; skipped ${label} sync.`)
+        return
+      }
+      existing = isRecord(parsed) ? parsed : {}
+    } else {
+      try {
+        const parsed = JSON.parse(existingText) as unknown
+        if (!isRecord(parsed)) {
+          context.warnings.push(`Existing ${label} config at ${targetPath} is not a JSON object; skipped ${label} sync.`)
+          return
+        }
+        existing = parsed
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        context.warnings.push(`Failed to read existing ${label} config at ${targetPath}; skipped ${label} sync. ${message}`)
+        return
+      }
+    }
+  }
+
+  const nextEntries = { ...recordFrom(existing[key]) }
+  for (const name of previousNames) {
+    delete nextEntries[name]
+  }
+  for (const [name, value] of Object.entries(managed)) {
+    nextEntries[name] = value
+  }
+
+  const otherKeys = Object.keys(existing).filter((item) => item !== key)
+  if (removeEmptyFile && Object.keys(nextEntries).length === 0 && otherKeys.length === 0) {
+    if (await pathExists(targetPath)) {
+      context.changed.push(toChangedEntry(context.projectRoot, targetPath))
+      if (!context.check) await removeIfExists(targetPath)
+    }
+    if (!context.check) await writeManagedGlobalNames(statePath, [])
+    return
+  }
+
+  let content: string
+  if (jsonc) {
+    const base = existingText.trim().length > 0 ? existingText : '{}\n'
+    const edits = modify(base, [key], nextEntries, { formattingOptions: { insertSpaces: true, tabSize: 2 } })
+    const applied = applyEdits(base, edits)
+    content = applied.endsWith('\n') ? applied : `${applied}\n`
+  } else {
+    content = `${JSON.stringify({ ...existing, [key]: nextEntries }, null, 2)}\n`
+  }
+
+  await writeManagedFile({
+    absolutePath: targetPath,
+    content,
+    projectRoot: context.projectRoot,
+    check: context.check,
+    changed: context.changed
+  })
+
+  if (!context.check) {
+    await writeManagedGlobalNames(statePath, Object.keys(managed))
+  }
+}
+
 async function mergeJsonKey(args: {
   context: HookContext
   targetPath: string
   rawGenerated: string
   key: string
   label: string
+  statePath: string
+  removeEmptyFile?: boolean
 }): Promise<void> {
-  const { context, targetPath, rawGenerated, key, label } = args
-
-  let generated: Record<string, unknown> = {}
-  if (rawGenerated.trim()) {
-    generated = parseJsonObject(rawGenerated, `generated ${label} config`)
-  }
-
-  let existing: Record<string, unknown> = {}
-  if (await pathExists(targetPath)) {
-    try {
-      const parsed = await readJson<unknown>(targetPath)
-      if (!isRecord(parsed)) {
-        context.warnings.push(`Existing ${label} config at ${targetPath} is not a JSON object; skipped ${label} sync.`)
-        return
-      }
-      existing = parsed
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
-      context.warnings.push(`Failed to read existing ${label} config at ${targetPath}; skipped ${label} sync. ${message}`)
-      return
-    }
-  }
-
-  const merged = { ...existing, [key]: recordFrom(generated[key]) }
-
-  await writeManagedFile({
-    absolutePath: targetPath,
-    content: `${JSON.stringify(merged, null, 2)}\n`,
-    projectRoot: context.projectRoot,
-    check: context.check,
-    changed: context.changed
-  })
+  await mergeManagedKey({ ...args, jsonc: false })
 }
 
-/**
- * Same as {@link mergeJsonKey} but for JSONC files, where the user's comments
- * have to survive the edit.
- */
 async function mergeJsoncKey(args: {
   context: HookContext
   targetPath: string
   rawGenerated: string
   key: string
   label: string
+  statePath: string
+  removeEmptyFile?: boolean
 }): Promise<void> {
-  const { context, targetPath, rawGenerated, key, label } = args
-
-  let generated: Record<string, unknown> = {}
-  if (rawGenerated.trim()) {
-    generated = parseJsonObject(rawGenerated, `generated ${label} config`)
-  }
-
-  const existingText = await readTextOrEmpty(targetPath)
-  if (existingText.trim().length > 0) {
-    const errors: { error: number; offset: number; length: number }[] = []
-    const parsed = parseJsonc(existingText, errors, { allowTrailingComma: true }) as unknown
-    if (errors.length > 0 || (parsed !== undefined && !isRecord(parsed))) {
-      context.warnings.push(`Existing ${label} config at ${targetPath} is not valid JSONC; skipped ${label} sync.`)
-      return
-    }
-  }
-
-  const base = existingText.trim().length > 0 ? existingText : '{}\n'
-  const edits = modify(base, [key], recordFrom(generated[key]), {
-    formattingOptions: { insertSpaces: true, tabSize: 2 }
-  })
-  const content = applyEdits(base, edits)
-
-  await writeManagedFile({
-    absolutePath: targetPath,
-    content: content.endsWith('\n') ? content : `${content}\n`,
-    projectRoot: context.projectRoot,
-    check: context.check,
-    changed: context.changed
-  })
+  await mergeManagedKey({ ...args, jsonc: true })
 }
 
 /**

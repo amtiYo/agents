@@ -1,7 +1,7 @@
 import path from 'node:path'
 import { readFile } from 'node:fs/promises'
 import { ensureDir, pathExists, readJson, writeJsonAtomic } from './fs.js'
-import { loadAgentsConfig, saveAgentsConfig } from './config.js'
+import { loadAgentsConfigDetailed, persistMigratedConfig, saveAgentsConfig } from './config.js'
 import { loadResolvedRegistry } from './mcp.js'
 import { writeManagedFile } from './managedFiles.js'
 import { getProjectPaths } from './paths.js'
@@ -48,11 +48,19 @@ export async function performSync(options: SyncOptions): Promise<SyncResult> {
   const paths = getProjectPaths(projectRoot)
   const releaseLock = check ? null : await acquireSyncLock(paths.generatedSyncLock)
   try {
-    const config = await loadAgentsConfig(projectRoot)
+    const { config, migratedFrom } = await loadAgentsConfigDetailed(projectRoot)
     const sourceFingerprint = await computeSharedSourceFingerprint(projectRoot, config)
 
+    const migrationWarnings: string[] = []
+    if (migratedFrom !== null && !check) {
+      const backupPath = await persistMigratedConfig(projectRoot, config, migratedFrom)
+      migrationWarnings.push(
+        `Migrated .agents/agents.json from schema ${String(migratedFrom)} to ${String(config.schemaVersion)}; previous file kept at ${path.basename(backupPath)}.`,
+      )
+    }
+
     const resolved = await loadResolvedRegistry(projectRoot, profile === undefined ? undefined : { profile })
-    const warnings = [...resolved.warnings]
+    const warnings = [...migrationWarnings, ...resolved.warnings]
     if (resolved.missingRequiredEnv.length > 0) {
       warnings.push(`Skipped servers because required env vars are missing: ${resolved.missingRequiredEnv.join('; ')}`)
     }

@@ -165,3 +165,66 @@ describe('shared project .mcp.json', () => {
     expect(drift.changed).toEqual([])
   })
 })
+
+describe('separate Copilot CLI file', () => {
+  it('writes both .github/mcp.json and .mcp.json when the paths differ', async () => {
+    const projectRoot = await setupProject(['claude', 'copilot_cli'], (config) => {
+      config.integrations.options.copilotCliPath = '.github/mcp.json'
+    })
+    const paths = getProjectPaths(projectRoot)
+
+    await performSync({ projectRoot, check: false, verbose: false })
+
+    const copilot = await readMcpJson(paths.copilotCliGithubMcp)
+    expect(Object.keys(copilot.mcpServers).sort()).toEqual(['api', 'docs'])
+    expect(copilot.mcpServers.docs?.tools).toEqual(['*'])
+
+    const claude = await readMcpJson(paths.copilotCliMcp)
+    expect(Object.keys(claude.mcpServers).sort()).toEqual(['api', 'docs'])
+    expect(claude.mcpServers.docs?.tools).toBeUndefined()
+  })
+
+  it('writes only .github/mcp.json when Claude Code is not enabled', async () => {
+    const projectRoot = await setupProject(['copilot_cli'], (config) => {
+      config.integrations.options.copilotCliPath = '.github/mcp.json'
+    })
+    const paths = getProjectPaths(projectRoot)
+
+    await performSync({ projectRoot, check: false, verbose: false })
+
+    expect(await pathExists(paths.copilotCliGithubMcp)).toBe(true)
+    expect(await pathExists(paths.copilotCliMcp)).toBe(false)
+  })
+
+  it('cleans up the previous file when the configured path changes', async () => {
+    const projectRoot = await setupProject(['copilot_cli'])
+    const paths = getProjectPaths(projectRoot)
+
+    await performSync({ projectRoot, check: false, verbose: false })
+    expect(await pathExists(paths.copilotCliMcp)).toBe(true)
+
+    const config = await loadAgentsConfig(projectRoot)
+    config.integrations.options.copilotCliPath = '.github/mcp.json'
+    await saveAgentsConfig(projectRoot, config)
+    await performSync({ projectRoot, check: false, verbose: false })
+
+    expect(await pathExists(paths.copilotCliGithubMcp)).toBe(true)
+    expect(await pathExists(paths.copilotCliMcp)).toBe(false)
+  })
+
+  it('keeps other top-level keys of an existing .mcp.json', async () => {
+    const projectRoot = await setupProject(['claude'])
+    const paths = getProjectPaths(projectRoot)
+
+    await performSync({ projectRoot, check: false, verbose: false })
+
+    const payload = JSON.parse(await readFile(paths.copilotCliMcp, 'utf8')) as Record<string, unknown>
+    payload.inputs = [{ id: 'token', type: 'promptString' }]
+    await writeFile(paths.copilotCliMcp, `${JSON.stringify(payload, null, 2)}\n`, 'utf8')
+
+    await performSync({ projectRoot, check: false, verbose: false })
+
+    const after = JSON.parse(await readFile(paths.copilotCliMcp, 'utf8')) as Record<string, unknown>
+    expect(after.inputs).toEqual([{ id: 'token', type: 'promptString' }])
+  })
+})

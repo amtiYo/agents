@@ -8,7 +8,8 @@ import {
   migrateAgentsConfig,
   persistMigratedConfig
 } from '../src/core/config.js'
-import { resolveFromConfigAndLocal } from '../src/core/mcp.js'
+import { loadResolvedRegistry, resolveFromConfigAndLocal } from '../src/core/mcp.js'
+import { performSync } from '../src/core/sync.js'
 import { AGENTS_SCHEMA_VERSION } from '../src/types.js'
 import type { AgentsConfig } from '../src/types.js'
 
@@ -173,5 +174,64 @@ describe('variable expansion', () => {
     })
 
     expect(resolved.warnings.join(' ')).toContain('AGENTS_TEST_MISSING_VAR')
+  })
+})
+
+describe('migration during sync', () => {
+  // A migrated config keeps Claude on local scope, which shells out to the claude CLI.
+  // Hiding PATH keeps these tests off the developer's real ~/.claude.json.
+  async function syncWithoutClis(dir: string, check: boolean) {
+    const previousPath = process.env.PATH
+    process.env.PATH = ''
+    try {
+      return await performSync({ projectRoot: dir, check, verbose: false })
+    } finally {
+      if (previousPath === undefined) delete process.env.PATH
+      else process.env.PATH = previousPath
+    }
+  }
+
+  it('writes the migrated config and a backup on the first sync', async () => {
+    const dir = await makeProject(schemaV3Config())
+
+    const result = await syncWithoutClis(dir, false)
+
+    const current = JSON.parse(await readFile(path.join(dir, '.agents', 'agents.json'), 'utf8')) as {
+      schemaVersion: number
+    }
+    const backup = JSON.parse(
+      await readFile(path.join(dir, '.agents', 'agents.json.v3.bak'), 'utf8'),
+    ) as { schemaVersion: number }
+
+    expect(current.schemaVersion).toBe(AGENTS_SCHEMA_VERSION)
+    expect(backup.schemaVersion).toBe(3)
+    expect(result.warnings.join(' ')).toContain('Migrated .agents/agents.json from schema 3')
+  })
+
+  it('does not write anything during a check run', async () => {
+    const dir = await makeProject(schemaV3Config())
+
+    await syncWithoutClis(dir, true)
+
+    const current = JSON.parse(await readFile(path.join(dir, '.agents', 'agents.json'), 'utf8')) as {
+      schemaVersion: number
+    }
+    expect(current.schemaVersion).toBe(3)
+  })
+
+  it('gives servers from a schema 3 target list to the new integrations', async () => {
+    const config = schemaV3Config()
+    const servers = (config.mcp as { servers: Record<string, Record<string, unknown>> }).servers
+    servers.filesystem.targets = [
+      'codex', 'claude', 'claude_desktop', 'gemini', 'copilot_vscode', 'copilot_cli',
+      'cursor', 'antigravity', 'windsurf', 'opencode', 'junie'
+    ]
+    const dir = await makeProject(config)
+
+    const resolved = await loadResolvedRegistry(dir)
+
+    expect(resolved.serversByTarget.grok.map((server) => server.name)).toEqual(['filesystem'])
+    expect(resolved.serversByTarget.amp.map((server) => server.name)).toEqual(['filesystem'])
+    expect(resolved.serversByTarget.zed.map((server) => server.name)).toEqual(['filesystem'])
   })
 })

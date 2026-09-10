@@ -1,6 +1,8 @@
 import path from 'node:path'
 import { lstat, readlink, readdir, rmdir } from 'node:fs/promises'
+import { parse as parseJsonc } from 'jsonc-parser'
 import { cleanupManagedGitignore } from '../core/gitignore.js'
+import { readGooseDocument, readGooseExtensions, setGooseExtensions, writeGooseConfig } from '../core/goose.js'
 import { getProjectPaths } from '../core/paths.js'
 import { pathExists, readJson, readTextOrEmpty, removeIfExists, writeJsonAtomic, writeTextAtomic } from '../core/fs.js'
 import {
@@ -114,7 +116,14 @@ export async function runReset(options: ResetOptions): Promise<void> {
     generatedPath: paths.generatedKilo,
     removed,
     warnings
-  }, 'Kilo', 'mcp')
+  }, 'Kilo', 'mcp', { jsonc: true })
+  await cleanupGooseConfig({
+    projectRoot,
+    configPath: paths.gooseConfig,
+    statePath: paths.generatedGooseState,
+    removed,
+    warnings
+  })
 
   const bridges = [
     { bridgePath: paths.claudeSkillsBridge, sourcePath: paths.agentsSkillsDir },
@@ -452,8 +461,11 @@ async function cleanupKeyedJsonConfig(
   args: JsonConfigCleanupArgs,
   label: string,
   key: string,
+  options?: { jsonc?: boolean },
 ): Promise<void> {
-  const existing = await readConfigObjectForCleanup(args.configPath, label, args.warnings)
+  const existing = options?.jsonc
+    ? await readJsoncObjectForCleanup(args.configPath, label, args.warnings)
+    : await readConfigObjectForCleanup(args.configPath, label, args.warnings)
   if (existing === null) return
   if (Object.keys(existing).length === 0) {
     await removeResetTarget(args.configPath, args.projectRoot, args.removed)
@@ -467,4 +479,76 @@ async function cleanupKeyedJsonConfig(
   removeManagedMapEntries(cleaned, generated, key)
 
   await persistCleanedJsonConfig(args, existing, cleaned)
+}
+
+/** Read a JSONC settings file for cleanup, tolerating comments and trailing commas. */
+async function readJsoncObjectForCleanup(
+  configPath: string,
+  label: string,
+  warnings: string[],
+): Promise<Record<string, unknown> | null> {
+  if (!(await pathExists(configPath))) return null
+
+  const raw = await readTextOrEmpty(configPath)
+  if (raw.trim().length === 0) return {}
+
+  const errors: { error: number; offset: number; length: number }[] = []
+  const parsed = parseJsonc(raw, errors, { allowTrailingComma: true }) as unknown
+  if (errors.length > 0 || (parsed !== undefined && !isRecord(parsed))) {
+    warnings.push(`Existing ${label} config at ${configPath} is not valid JSONC; preserved the file.`)
+    return null
+  }
+  return isRecord(parsed) ? parsed : {}
+}
+
+/** Remove the extensions agents added to the global Goose config, keeping the rest. */
+async function cleanupGooseConfig(args: {
+  projectRoot: string
+  configPath: string
+  statePath: string
+  removed: string[]
+  warnings: string[]
+}): Promise<void> {
+  if (!(await pathExists(args.configPath))) return
+
+  let managedNames: string[] = []
+  if (await pathExists(args.statePath)) {
+    try {
+      const state = await readJson<{ managedNames?: unknown }>(args.statePath)
+      managedNames = Array.isArray(state.managedNames)
+        ? state.managedNames.filter((name): name is string => typeof name === 'string')
+        : []
+    } catch {
+      managedNames = []
+    }
+  }
+  if (managedNames.length === 0) return
+
+  let doc
+  try {
+    doc = await readGooseDocument(args.configPath)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    args.warnings.push(`Failed to read Goose config at ${args.configPath}: ${message}`)
+    return
+  }
+
+  const extensions = { ...readGooseExtensions(doc) }
+  let changed = false
+  for (const name of managedNames) {
+    if (name in extensions) {
+      delete extensions[name]
+      changed = true
+    }
+  }
+  if (!changed) return
+
+  const content = setGooseExtensions(doc, extensions)
+  if (content.trim().length === 0) {
+    await removeResetTarget(args.configPath, args.projectRoot, args.removed)
+    return
+  }
+
+  await writeGooseConfig(args.configPath, content)
+  args.removed.push(args.configPath)
 }

@@ -219,7 +219,9 @@ export async function loadAgentsConfigDetailed(projectRoot: string): Promise<Loa
     delete config.profiles
   }
 
-  if (typeof config.activeProfile !== 'string' || !profiles?.[config.activeProfile]) {
+  // An active profile that no longer exists is kept as written, so the sync can say
+  // so instead of silently widening the run to every server.
+  if (typeof config.activeProfile !== 'string' || config.activeProfile.trim().length === 0) {
     config.activeProfile = null
   }
 

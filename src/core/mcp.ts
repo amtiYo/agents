@@ -13,9 +13,26 @@ import { getProjectPaths } from './paths.js'
 import { INTEGRATION_IDS } from '../integrations/registry.js'
 
 const ALL_INTEGRATIONS: IntegrationName[] = INTEGRATION_IDS
+/**
+ * Target lists that were "every integration" in an earlier release. A server carrying
+ * one of them is treated as universal again, so integrations added later still get it.
+ */
 const LEGACY_EXPAND_SETS: IntegrationName[][] = [
   ['codex', 'claude', 'gemini', 'copilot_vscode'],
-  ['codex', 'claude', 'gemini', 'copilot_vscode', 'cursor', 'antigravity']
+  ['codex', 'claude', 'gemini', 'copilot_vscode', 'cursor', 'antigravity'],
+  [
+    'codex',
+    'claude',
+    'claude_desktop',
+    'gemini',
+    'copilot_vscode',
+    'copilot_cli',
+    'cursor',
+    'antigravity',
+    'windsurf',
+    'opencode',
+    'junie'
+  ]
 ]
 
 export async function loadLocalOverrides(projectRoot: string): Promise<LocalOverridesFile> {
@@ -37,10 +54,19 @@ export async function loadResolvedRegistry(
   const config = await loadAgentsConfig(projectRoot)
   const local = await loadLocalOverrides(projectRoot)
 
-  const profileName = options?.profile === undefined ? config.activeProfile : options.profile
+  const explicit = options?.profile !== undefined
+  const profileName = explicit ? options.profile : config.activeProfile
   const profile = profileName ? config.profiles?.[profileName] : undefined
   const warnings: string[] = []
   if (profileName && !profile) {
+    const known = Object.keys(config.profiles ?? {}).sort((a, b) => a.localeCompare(b))
+    if (explicit) {
+      // Asking for a narrower set and silently getting every server is the opposite
+      // of what was requested, so a bad --profile is an error.
+      throw new Error(
+        `Profile "${profileName}" is not defined in .agents/agents.json. Known profiles: ${known.join(', ') || '(none)'}`,
+      )
+    }
     warnings.push(`Profile "${profileName}" is not defined in .agents/agents.json; using every server.`)
   }
 
