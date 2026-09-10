@@ -64,6 +64,12 @@ export async function runMcpAdd(options: McpAddOptions): Promise<void> {
   let url = options.url?.trim()
   let args = [...(options.args ?? [])]
 
+  // --url and --command already say which transport is meant; asking again is noise.
+  if (!transport) {
+    if (url) transport = 'http'
+    else if (command) transport = 'stdio'
+  }
+
   if (!options.nonInteractive) {
     if (!name) {
       name = await promptText('MCP server name', 'context7')

@@ -46,6 +46,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `agents reset` cleans Kilo files that contain comments and removes Goose extensions it created.
 - `agents sync --profile` with an unknown name fails instead of silently syncing every server.
 - `agents mcp budget` rejects a non-numeric or non-positive `--timeout`.
+- `agents mcp add --url` and `--command` no longer prompt for a transport that the flag already implies.
 - Servers whose schema 3 target list named all eleven integrations of that release now reach the integrations added since.
 - `agents status` counts Claude Code servers under both project-scope and local-scope names, and reports servers waiting for approval.
 - `agents status` and `agents doctor` follow `copilotCliPath` instead of always looking at `.mcp.json`.

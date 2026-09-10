@@ -476,3 +476,45 @@ async function captureStdout(fn: () => Promise<void>): Promise<string> {
 async function waitForTimestampTick(): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 20))
 }
+
+describe('transport inference', () => {
+  it('treats --url as http and --command as stdio without asking', async () => {
+    const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-transport-'))
+    tempDirs.push(projectRoot)
+    await runInit({ projectRoot, force: true })
+
+    await runMcpAdd({
+      projectRoot,
+      name: 'remote',
+      url: 'https://mcp.example.com/mcp',
+      args: [],
+      env: [],
+      headers: [],
+      secretEnv: [],
+      secretHeaders: [],
+      targets: [],
+      nonInteractive: true,
+      noSync: true
+    })
+    await runMcpAdd({
+      projectRoot,
+      name: 'local',
+      command: 'my-server',
+      args: [],
+      env: [],
+      headers: [],
+      secretEnv: [],
+      secretHeaders: [],
+      targets: [],
+      nonInteractive: true,
+      noSync: true
+    })
+
+    const config = JSON.parse(
+      await readFile(path.join(projectRoot, '.agents', 'agents.json'), 'utf8'),
+    ) as { mcp: { servers: Record<string, { transport: string }> } }
+
+    expect(config.mcp.servers.remote?.transport).toBe('http')
+    expect(config.mcp.servers.local?.transport).toBe('stdio')
+  })
+})
