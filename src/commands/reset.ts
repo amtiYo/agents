@@ -124,6 +124,29 @@ export async function runReset(options: ResetOptions): Promise<void> {
     removed,
     warnings
   })
+  await cleanupKeyedJsonConfig({
+    projectRoot,
+    configPath: paths.droidMcp,
+    generatedPath: paths.generatedDroid,
+    removed,
+    warnings
+  }, 'Droid', 'mcpServers')
+  await cleanupKeyedJsonConfig({
+    projectRoot,
+    configPath: paths.devinMcp,
+    generatedPath: paths.generatedDevin,
+    removed,
+    warnings
+  }, 'Devin', 'mcpServers')
+  for (const projectMcpPath of [paths.copilotCliMcp, paths.copilotCliGithubMcp]) {
+    await cleanupKeyedJsonConfig({
+      projectRoot,
+      configPath: projectMcpPath,
+      generatedPath: paths.generatedClaudeProjectMcp,
+      removed,
+      warnings
+    }, 'project MCP', 'mcpServers')
+  }
 
   const bridges = [
     { bridgePath: paths.claudeSkillsBridge, sourcePath: paths.agentsSkillsDir },
@@ -143,12 +166,7 @@ export async function runReset(options: ResetOptions): Promise<void> {
     paths.antigravityWorkspaceMcp,
     paths.antigravityProjectMcp,
     paths.vscodeMcp,
-    paths.copilotCliMcp,
-    paths.copilotCliGithubMcp,
-    paths.junieMcp,
-    paths.droidMcp,
-    paths.devinMcp,
-    paths.generatedClaudeProjectMcp
+    paths.junieMcp
   ]
   if (!options.localOnly) {
     targets.push(paths.generatedDir)
