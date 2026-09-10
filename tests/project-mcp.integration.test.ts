@@ -3,6 +3,7 @@ import path from 'node:path'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { afterEach, describe, expect, it } from 'vitest'
 import { runInit } from '../src/commands/init.js'
+import { runReset } from '../src/commands/reset.js'
 import { loadAgentsConfig, saveAgentsConfig } from '../src/core/config.js'
 import { performSync } from '../src/core/sync.js'
 import { getProjectPaths } from '../src/core/paths.js'
@@ -226,5 +227,33 @@ describe('separate Copilot CLI file', () => {
 
     const after = JSON.parse(await readFile(paths.copilotCliMcp, 'utf8')) as Record<string, unknown>
     expect(after.inputs).toEqual([{ id: 'token', type: 'promptString' }])
+  })
+})
+
+describe('reset', () => {
+  it('removes managed servers from .mcp.json but keeps hand-written ones', async () => {
+    const projectRoot = await setupProject(['claude'])
+    const paths = getProjectPaths(projectRoot)
+
+    await performSync({ projectRoot, check: false, verbose: false })
+
+    const payload = await readMcpJson(paths.copilotCliMcp)
+    payload.mcpServers.handwritten = { type: 'stdio', command: 'my-server' }
+    await writeFile(paths.copilotCliMcp, `${JSON.stringify(payload, null, 2)}\n`, 'utf8')
+
+    await runReset({ projectRoot, localOnly: false, hard: false })
+
+    const after = await readMcpJson(paths.copilotCliMcp)
+    expect(Object.keys(after.mcpServers)).toEqual(['handwritten'])
+  })
+
+  it('deletes .mcp.json when it held nothing but managed servers', async () => {
+    const projectRoot = await setupProject(['claude'])
+    const paths = getProjectPaths(projectRoot)
+
+    await performSync({ projectRoot, check: false, verbose: false })
+    await runReset({ projectRoot, localOnly: false, hard: false })
+
+    expect(await pathExists(paths.copilotCliMcp)).toBe(false)
   })
 })
