@@ -367,13 +367,18 @@ export async function importPlugin(args: {
         skippedServers.push(targetName)
         continue
       }
+      // ${PLUGIN_ROOT} becomes ${PROJECT_ROOT}: an absolute path here would be written
+      // into the committed config and break for everyone else who clones the repo.
+      const toProjectPlaceholder = (value: string): string => value.replaceAll('${PLUGIN_ROOT}', '${PROJECT_ROOT}')
       config.mcp.servers[targetName] = server.type === 'stdio'
         ? {
             transport: 'stdio',
             command: server.command ?? '',
-            ...(server.args ? { args: server.args.map((arg) => arg.replaceAll('${PLUGIN_ROOT}', dir)) } : {}),
-            ...(server.env ? { env: server.env } : {}),
-            ...(server.cwd ? { cwd: server.cwd.replaceAll('${PLUGIN_ROOT}', dir) } : {})
+            ...(server.args ? { args: server.args.map(toProjectPlaceholder) } : {}),
+            ...(server.env
+              ? { env: Object.fromEntries(Object.entries(server.env).map(([k, v]) => [k, toProjectPlaceholder(v)])) }
+              : {}),
+            ...(server.cwd ? { cwd: toProjectPlaceholder(server.cwd) } : {})
           }
         : {
             transport: server.type === 'sse' ? 'sse' : 'http',

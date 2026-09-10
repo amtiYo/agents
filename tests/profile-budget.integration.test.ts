@@ -1,6 +1,6 @@
 import os from 'node:os'
 import path from 'node:path'
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { afterEach, describe, expect, it } from 'vitest'
 import { runInit } from '../src/commands/init.js'
 import { runProfileRemove, runProfileSet, runProfileUse } from '../src/commands/profile.js'
@@ -188,5 +188,35 @@ describe('context budget probe', () => {
 
     expect(result.ok).toBe(false)
     expect(result.error).toContain('timed out')
+  })
+})
+
+describe('profile edge cases', () => {
+  it('keeps a malformed profile in the file instead of dropping it on the next save', async () => {
+    const projectRoot = await makeProject()
+    const configPath = path.join(projectRoot, '.agents', 'agents.json')
+
+    const raw = JSON.parse(await readFile(configPath, 'utf8')) as Record<string, unknown>
+    raw.profiles = { broken: { servers: 'alpha' }, ok: { servers: ['alpha'] } }
+    await writeFile(configPath, `${JSON.stringify(raw, null, 2)}\n`, 'utf8')
+
+    await runProfileSet({ projectRoot, name: 'extra', servers: ['beta'], json: true })
+
+    const after = JSON.parse(await readFile(configPath, 'utf8')) as {
+      profiles: Record<string, { servers: string[] }>
+    }
+    expect(Object.keys(after.profiles).sort()).toEqual(['broken', 'extra', 'ok'])
+    expect(after.profiles.broken?.servers).toEqual([])
+  })
+
+  it('re-syncs when the removed profile was the active one', async () => {
+    const projectRoot = await makeProject()
+    await runProfileSet({ projectRoot, name: 'ci', servers: ['alpha'], json: true })
+    await runProfileUse({ projectRoot, name: 'ci', sync: true, json: true })
+    expect(await readCursorServers(projectRoot)).toEqual(['alpha'])
+
+    await runProfileRemove({ projectRoot, name: 'ci', json: true })
+
+    expect(await readCursorServers(projectRoot)).toEqual(['alpha', 'beta', 'gamma'])
   })
 })

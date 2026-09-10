@@ -224,16 +224,16 @@ export async function runDoctor(options: DoctorOptions): Promise<void> {
         ...(enabled.has('codex') ? ['.codex/config.toml'] : []),
         ...(enabled.has('gemini') ? ['.gemini/settings.json'] : []),
         ...(enabled.has('copilot_vscode') ? ['.vscode/mcp.json'] : []),
-        ...(enabled.has('copilot_cli')
-          ? [config.integrations.options.copilotCliPath]
+        // Only files this CLI adds to .gitignore belong here. Settings files that hold
+        // the tool's own configuration (.amp, .kilo, .zed) and .github/mcp.json are
+        // deliberately left to the user, so they must never be untracked by --fix.
+        ...(enabled.has('copilot_cli') && config.integrations.options.copilotCliPath === '.mcp.json'
+          ? ['.mcp.json']
           : []),
         ...(enabled.has('claude') && config.integrations.options.claudeScope === 'project' ? ['.mcp.json'] : []),
         ...(enabled.has('grok') ? ['.grok/config.toml'] : []),
-        ...(enabled.has('amp') ? ['.amp/settings.json'] : []),
         ...(enabled.has('droid') ? ['.factory/mcp.json'] : []),
-        ...(enabled.has('kilo') ? ['.kilo/kilo.jsonc'] : []),
         ...(enabled.has('devin') ? ['.devin/mcp_config.json'] : []),
-        ...(enabled.has('zed') ? ['.zed/settings.json'] : []),
         ...(enabled.has('cursor') ? ['.cursor/mcp.json'] : []),
         ...(enabled.has('claude') ? ['.claude/skills'] : []),
         ...(enabled.has('cursor') ? ['.cursor/skills'] : []),
@@ -248,7 +248,7 @@ export async function runDoctor(options: DoctorOptions): Promise<void> {
     : []
   trackedChecks.push('.agents/generated', '.agents/local.json')
   const trackedByGit: string[] = []
-  for (const candidate of trackedChecks) {
+  for (const candidate of [...new Set(trackedChecks)]) {
     if (!isGitTracked(options.projectRoot, candidate)) continue
     trackedByGit.push(candidate)
     if (!applyFixes && !previewFixes) {

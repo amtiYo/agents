@@ -305,3 +305,31 @@ describe('upgrading from 0.8.x', () => {
     expect(Object.keys(after.mcpServers).sort()).toEqual(['api', 'docs', 'handwritten'])
   })
 })
+
+describe('reset for projects synced by an older release', () => {
+  it('removes managed servers from .mcp.json even without a state file', async () => {
+    const projectRoot = await setupProject(['claude'])
+    const paths = getProjectPaths(projectRoot)
+
+    await writeFile(
+      paths.copilotCliMcp,
+      `${JSON.stringify(
+        {
+          mcpServers: {
+            docs: { type: 'stdio', command: 'npx' },
+            handwritten: { type: 'stdio', command: 'mine' }
+          }
+        },
+        null,
+        2,
+      )}\n`,
+      'utf8',
+    )
+    await rm(path.join(projectRoot, '.agents', 'generated'), { recursive: true, force: true })
+
+    await runReset({ projectRoot, localOnly: false, hard: false })
+
+    const after = await readMcpJson(paths.copilotCliMcp)
+    expect(Object.keys(after.mcpServers)).toEqual(['handwritten'])
+  })
+})

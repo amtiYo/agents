@@ -117,6 +117,7 @@ export async function runProfileUse(options: ProfileUseOptions): Promise<void> {
 export interface ProfileRemoveOptions {
   projectRoot: string
   name: string
+  sync?: boolean
   json: boolean
 }
 
@@ -126,16 +127,29 @@ export async function runProfileRemove(options: ProfileRemoveOptions): Promise<v
     throw new Error(`Profile "${options.name}" is not defined.`)
   }
 
+  const wasActive = config.activeProfile === options.name
   const { [options.name]: _removed, ...rest } = config.profiles
   config.profiles = Object.keys(rest).length > 0 ? rest : undefined
-  if (config.activeProfile === options.name) {
+  if (wasActive) {
     config.activeProfile = null
   }
   await saveAgentsConfig(options.projectRoot, config)
 
+  // Removing the active profile widens the server set, and tool configs still hold the
+  // narrow one until a sync runs.
+  const shouldSync = wasActive && options.sync !== false
+  const result = shouldSync
+    ? await performSync({ projectRoot: options.projectRoot, check: false, verbose: false })
+    : { changed: [], warnings: [] }
+
   if (options.json) {
-    ui.json({ removed: options.name, active: config.activeProfile ?? null })
+    ui.json({ removed: options.name, active: config.activeProfile ?? null, changed: result.changed })
     return
   }
   ui.success(`Profile "${options.name}" removed`)
+  if (shouldSync) {
+    ui.keyValue('Updated files', String(result.changed.length))
+  } else if (wasActive) {
+    ui.hint('It was the active profile. Run agents sync to restore every server in tool configs.')
+  }
 }
