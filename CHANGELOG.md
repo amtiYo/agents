@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `agents mcp budget` connects to each server over MCP, lists its tools and reports how much context they occupy, largest first.
 - Schema version 4 for `.agents/agents.json` with `timeout`, `connectTimeout`, `tools`, `disabledTools`, `oauth`, `headersHelper`, `bearerTokenEnvVar` and `envFile` on MCP servers, plus `profiles` and `activeProfile`. Version 3 files migrate automatically and a `.bak` copy of the previous file is kept.
 - `${VAR:-default}` expansion in server definitions.
+- The sync reports fields a target integration does not support, instead of dropping them silently.
 - Copilot CLI can be pointed at `.github/mcp.json` through `integrations.options.copilotCliPath`; Copilot CLI has auto-loaded that file since 1.0.61.
 - CI workflow running lint, build and tests on push and pull request across Node 20, 22 and 24.
 

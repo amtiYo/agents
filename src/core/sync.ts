@@ -28,6 +28,7 @@ import { renderClaudeDesktopMcp } from './renderers.js'
 import { validateEnvKey, validateEnvValueForShell, validateHeaderKey, validateServerName } from './mcpValidation.js'
 import { acquireSyncLock } from './syncLock.js'
 import { planProjectMcp, syncProjectMcpFile } from './projectMcp.js'
+import { collectUnsupportedFieldWarnings } from './fieldSupport.js'
 import * as ui from './ui.js'
 import type { AgentsConfig, IntegrationName, ResolvedMcpServer, SyncOptions, SyncResult } from '../types.js'
 
@@ -80,6 +81,7 @@ export async function performSync(options: SyncOptions): Promise<SyncResult> {
     }
 
     const enabled = new Set(config.integrations.enabled)
+    warnings.push(...collectUnsupportedFieldWarnings(resolved.serversByTarget, config.integrations.enabled))
 
     const generatedByIntegration: Partial<Record<IntegrationName, string>> = {}
     for (const hook of INTEGRATION_SYNC_HOOKS) {
