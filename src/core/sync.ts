@@ -71,10 +71,16 @@ export async function performSync(options: SyncOptions): Promise<SyncResult> {
       await ensureDir(paths.generatedDir)
     }
 
+    const enabled = new Set(config.integrations.enabled)
+
     const generatedByIntegration: Partial<Record<IntegrationName, string>> = {}
     for (const hook of INTEGRATION_SYNC_HOOKS) {
       const generated = hook.buildGenerated(resolved.serversByTarget[hook.id])
-      warnings.push(...generated.warnings)
+      // Generated previews are written for every integration, but only the enabled
+      // ones may warn: nobody needs Goose advice in a project without Goose.
+      if (enabled.has(hook.id)) {
+        warnings.push(...generated.warnings)
+      }
       generatedByIntegration[hook.id] = generated.content
       await writeManagedFile({
         absolutePath: hook.generatedPath(paths),
@@ -86,7 +92,9 @@ export async function performSync(options: SyncOptions): Promise<SyncResult> {
     }
 
     const claudeDesktopGenerated = renderClaudeDesktopMcp(resolved.serversByTarget.claude_desktop, projectRoot)
-    warnings.push(...claudeDesktopGenerated.warnings)
+    if (enabled.has('claude_desktop')) {
+      warnings.push(...claudeDesktopGenerated.warnings)
+    }
     generatedByIntegration.claude_desktop = `${JSON.stringify({ mcpServers: claudeDesktopGenerated.mcpServers }, null, 2)}\n`
     await writeManagedFile({
       absolutePath: paths.generatedClaudeDesktop,
@@ -96,7 +104,6 @@ export async function performSync(options: SyncOptions): Promise<SyncResult> {
       changed
     })
 
-    const enabled = new Set(config.integrations.enabled)
     for (const hook of INTEGRATION_SYNC_HOOKS) {
       if (!hook.materialize) continue
       const hookEnabled = enabled.has(hook.id)

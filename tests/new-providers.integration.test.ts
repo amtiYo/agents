@@ -254,3 +254,22 @@ describe('new provider sync', () => {
     expect(await pathExists(paths.grokConfig)).toBe(false)
   })
 })
+
+describe('warning scope', () => {
+  it('does not warn about integrations that are not enabled', async () => {
+    const projectRoot = await setupProject(['cursor'])
+
+    const result = await performSync({ projectRoot, check: false, verbose: false })
+
+    expect(result.warnings.join(' ')).not.toContain('Goose')
+    expect(result.warnings.join(' ')).not.toContain('Claude Desktop')
+  })
+
+  it('still warns for an integration that is enabled', async () => {
+    const projectRoot = await setupProject(['goose'])
+
+    const result = await performSync({ projectRoot, check: false, verbose: false })
+
+    expect(result.warnings.join(' ')).toContain('Goose reads secrets from the environment')
+  })
+})
