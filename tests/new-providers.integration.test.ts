@@ -378,3 +378,65 @@ describe('shared config safety', () => {
     expect(raw).not.toContain('"local"')
   })
 })
+
+describe('disabling an integration', () => {
+  it('removes the managed TOML block and deletes a file that held nothing else', async () => {
+    const projectRoot = await setupProject(['grok'])
+    const paths = getProjectPaths(projectRoot)
+    expect(await pathExists(paths.grokConfig)).toBe(true)
+
+    const config = await loadAgentsConfig(projectRoot)
+    config.integrations.enabled = []
+    await saveAgentsConfig(projectRoot, config)
+    await performSync({ projectRoot, check: false, verbose: false })
+
+    expect(await pathExists(paths.grokConfig)).toBe(false)
+  })
+
+  it('keeps user sections of a TOML config and removes only the managed block', async () => {
+    const projectRoot = await setupProject(['grok'])
+    const paths = getProjectPaths(projectRoot)
+
+    const existing = await readFile(paths.grokConfig, 'utf8')
+    await writeFile(paths.grokConfig, `[ui]\nyolo = false\n\n${existing}`, 'utf8')
+
+    const config = await loadAgentsConfig(projectRoot)
+    config.integrations.enabled = []
+    await saveAgentsConfig(projectRoot, config)
+    await performSync({ projectRoot, check: false, verbose: false })
+
+    const after = await readFile(paths.grokConfig, 'utf8')
+    expect(after).toContain('[ui]')
+    expect(after).not.toContain('mcp_servers')
+  })
+
+  it('deletes a settings file it created once its entries are gone', async () => {
+    const projectRoot = await setupProject(['amp'])
+    const paths = getProjectPaths(projectRoot)
+
+    const config = await loadAgentsConfig(projectRoot)
+    config.integrations.enabled = []
+    await saveAgentsConfig(projectRoot, config)
+    await performSync({ projectRoot, check: false, verbose: false })
+
+    expect(await pathExists(paths.ampSettings)).toBe(false)
+  })
+
+  it('keeps a settings file that also holds user settings', async () => {
+    const projectRoot = await setupProject(['zed'])
+    const paths = getProjectPaths(projectRoot)
+
+    const settings = await readJsonFile<Record<string, unknown>>(paths.zedSettings)
+    settings.theme = 'One Dark'
+    await writeFile(paths.zedSettings, `${JSON.stringify(settings, null, 2)}\n`, 'utf8')
+
+    const config = await loadAgentsConfig(projectRoot)
+    config.integrations.enabled = []
+    await saveAgentsConfig(projectRoot, config)
+    await performSync({ projectRoot, check: false, verbose: false })
+
+    const after = await readJsonFile<Record<string, unknown>>(paths.zedSettings)
+    expect(after.theme).toBe('One Dark')
+    expect(after.context_servers).toEqual({})
+  })
+})
