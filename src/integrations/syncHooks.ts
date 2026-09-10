@@ -978,7 +978,11 @@ async function syncManagedGooseGlobal(context: HookContext): Promise<void> {
     if (previousContent !== content) {
       context.changed.push(toChangedEntry(context.projectRoot, configPath))
       if (!context.check) {
-        await writeGooseConfig(configPath, content)
+        if (content.trim().length === 0) {
+          await removeIfExists(configPath)
+        } else {
+          await writeGooseConfig(configPath, content)
+        }
       }
     }
 

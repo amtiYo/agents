@@ -109,13 +109,19 @@ export function buildPluginMcp(servers: Record<string, McpServerDefinition>): {
         continue
       }
       const args = (server.args ?? []).map((arg) => arg.replaceAll('${PROJECT_ROOT}', '${PLUGIN_ROOT}'))
+      const env = server.env
+        ? Object.fromEntries(
+            Object.entries(server.env).map(([key, value]) => [key, value.replaceAll('${PROJECT_ROOT}', '${PLUGIN_ROOT}')]),
+          )
+        : undefined
+      collectEnvRefs(server.command)
       args.forEach(collectEnvRefs)
-      Object.values(server.env ?? {}).forEach(collectEnvRefs)
+      Object.values(env ?? {}).forEach(collectEnvRefs)
       mcpServers[name] = {
         type: 'stdio',
         command: server.command,
         ...(args.length > 0 ? { args } : {}),
-        ...(server.env ? { env: { ...server.env } } : {}),
+        ...(env ? { env } : {}),
         ...(server.cwd ? { cwd: server.cwd.replaceAll('${PROJECT_ROOT}', '${PLUGIN_ROOT}') } : {})
       }
       continue

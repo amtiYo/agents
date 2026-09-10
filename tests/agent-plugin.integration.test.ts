@@ -3,6 +3,7 @@ import path from 'node:path'
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { afterEach, describe, expect, it } from 'vitest'
 import { runInit } from '../src/commands/init.js'
+import { runPluginExport } from '../src/commands/plugin.js'
 import { loadAgentsConfig, saveAgentsConfig } from '../src/core/config.js'
 import {
   PLUGIN_MANIFEST_SCHEMA,
@@ -234,5 +235,44 @@ describe('agent plugin import', () => {
     await runInit({ projectRoot: target, force: true })
 
     await expect(importPlugin({ projectRoot: target, pluginDir: dir })).rejects.toThrow(/not valid/i)
+  })
+})
+
+describe('plugin name derivation', () => {
+  it('derives a valid name from an awkward directory name', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'agents-plugin-'))
+    tempDirs.push(dir)
+    const projectRoot = path.join(dir, 'My Project.')
+    await mkdir(projectRoot, { recursive: true })
+    await runInit({ projectRoot, force: true })
+
+    await runPluginExport({ projectRoot, json: true })
+
+    const manifest = JSON.parse(
+      await readFile(path.join(projectRoot, 'dist', 'agent-plugin', 'plugin.json'), 'utf8'),
+    ) as { name: string }
+    expect(manifest.name).toBe('my-project')
+    expect(() => { validatePluginName(manifest.name) }).not.toThrow()
+  })
+
+  it('rewrites ${PROJECT_ROOT} inside env values too', async () => {
+    const projectRoot = await makeProject()
+    const config = await loadAgentsConfig(projectRoot)
+    config.mcp.servers.files = {
+      transport: 'stdio',
+      command: 'server',
+      env: { WORKDIR: '${PROJECT_ROOT}/data', TOKEN: '${TEAM_TOKEN}' }
+    }
+    await saveAgentsConfig(projectRoot, config)
+
+    const outDir = path.join(projectRoot, 'dist', 'plugin')
+    const result = await exportPlugin({ projectRoot, outDir, name: 'team-stack' })
+
+    const mcp = JSON.parse(await readFile(path.join(outDir, 'mcp.json'), 'utf8')) as {
+      mcpServers: Record<string, { env?: Record<string, string> }>
+    }
+    expect(mcp.mcpServers.files?.env?.WORKDIR).toBe('${PLUGIN_ROOT}/data')
+    expect(result.requiredEnv).toContain('TEAM_TOKEN')
+    expect(result.requiredEnv).not.toContain('PLUGIN_ROOT')
   })
 })

@@ -1,5 +1,6 @@
 import path from 'node:path'
 import { ensureProjectGitignore } from '../core/gitignore.js'
+import { AGENTS_SCHEMA_VERSION } from '../types.js'
 import { initializeProjectSkeleton } from '../core/project.js'
 import * as ui from '../core/ui.js'
 
@@ -32,7 +33,7 @@ export async function runInit(options: InitOptions): Promise<void> {
 
   spin.stop('Project initialized')
 
-  ui.success(`Initialized v3 project scaffold in ${projectRoot}`)
+  ui.success(`Initialized v${String(AGENTS_SCHEMA_VERSION)} project scaffold in ${projectRoot}`)
 
   if (init.changed.length > 0) {
     ui.blank()

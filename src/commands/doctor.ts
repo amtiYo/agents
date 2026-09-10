@@ -10,6 +10,7 @@ import { pathExists, readJson, readTextOrEmpty } from '../core/fs.js'
 import { loadResolvedRegistry } from '../core/mcp.js'
 import { getProjectPaths, toHomeRelativePath } from '../core/paths.js'
 import type { ProjectPaths } from '../core/paths.js'
+import type { CopilotCliPath } from '../types.js'
 import { getWindsurfGlobalMcpPath } from '../core/windsurf.js'
 import { commandExists, runCommand } from '../core/shell.js'
 import { performSync } from '../core/sync.js'
@@ -142,6 +143,7 @@ export async function runDoctor(options: DoctorOptions): Promise<void> {
     claudeDesktopConfigPath,
     windsurfGlobalMcpPath,
     issues,
+    { copilotCliPath: config.integrations.options.copilotCliPath },
   )
 
   const skillWarnings = await validateSkillsDirectory(paths.agentsSkillsDir)
@@ -222,7 +224,16 @@ export async function runDoctor(options: DoctorOptions): Promise<void> {
         ...(enabled.has('codex') ? ['.codex/config.toml'] : []),
         ...(enabled.has('gemini') ? ['.gemini/settings.json'] : []),
         ...(enabled.has('copilot_vscode') ? ['.vscode/mcp.json'] : []),
-        ...(enabled.has('copilot_cli') ? ['.mcp.json'] : []),
+        ...(enabled.has('copilot_cli')
+          ? [config.integrations.options.copilotCliPath]
+          : []),
+        ...(enabled.has('claude') && config.integrations.options.claudeScope === 'project' ? ['.mcp.json'] : []),
+        ...(enabled.has('grok') ? ['.grok/config.toml'] : []),
+        ...(enabled.has('amp') ? ['.amp/settings.json'] : []),
+        ...(enabled.has('droid') ? ['.factory/mcp.json'] : []),
+        ...(enabled.has('kilo') ? ['.kilo/kilo.jsonc'] : []),
+        ...(enabled.has('devin') ? ['.devin/mcp_config.json'] : []),
+        ...(enabled.has('zed') ? ['.zed/settings.json'] : []),
         ...(enabled.has('cursor') ? ['.cursor/mcp.json'] : []),
         ...(enabled.has('claude') ? ['.claude/skills'] : []),
         ...(enabled.has('cursor') ? ['.cursor/skills'] : []),
@@ -620,6 +631,7 @@ async function validateManagedConfigSyntax(
   claudeDesktopConfigPath: string | undefined,
   windsurfGlobalMcpPath: string,
   issues: Issue[],
+  options: { copilotCliPath: CopilotCliPath },
 ): Promise<void> {
   await validateTomlIfExists(paths.generatedCodex, '.agents/generated/codex.config.toml', issues)
   await validateJsonIfExists(paths.generatedGemini, '.agents/generated/gemini.settings.json', issues)
@@ -643,7 +655,10 @@ async function validateManagedConfigSyntax(
     await validateJsonIfExists(paths.vscodeMcp, '.vscode/mcp.json', issues)
   }
   if (enabledIntegrations.includes('copilot_cli')) {
-    await validateJsonIfExists(paths.copilotCliMcp, '.mcp.json', issues)
+    const copilotCliMcpPath = options.copilotCliPath === '.github/mcp.json'
+      ? paths.copilotCliGithubMcp
+      : paths.copilotCliMcp
+    await validateJsonIfExists(copilotCliMcpPath, options.copilotCliPath, issues)
   }
   if (enabledIntegrations.includes('cursor')) {
     await validateJsonIfExists(paths.cursorMcp, '.cursor/mcp.json', issues)

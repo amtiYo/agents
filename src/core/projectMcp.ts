@@ -194,8 +194,15 @@ export async function syncProjectMcpFile(args: {
   check: boolean
   changed: string[]
   warnings: string[]
+  /**
+   * Every server name the config defines, including disabled ones. Used as the managed
+   * set when no state file exists yet, which is the case for projects upgrading from
+   * 0.8.x, where this file was rewritten wholesale.
+   */
+  knownServerNames?: string[]
 }): Promise<void> {
-  const { plan, statePath, generatedPath, projectRoot, check, changed, warnings } = args
+  const { plan, statePath, generatedPath, projectRoot, check, changed, warnings, knownServerNames } = args
+  const hasState = await pathExists(statePath)
   const previousFiles = await readStateFiles(statePath)
   warnings.push(...plan.warnings)
 
@@ -213,7 +220,7 @@ export async function syncProjectMcpFile(args: {
     const written = await writeProjectMcpTarget({
       targetPath: target.targetPath,
       managedServers: rendered.mcpServers,
-      previousManagedNames: previousFiles[target.targetPath] ?? [],
+      previousManagedNames: previousFiles[target.targetPath] ?? (hasState ? [] : knownServerNames ?? []),
       projectRoot,
       check,
       changed,

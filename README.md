@@ -121,7 +121,9 @@ your-project/
 └── .claude/skills → .agents/skills   │  Skill bridges
 ```
 
-> **Git strategy:** by default only `.agents/agents.json`, `.agents/skills/` and `AGENTS.md` are committed. Generated files are gitignored and rebuilt by `agents sync`. Switch to `commit-generated` if you would rather review them in pull requests.
+> **Git strategy:** by default only `.agents/agents.json`, `.agents/skills/` and `AGENTS.md` are committed; generated files are gitignored and rebuilt by `agents sync`. Switch to `commit-generated` if you would rather review them in pull requests, which is also how you commit `.mcp.json` for people who have not installed this CLI.
+>
+> Settings files that belong to a tool rather than to this CLI (`.zed/settings.json`, `.amp/settings.json`, `.kilo/kilo.jsonc`, `.github/mcp.json`) are never added to `.gitignore`: the sync merges into them and leaves the rest of the file to you.
 
 ---
 
@@ -289,7 +291,7 @@ Values support `${VAR}` and `${VAR:-default}`, plus `${PROJECT_ROOT}`.
 ```bash
 agents start
 agents mcp add https://mcpservers.org/servers/context7-mcp
-git add .agents/agents.json .agents/skills/ AGENTS.md .mcp.json && git commit -m "Add agents config"
+git add .agents/agents.json .agents/skills/ AGENTS.md && git commit -m "Add agents config"
 ```
 
 **New member onboards:**

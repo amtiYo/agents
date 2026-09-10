@@ -257,3 +257,51 @@ describe('reset', () => {
     expect(await pathExists(paths.copilotCliMcp)).toBe(false)
   })
 })
+
+describe('upgrading from 0.8.x', () => {
+  it('drops a disabled server that an older release left in .mcp.json', async () => {
+    const projectRoot = await setupProject(['copilot_cli'])
+    const paths = getProjectPaths(projectRoot)
+
+    // A file written by 0.8.x, with no state file next to it.
+    await writeFile(
+      paths.copilotCliMcp,
+      `${JSON.stringify(
+        {
+          mcpServers: {
+            docs: { type: 'stdio', command: 'npx', args: ['-y', '@upstash/context7-mcp'], tools: ['*'] },
+            retired: { type: 'stdio', command: 'old-server', tools: ['*'] }
+          }
+        },
+        null,
+        2,
+      )}\n`,
+      'utf8',
+    )
+
+    const config = await loadAgentsConfig(projectRoot)
+    config.mcp.servers.retired = { transport: 'stdio', command: 'old-server', enabled: false }
+    await saveAgentsConfig(projectRoot, config)
+
+    await performSync({ projectRoot, check: false, verbose: false })
+
+    const after = await readMcpJson(paths.copilotCliMcp)
+    expect(Object.keys(after.mcpServers).sort()).toEqual(['api', 'docs'])
+  })
+
+  it('still keeps servers it never wrote when no state file exists', async () => {
+    const projectRoot = await setupProject(['copilot_cli'])
+    const paths = getProjectPaths(projectRoot)
+
+    await writeFile(
+      paths.copilotCliMcp,
+      `${JSON.stringify({ mcpServers: { handwritten: { type: 'stdio', command: 'mine' } } }, null, 2)}\n`,
+      'utf8',
+    )
+
+    await performSync({ projectRoot, check: false, verbose: false })
+
+    const after = await readMcpJson(paths.copilotCliMcp)
+    expect(Object.keys(after.mcpServers).sort()).toEqual(['api', 'docs', 'handwritten'])
+  })
+})
