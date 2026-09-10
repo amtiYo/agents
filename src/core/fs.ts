@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { access, cp, lstat, mkdir, readFile, readdir, realpath, rename, rm, stat, writeFile } from 'node:fs/promises'
+import { access, copyFile as copyFileRaw, cp, lstat, mkdir, readFile, readdir, realpath, rename, rm, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
 export async function pathExists(filePath: string): Promise<boolean> {
@@ -108,4 +108,9 @@ export async function resolveDirectoryPath(directoryPath: string): Promise<strin
   } catch {
     return path.resolve(directoryPath)
   }
+}
+
+export async function copyFile(fromPath: string, toPath: string): Promise<void> {
+  await ensureDir(path.dirname(toPath))
+  await copyFileRaw(fromPath, toPath)
 }

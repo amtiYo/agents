@@ -20,7 +20,9 @@ export async function runInit(options: InitOptions): Promise<void> {
     integrations: [],
     integrationOptions: {
       cursorAutoApprove: true,
-      antigravityGlobalSync: true
+      antigravityGlobalSync: true,
+      claudeScope: 'project',
+      copilotCliPath: '.mcp.json'
     },
     syncMode: 'source-only',
     hideGeneratedInVscode: true

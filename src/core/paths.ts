@@ -53,6 +53,29 @@ export interface ProjectPaths {
   junieMcpDir: string
   junieMcp: string
   junieSkillsBridge: string
+  grokConfig: string
+  grokDir: string
+  ampSettings: string
+  ampDir: string
+  droidMcp: string
+  droidDir: string
+  kiloConfig: string
+  kiloDir: string
+  devinMcp: string
+  devinDir: string
+  zedSettings: string
+  zedDir: string
+  gooseConfig: string
+  copilotCliGithubMcp: string
+  generatedGrok: string
+  generatedAmp: string
+  generatedDroid: string
+  generatedKilo: string
+  generatedDevin: string
+  generatedZed: string
+  generatedGoose: string
+  generatedGooseState: string
+  generatedClaudeProjectMcp: string
   geminiSkillsBridge: string
   claudeSkillsBridge: string
   cursorSkillsBridge: string
@@ -136,6 +159,33 @@ export function getOpencodeDir(projectRoot: string, homeDir = getHomeDir()): str
   return path.join(root, '.opencode')
 }
 
+
+/** Resolve the XDG config root (`$XDG_CONFIG_HOME` or `~/.config`). */
+export function getXdgConfigDir(homeDir = getHomeDir()): string {
+  const xdg = process.env.XDG_CONFIG_HOME
+  if (xdg && xdg.trim().length > 0) {
+    return path.resolve(xdg.trim())
+  }
+  return path.join(path.resolve(homeDir), '.config')
+}
+
+/** Resolve Goose's global configuration file (`~/.config/goose/config.yaml`). */
+export function getGooseConfigPath(homeDir = getHomeDir()): string {
+  const override = process.env.AGENTS_GOOSE_CONFIG_PATH
+  if (override && override.trim().length > 0) {
+    return path.resolve(override.trim())
+  }
+  return path.join(getXdgConfigDir(homeDir), 'goose', 'config.yaml')
+}
+
+/**
+ * Pick between a project-local path and a global one, depending on whether the
+ * project root is the user's home directory (global mode).
+ */
+function projectOrGlobal(root: string, homeDir: string, projectRelative: string[], globalPath: string): string {
+  return isHomeDirectory(root, homeDir) ? globalPath : path.join(root, ...projectRelative)
+}
+
 /**
  * Construct a complete set of filesystem paths for a project based on the given project root.
  *
@@ -201,6 +251,49 @@ export function getProjectPaths(projectRoot: string): ProjectPaths {
     junieMcpDir: path.join(root, '.junie', 'mcp'),
     junieMcp: path.join(root, '.junie', 'mcp', 'mcp.json'),
     junieSkillsBridge: path.join(root, '.junie', 'skills'),
+    grokConfig: projectOrGlobal(root, homeDir, ['.grok', 'config.toml'], path.join(homeDir, '.grok', 'config.toml')),
+    grokDir: projectOrGlobal(root, homeDir, ['.grok'], path.join(homeDir, '.grok')),
+    ampSettings: projectOrGlobal(
+      root,
+      homeDir,
+      ['.amp', 'settings.json'],
+      path.join(getXdgConfigDir(homeDir), 'amp', 'settings.json'),
+    ),
+    ampDir: projectOrGlobal(root, homeDir, ['.amp'], path.join(getXdgConfigDir(homeDir), 'amp')),
+    droidMcp: projectOrGlobal(root, homeDir, ['.factory', 'mcp.json'], path.join(homeDir, '.factory', 'mcp.json')),
+    droidDir: projectOrGlobal(root, homeDir, ['.factory'], path.join(homeDir, '.factory')),
+    kiloConfig: projectOrGlobal(
+      root,
+      homeDir,
+      ['.kilo', 'kilo.jsonc'],
+      path.join(getXdgConfigDir(homeDir), 'kilo', 'kilo.jsonc'),
+    ),
+    kiloDir: projectOrGlobal(root, homeDir, ['.kilo'], path.join(getXdgConfigDir(homeDir), 'kilo')),
+    devinMcp: projectOrGlobal(
+      root,
+      homeDir,
+      ['.devin', 'mcp_config.json'],
+      path.join(getXdgConfigDir(homeDir), 'devin', 'mcp_config.json'),
+    ),
+    devinDir: projectOrGlobal(root, homeDir, ['.devin'], path.join(getXdgConfigDir(homeDir), 'devin')),
+    zedSettings: projectOrGlobal(
+      root,
+      homeDir,
+      ['.zed', 'settings.json'],
+      path.join(getXdgConfigDir(homeDir), 'zed', 'settings.json'),
+    ),
+    zedDir: projectOrGlobal(root, homeDir, ['.zed'], path.join(getXdgConfigDir(homeDir), 'zed')),
+    gooseConfig: getGooseConfigPath(homeDir),
+    copilotCliGithubMcp: path.join(root, '.github', 'mcp.json'),
+    generatedGrok: path.join(generatedDir, 'grok.config.toml'),
+    generatedAmp: path.join(generatedDir, 'amp.settings.json'),
+    generatedDroid: path.join(generatedDir, 'droid.mcp.json'),
+    generatedKilo: path.join(generatedDir, 'kilo.jsonc'),
+    generatedDevin: path.join(generatedDir, 'devin.mcp_config.json'),
+    generatedZed: path.join(generatedDir, 'zed.settings.json'),
+    generatedGoose: path.join(generatedDir, 'goose.config.yaml'),
+    generatedGooseState: path.join(generatedDir, 'goose.state.json'),
+    generatedClaudeProjectMcp: path.join(generatedDir, 'claude.project.mcp.json'),
     geminiSkillsBridge: path.join(root, '.gemini', 'skills'),
     claudeSkillsBridge: path.join(root, '.claude', 'skills'),
     cursorSkillsBridge: path.join(root, '.cursor', 'skills'),
