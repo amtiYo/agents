@@ -87,6 +87,34 @@ export async function runReset(options: ResetOptions): Promise<void> {
     removed,
     warnings
   })
+  await cleanupGrokConfig({
+    projectRoot,
+    configPath: paths.grokConfig,
+    generatedPath: paths.generatedGrok,
+    removed,
+    warnings
+  })
+  await cleanupKeyedJsonConfig({
+    projectRoot,
+    configPath: paths.ampSettings,
+    generatedPath: paths.generatedAmp,
+    removed,
+    warnings
+  }, 'Amp', 'amp.mcpServers')
+  await cleanupKeyedJsonConfig({
+    projectRoot,
+    configPath: paths.zedSettings,
+    generatedPath: paths.generatedZed,
+    removed,
+    warnings
+  }, 'Zed', 'context_servers')
+  await cleanupKeyedJsonConfig({
+    projectRoot,
+    configPath: paths.kiloConfig,
+    generatedPath: paths.generatedKilo,
+    removed,
+    warnings
+  }, 'Kilo', 'mcp')
 
   const bridges = [
     { bridgePath: paths.claudeSkillsBridge, sourcePath: paths.agentsSkillsDir },
@@ -107,7 +135,11 @@ export async function runReset(options: ResetOptions): Promise<void> {
     paths.antigravityProjectMcp,
     paths.vscodeMcp,
     paths.copilotCliMcp,
-    paths.junieMcp
+    paths.copilotCliGithubMcp,
+    paths.junieMcp,
+    paths.droidMcp,
+    paths.devinMcp,
+    paths.generatedClaudeProjectMcp
   ]
   if (!options.localOnly) {
     targets.push(paths.generatedDir)
@@ -379,4 +411,60 @@ async function isManagedSkillBridge(bridgePath: string, sourcePath: string): Pro
   }
 
   return info.isDirectory() && await pathExists(path.join(bridgePath, BRIDGE_MARKER_FILENAME))
+}
+
+/** Strip the agents-managed MCP block from a Grok project config, keeping user sections. */
+async function cleanupGrokConfig(args: {
+  projectRoot: string
+  configPath: string
+  generatedPath: string
+  removed: string[]
+  warnings: string[]
+}): Promise<void> {
+  if (!(await pathExists(args.configPath))) return
+
+  const existing = await readTextOrEmpty(args.configPath)
+  let cleaned: string
+  try {
+    cleaned = removeCodexManagedBlock(existing)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    args.warnings.push(`Failed to clean Grok config at ${args.configPath}: ${message}`)
+    return
+  }
+
+  if (cleaned.trim().length === 0) {
+    await removeResetTarget(args.configPath, args.projectRoot, args.removed)
+    return
+  }
+
+  if (cleaned !== existing) {
+    await writeTextAtomic(args.configPath, cleaned)
+    args.removed.push(path.relative(args.projectRoot, args.configPath) || args.configPath)
+  }
+}
+
+/**
+ * Remove the agents-managed entries from one top-level key of a shared JSON settings
+ * file (Amp, Zed, Kilo), deleting the file only when nothing else is left in it.
+ */
+async function cleanupKeyedJsonConfig(
+  args: JsonConfigCleanupArgs,
+  label: string,
+  key: string,
+): Promise<void> {
+  const existing = await readConfigObjectForCleanup(args.configPath, label, args.warnings)
+  if (existing === null) return
+  if (Object.keys(existing).length === 0) {
+    await removeResetTarget(args.configPath, args.projectRoot, args.removed)
+    return
+  }
+
+  const generated = await readGeneratedObjectForCleanup(args.generatedPath, label, args.warnings)
+  if (generated === null) return
+
+  const cleaned = { ...existing }
+  removeManagedMapEntries(cleaned, generated, key)
+
+  await persistCleanedJsonConfig(args, existing, cleaned)
 }

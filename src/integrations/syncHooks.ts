@@ -1,6 +1,6 @@
 import path from 'node:path'
 import { ensureDir, pathExists, readJson, readTextOrEmpty, writeJsonAtomic } from '../core/fs.js'
-import { writeManagedFile } from '../core/managedFiles.js'
+import { toChangedEntry, writeManagedFile } from '../core/managedFiles.js'
 import { mergeCodexConfig } from '../core/codexConfig.js'
 import { getLegacyAntigravityGlobalMcpPath, normalizeAntigravityMcpPayload, readAntigravityMcp } from '../core/antigravity.js'
 import { getWindsurfGlobalMcpPath, normalizeWindsurfMcpPayload, readWindsurfMcp } from '../core/windsurf.js'
@@ -16,6 +16,15 @@ import { buildGeminiPayload } from './gemini.js'
 import { buildOpencodePayload } from './opencode.js'
 import { buildWindsurfPayload } from './windsurf.js'
 import { buildJuniePayload } from './junie.js'
+import { buildGrokConfig } from './grok.js'
+import { AMP_MCP_KEY, buildAmpPayload } from './amp.js'
+import { buildDroidPayload } from './droid.js'
+import { buildKiloPayload } from './kilo.js'
+import { buildDevinPayload } from './devin.js'
+import { ZED_CONTEXT_SERVERS_KEY, buildZedPayload } from './zed.js'
+import { buildGoosePayload } from './goose.js'
+import { readGooseDocument, readGooseExtensions, setGooseExtensions, writeGooseConfig } from '../core/goose.js'
+import { applyEdits, modify, parse as parseJsonc } from 'jsonc-parser'
 import type { ProjectPaths } from '../core/paths.js'
 import type { AgentsConfig, IntegrationName, ResolvedMcpServer } from '../types.js'
 
@@ -367,6 +376,148 @@ export const INTEGRATION_SYNC_HOOKS: IntegrationSyncHook[] = [
         warnings: claude.warnings
       }
     }
+  },
+  {
+    id: 'grok',
+    generatedPath: (paths) => paths.generatedGrok,
+    buildGenerated: (servers) => {
+      const grok = buildGrokConfig(servers)
+      return { content: grok.content, warnings: grok.warnings }
+    },
+    materialize: async (context) => {
+      const generatedContent = context.generatedByIntegration.grok ?? ''
+      const targetPath = context.paths.grokConfig
+      let content: string
+      try {
+        content = mergeCodexConfig(await readTextOrEmpty(targetPath), generatedContent)
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        context.warnings.push(`Failed to merge Grok config at ${targetPath}; skipped Grok sync. ${message}`)
+        return
+      }
+      await writeManagedFile({
+        absolutePath: targetPath,
+        content,
+        projectRoot: context.projectRoot,
+        check: context.check,
+        changed: context.changed
+      })
+    }
+  },
+  {
+    id: 'amp',
+    generatedPath: (paths) => paths.generatedAmp,
+    buildGenerated: (servers) => {
+      const amp = buildAmpPayload(servers)
+      return {
+        content: `${JSON.stringify(amp.payload, null, 2)}\n`,
+        warnings: amp.warnings
+      }
+    },
+    materialize: async (context) => {
+      await mergeJsonKey({
+        context,
+        targetPath: context.paths.ampSettings,
+        rawGenerated: context.generatedByIntegration.amp ?? '',
+        key: AMP_MCP_KEY,
+        label: 'Amp'
+      })
+    }
+  },
+  {
+    id: 'droid',
+    generatedPath: (paths) => paths.generatedDroid,
+    buildGenerated: (servers) => {
+      const droid = buildDroidPayload(servers)
+      return {
+        content: `${JSON.stringify(droid.payload, null, 2)}\n`,
+        warnings: droid.warnings
+      }
+    },
+    materialize: async (context) => {
+      await writeManagedFile({
+        absolutePath: context.paths.droidMcp,
+        content: context.generatedByIntegration.droid ?? '',
+        projectRoot: context.projectRoot,
+        check: context.check,
+        changed: context.changed
+      })
+    }
+  },
+  {
+    id: 'kilo',
+    generatedPath: (paths) => paths.generatedKilo,
+    buildGenerated: (servers) => {
+      const kilo = buildKiloPayload(servers)
+      return {
+        content: `${JSON.stringify(kilo.payload, null, 2)}\n`,
+        warnings: kilo.warnings
+      }
+    },
+    materialize: async (context) => {
+      await mergeJsoncKey({
+        context,
+        targetPath: context.paths.kiloConfig,
+        rawGenerated: context.generatedByIntegration.kilo ?? '',
+        key: 'mcp',
+        label: 'Kilo'
+      })
+    }
+  },
+  {
+    id: 'devin',
+    generatedPath: (paths) => paths.generatedDevin,
+    buildGenerated: (servers) => {
+      const devin = buildDevinPayload(servers)
+      return {
+        content: `${JSON.stringify(devin.payload, null, 2)}\n`,
+        warnings: devin.warnings
+      }
+    },
+    materialize: async (context) => {
+      await writeManagedFile({
+        absolutePath: context.paths.devinMcp,
+        content: context.generatedByIntegration.devin ?? '',
+        projectRoot: context.projectRoot,
+        check: context.check,
+        changed: context.changed
+      })
+    }
+  },
+  {
+    id: 'zed',
+    generatedPath: (paths) => paths.generatedZed,
+    buildGenerated: (servers) => {
+      const zed = buildZedPayload(servers)
+      return {
+        content: `${JSON.stringify(zed.payload, null, 2)}\n`,
+        warnings: zed.warnings
+      }
+    },
+    materialize: async (context) => {
+      await mergeJsonKey({
+        context,
+        targetPath: context.paths.zedSettings,
+        rawGenerated: context.generatedByIntegration.zed ?? '',
+        key: ZED_CONTEXT_SERVERS_KEY,
+        label: 'Zed'
+      })
+    }
+  },
+  {
+    id: 'goose',
+    generatedPath: (paths) => paths.generatedGoose,
+    buildGenerated: (servers) => {
+      const goose = buildGoosePayload(servers)
+      return {
+        content: `${JSON.stringify(goose.payload, null, 2)}\n`,
+        warnings: goose.warnings
+      }
+    },
+    materializeWhenDisabled: true,
+    materialize: async (context) => {
+      await syncManagedGooseGlobal(context)
+    }
   }
 ]
 
@@ -620,4 +771,139 @@ function recordFrom(value: unknown): Record<string, unknown> {
 /** Return whether a value is a non-array object. */
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+
+/**
+ * Replace a single top-level key of a JSON settings file that the tool owns,
+ * leaving every other setting written by the user untouched.
+ */
+async function mergeJsonKey(args: {
+  context: HookContext
+  targetPath: string
+  rawGenerated: string
+  key: string
+  label: string
+}): Promise<void> {
+  const { context, targetPath, rawGenerated, key, label } = args
+
+  let generated: Record<string, unknown> = {}
+  if (rawGenerated.trim()) {
+    generated = parseJsonObject(rawGenerated, `generated ${label} config`)
+  }
+
+  let existing: Record<string, unknown> = {}
+  if (await pathExists(targetPath)) {
+    try {
+      const parsed = await readJson<unknown>(targetPath)
+      if (!isRecord(parsed)) {
+        context.warnings.push(`Existing ${label} config at ${targetPath} is not a JSON object; skipped ${label} sync.`)
+        return
+      }
+      existing = parsed
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      context.warnings.push(`Failed to read existing ${label} config at ${targetPath}; skipped ${label} sync. ${message}`)
+      return
+    }
+  }
+
+  const merged = { ...existing, [key]: recordFrom(generated[key]) }
+
+  await writeManagedFile({
+    absolutePath: targetPath,
+    content: `${JSON.stringify(merged, null, 2)}\n`,
+    projectRoot: context.projectRoot,
+    check: context.check,
+    changed: context.changed
+  })
+}
+
+/**
+ * Same as {@link mergeJsonKey} but for JSONC files, where the user's comments
+ * have to survive the edit.
+ */
+async function mergeJsoncKey(args: {
+  context: HookContext
+  targetPath: string
+  rawGenerated: string
+  key: string
+  label: string
+}): Promise<void> {
+  const { context, targetPath, rawGenerated, key, label } = args
+
+  let generated: Record<string, unknown> = {}
+  if (rawGenerated.trim()) {
+    generated = parseJsonObject(rawGenerated, `generated ${label} config`)
+  }
+
+  const existingText = await readTextOrEmpty(targetPath)
+  if (existingText.trim().length > 0) {
+    const errors: { error: number; offset: number; length: number }[] = []
+    const parsed = parseJsonc(existingText, errors, { allowTrailingComma: true }) as unknown
+    if (errors.length > 0 || (parsed !== undefined && !isRecord(parsed))) {
+      context.warnings.push(`Existing ${label} config at ${targetPath} is not valid JSONC; skipped ${label} sync.`)
+      return
+    }
+  }
+
+  const base = existingText.trim().length > 0 ? existingText : '{}\n'
+  const edits = modify(base, [key], recordFrom(generated[key]), {
+    formattingOptions: { insertSpaces: true, tabSize: 2 }
+  })
+  const content = applyEdits(base, edits)
+
+  await writeManagedFile({
+    absolutePath: targetPath,
+    content: content.endsWith('\n') ? content : `${content}\n`,
+    projectRoot: context.projectRoot,
+    check: context.check,
+    changed: context.changed
+  })
+}
+
+/**
+ * Goose keeps a single global config file, so agents owns only the extension
+ * entries it created and leaves everything else (providers, models) alone.
+ */
+async function syncManagedGooseGlobal(context: HookContext): Promise<void> {
+  const statePath = context.paths.generatedGooseState
+  const previousNames = await readManagedGlobalNames(statePath)
+  if (!context.enabled && previousNames.length === 0) return
+
+  const configPath = context.paths.gooseConfig
+  const lockPath = path.join(path.dirname(configPath), '.agents-goose.lock')
+  const releaseLock = context.check ? null : await acquireSyncLock(lockPath)
+  try {
+    let doc
+    try {
+      doc = await readGooseDocument(configPath)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      context.warnings.push(`Failed to read existing Goose config at ${configPath}; skipped Goose sync. ${message}`)
+      return
+    }
+
+    const rawGenerated = context.generatedByIntegration.goose ?? ''
+    const generated = context.enabled && rawGenerated.trim().length > 0
+      ? parseJsonObject(rawGenerated, 'generated Goose config')
+      : {}
+    const managedExtensions = recordFrom(generated.extensions)
+    const nextExtensions = mergeManagedServers(readGooseExtensions(doc), previousNames, managedExtensions)
+    const content = setGooseExtensions(doc, nextExtensions)
+
+    const previousContent = await readTextOrEmpty(configPath)
+    if (previousContent !== content) {
+      context.changed.push(toChangedEntry(context.projectRoot, configPath))
+      if (!context.check) {
+        await writeGooseConfig(configPath, content)
+      }
+    }
+
+    if (!context.check) {
+      await writeManagedGlobalNames(statePath, context.enabled ? Object.keys(managedExtensions) : [])
+    }
+  } finally {
+    if (releaseLock) await releaseLock()
+  }
 }

@@ -53,7 +53,7 @@ describe('renderers', () => {
     expect(rendered.content).toContain('[mcp_servers."http-tools".http_headers]')
     expect(rendered.content).toContain('"Authorization" = "Bearer token"')
     expect(rendered.content).toContain('[mcp_servers."sse-tools"]')
-    expect(rendered.warnings.join(' ')).toContain('legacy sse transport')
+    expect(rendered.warnings.join(' ')).toContain('deprecated sse transport')
     expect(() => TOML.parse(rendered.content)).not.toThrow()
   })
 
