@@ -272,6 +272,14 @@ async function probeHttpServer(server: ResolvedMcpServer, timeoutMs: number): Pr
     const sessionId = init.response.headers.get('mcp-session-id')
     if (sessionId) headers['mcp-session-id'] = sessionId
 
+    // The specification requires this notification before any other request; servers
+    // that track sessions reject tools/list without it.
+    try {
+      await postJsonRpc(server.url, headers, { jsonrpc: '2.0', method: 'notifications/initialized' }, timeoutMs)
+    } catch {
+      // A server that does not accept the notification still answers tools/list.
+    }
+
     const list = await postJsonRpc(
       server.url,
       headers,

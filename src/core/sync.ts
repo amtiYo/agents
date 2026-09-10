@@ -146,7 +146,8 @@ export async function performSync(options: SyncOptions): Promise<SyncResult> {
       projectRoot,
       check,
       changed,
-      warnings
+      warnings,
+      knownServerNames: Object.keys(config.mcp.servers)
     })
 
     await syncClaude({

@@ -102,7 +102,15 @@ export async function runStatus(options: StatusOptions): Promise<void> {
   if (enabled.has('copilot_vscode')) {
     files['.vscode/mcp.json'] = await pathExists(paths.vscodeMcp)
   }
+  const copilotCliMcpPath = config.integrations.options.copilotCliPath === '.github/mcp.json'
+    ? paths.copilotCliGithubMcp
+    : paths.copilotCliMcp
+  const copilotCliMcpLabel = path.relative(paths.root, copilotCliMcpPath) || copilotCliMcpPath
+  const claudeUsesProjectScope = config.integrations.options.claudeScope === 'project'
   if (enabled.has('copilot_cli')) {
+    files[copilotCliMcpLabel] = await pathExists(copilotCliMcpPath)
+  }
+  if (enabled.has('claude') && claudeUsesProjectScope) {
     files['.mcp.json'] = await pathExists(paths.copilotCliMcp)
   }
   if (enabled.has('cursor')) {
@@ -166,7 +174,9 @@ export async function runStatus(options: StatusOptions): Promise<void> {
   if (!options.fast) {
     if (enabled.has('codex')) probes.codex = probeCodex(options.projectRoot, expectedCodexServers)
     if (enabled.has('codex')) probes.codex_trust = await probeCodexTrust(options.projectRoot)
-    if (enabled.has('claude')) probes.claude = probeClaude(options.projectRoot)
+    if (enabled.has('claude')) {
+      probes.claude = probeClaude(options.projectRoot, resolved.serversByTarget.claude.map((server) => server.name))
+    }
     if (enabled.has('claude_desktop')) {
       probes.claude_desktop = claudeDesktopConfigPath && claudeDesktopConfigLabel
         ? await probeClaudeDesktop(
@@ -179,7 +189,14 @@ export async function runStatus(options: StatusOptions): Promise<void> {
     }
     if (enabled.has('gemini')) probes.gemini = probeGemini(options.projectRoot)
     if (enabled.has('copilot_vscode')) probes.copilot_vscode = await probeCopilot(paths.vscodeMcp)
-    if (enabled.has('copilot_cli')) probes.copilot_cli = await probeMcpServersFile(paths.copilotCliMcp, '.mcp.json', 'mcpServers', expectedCopilotCliServers)
+    if (enabled.has('copilot_cli')) {
+      probes.copilot_cli = await probeMcpServersFile(
+        copilotCliMcpPath,
+        copilotCliMcpLabel,
+        'mcpServers',
+        expectedCopilotCliServers,
+      )
+    }
     if (enabled.has('cursor')) probes.cursor = probeCursor(options.projectRoot, expectedCursorServers)
     if (enabled.has('antigravity') && antigravityMcpSyncEnabled) {
       probes.antigravity = await probeAntigravity(paths.antigravityWorkspaceMcp, '.agents/mcp_config.json', expectedAntigravityServers)
@@ -346,20 +363,37 @@ function probeCodex(projectRoot: string, expectedServerNames: string[]): string 
   }
 }
 
-function probeClaude(projectRoot: string): string {
+/**
+ * Count the MCP servers Claude Code sees for this project.
+ *
+ * Project scope registers servers under their plain names, local scope under the
+ * `agents__` prefix, so both spellings are counted.
+ */
+function probeClaude(projectRoot: string, expectedServerNames: string[]): string {
   if (!commandExists('claude')) return 'claude CLI not found'
   const result = runCommand('claude', ['mcp', 'list'], projectRoot)
   if (!result.ok) return `failed (${compact(result.stderr)})`
   const lines = sanitizeTerminalOutput(result.stdout)
     .split('\n')
     .map((line) => line.trim())
-  const managedLines = lines.filter((line) => line.startsWith('agents__'))
+
+  const wanted = new Set([...expectedServerNames, ...expectedServerNames.map((name) => `agents__${name}`)])
+  const managedLines = lines.filter((line) => {
+    const name = line.match(/^([a-zA-Z0-9._:-]+):/)?.[1]
+    return name !== undefined && wanted.has(name)
+  })
+
   const managed = managedLines.length
   const unhealthy = managedLines.filter((line) => line.includes('\u2717') || line.toLowerCase().includes('failed')).length
+  const pending = managedLines.filter((line) => line.toLowerCase().includes('pending approval')).length
+
   if (unhealthy > 0) {
-    return `${managed} managed MCP server(s), ${unhealthy} unhealthy`
+    return `${String(managed)}/${String(expectedServerNames.length)} MCP server(s), ${String(unhealthy)} unhealthy`
   }
-  return `${managed} managed MCP server(s) detected`
+  if (pending > 0) {
+    return `${String(managed)}/${String(expectedServerNames.length)} MCP server(s), ${String(pending)} waiting for approval`
+  }
+  return `${String(managed)}/${String(expectedServerNames.length)} MCP server(s) detected`
 }
 
 function probeGemini(projectRoot: string): string {

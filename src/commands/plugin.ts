@@ -4,6 +4,16 @@ import { loadAgentsConfig } from '../core/config.js'
 import { performSync } from '../core/sync.js'
 import * as ui from '../core/ui.js'
 
+/** Derive a name the Agent Plugins specification accepts from a directory name. */
+function toPluginName(directoryName: string): string {
+  const slug = directoryName
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/-{2,}/g, '-')
+    .replace(/^-+|-+$/g, '')
+  return slug.length > 0 ? slug.slice(0, 64) : 'agents-plugin'
+}
+
 export interface PluginExportOptions {
   projectRoot: string
   out?: string
@@ -17,7 +27,7 @@ export interface PluginExportOptions {
 
 /** Package the project's MCP servers and skills as an Agent Plugins v1 directory. */
 export async function runPluginExport(options: PluginExportOptions): Promise<void> {
-  const name = options.name ?? path.basename(path.resolve(options.projectRoot)).toLowerCase().replace(/[^a-z0-9]+/g, '-')
+  const name = options.name ?? toPluginName(path.basename(path.resolve(options.projectRoot)))
   const outDir = options.out ?? path.join(options.projectRoot, 'dist', 'agent-plugin')
 
   const result = await exportPlugin({

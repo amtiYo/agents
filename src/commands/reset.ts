@@ -1,6 +1,6 @@
 import path from 'node:path'
 import { lstat, readlink, readdir, rmdir } from 'node:fs/promises'
-import { parse as parseJsonc } from 'jsonc-parser'
+import { applyEdits as applyJsoncEdits, modify as modifyJsonc, parse as parseJsonc } from 'jsonc-parser'
 import { cleanupManagedGitignore } from '../core/gitignore.js'
 import { readGooseDocument, readGooseExtensions, setGooseExtensions, writeGooseConfig } from '../core/goose.js'
 import { getProjectPaths } from '../core/paths.js'
@@ -109,7 +109,7 @@ export async function runReset(options: ResetOptions): Promise<void> {
     generatedPath: paths.generatedZed,
     removed,
     warnings
-  }, 'Zed', 'context_servers')
+  }, 'Zed', 'context_servers', { jsonc: true })
   await cleanupKeyedJsonConfig({
     projectRoot,
     configPath: paths.kiloConfig,
@@ -496,7 +496,33 @@ async function cleanupKeyedJsonConfig(
   const cleaned = { ...existing }
   removeManagedMapEntries(cleaned, generated, key)
 
+  if (options?.jsonc) {
+    await persistCleanedJsoncConfig(args, existing, cleaned, key)
+    return
+  }
   await persistCleanedJsonConfig(args, existing, cleaned)
+}
+
+/** Rewrite one key of a JSONC file, so the user's comments and formatting survive. */
+async function persistCleanedJsoncConfig(
+  args: JsonConfigCleanupArgs,
+  existing: Record<string, unknown>,
+  cleaned: Record<string, unknown>,
+  key: string,
+): Promise<void> {
+  if (JSON.stringify(cleaned) === JSON.stringify(existing)) return
+  if (Object.keys(cleaned).length === 0) {
+    await removeResetTarget(args.configPath, args.projectRoot, args.removed)
+    return
+  }
+
+  const raw = await readTextOrEmpty(args.configPath)
+  const edits = modifyJsonc(raw, [key], cleaned[key], {
+    formattingOptions: { insertSpaces: true, tabSize: 2 }
+  })
+  const applied = applyJsoncEdits(raw, edits)
+  await writeTextAtomic(args.configPath, applied.endsWith('\n') ? applied : `${applied}\n`)
+  args.removed.push(path.relative(args.projectRoot, args.configPath) || args.configPath)
 }
 
 /** Read a JSONC settings file for cleanup, tolerating comments and trailing commas. */
