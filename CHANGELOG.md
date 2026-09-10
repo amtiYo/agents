@@ -47,6 +47,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `agents sync --profile` with an unknown name fails instead of silently syncing every server.
 - `agents mcp budget` rejects a non-numeric or non-positive `--timeout`.
 - Servers whose schema 3 target list named all eleven integrations of that release now reach the integrations added since.
+- `agents status` counts Claude Code servers under both project-scope and local-scope names, and reports servers waiting for approval.
+- `agents status` and `agents doctor` follow `copilotCliPath` instead of always looking at `.mcp.json`.
+- A project upgrading from 0.8.x loses servers it disabled after the upgrade, instead of keeping them in `.mcp.json` forever.
+- `agents reset` reads and writes Zed and Kilo files as JSONC, so cleanup works and comments survive.
+- Settings files that belong to a tool (`.zed/settings.json`, `.amp/settings.json`, `.kilo/kilo.jsonc`, `.github/mcp.json`) are no longer added to `.gitignore`.
+- The MCP probe sends `notifications/initialized` before `tools/list` over HTTP, as the specification requires.
 - `agents doctor` reports when `~/.codex/config.toml` cannot be parsed, with the parse error, instead of failing silently. Codex ignores every project while that file is broken.
 - Setting Codex trust no longer throws on a config with a syntax error elsewhere; the file is left untouched and the reason is reported.
 - The `sse` transport is marked deprecated in `agents mcp add` and flagged by `agents doctor`, following the MCP 2026-07-28 specification.
