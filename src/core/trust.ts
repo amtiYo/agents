@@ -89,6 +89,19 @@ export async function ensureCodexProjectTrusted(projectRoot: string): Promise<{ 
   }
 
   const header = projectHeader(projectKey)
+
+  // TOML can record the same project as an inline table, a dotted key or with single
+  // quotes. Appending a section in those cases would create a duplicate key and break
+  // the file, so the entry is reported instead of rewritten.
+  if (raw.trim().length > 0) {
+    const parsed = TOML.parse(raw) as CodexConfig
+    const knownEntry = parsed.projects?.[projectKey]
+    if (knownEntry !== undefined && !raw.split(/\r?\n/).some((line) => line.trim() === header)) {
+      throw new Error(
+        `${configPath} already defines this project in a form this tool does not edit; set trust_level = "trusted" for ${projectKey} manually.`,
+      )
+    }
+  }
   const lineEnding = raw.includes('\r\n') ? '\r\n' : '\n'
   const lines = raw.length > 0 ? raw.split(/\r?\n/) : []
   const headerIndices = lines

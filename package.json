@@ -1,7 +1,7 @@
 {
   "name": "@agents-dev/cli",
-  "version": "0.8.11",
-  "description": "One config to rule them all — sync MCP servers, skills, and AGENTS.md across Codex, Claude Code/Desktop, Gemini CLI, Cursor, Copilot VS Code/CLI, Antigravity, Windsurf, OpenCode, and Junie.",
+  "version": "0.9.0",
+  "description": "One config to rule them all — sync MCP servers, skills and AGENTS.md across 18 AI coding tools, and package them as Agent Plugins.",
   "main": "dist/cli.js",
   "scripts": {
     "build": "node -e \"const fs=require('node:fs'); fs.rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.json",
@@ -32,6 +32,8 @@
     "mcp",
     "model-context-protocol",
     "agents-md",
+    "agent-plugins",
+    "agent-skills",
     "codex",
     "claude-code",
     "claude-desktop",
@@ -41,8 +43,15 @@
     "copilot-cli",
     "antigravity",
     "windsurf",
+    "devin",
     "opencode",
     "junie",
+    "grok",
+    "amp",
+    "factory-droid",
+    "kilo",
+    "zed",
+    "goose",
     "ai-coding",
     "llm-tools",
     "config-sync",
@@ -62,12 +71,12 @@
   "license": "Apache-2.0",
   "type": "module",
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=20.12.0"
   },
   "dependencies": {
     "@clack/prompts": "^1.8.0",
     "@iarna/toml": "^2.2.5",
-    "commander": "^15.0.0",
+    "commander": "^14.0.3",
     "jsonc-parser": "^3.3.1",
     "picocolors": "^1.1.1",
     "yaml": "^2.9.0"

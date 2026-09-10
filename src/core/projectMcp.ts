@@ -43,22 +43,27 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-export interface ProjectMcpPlan {
-  /** Absolute path of the file to write, or `null` when nothing writes it. */
-  targetPath: string | null
-  /** Servers to write, merged across the integrations that share the file. */
+export interface ProjectMcpTarget {
+  /** Absolute path of the file to write. */
+  targetPath: string
+  /** Servers to write into it. */
   servers: ResolvedMcpServer[]
   /** Emit Copilot CLI's `tools` allowlist. */
   withTools: boolean
+}
+
+export interface ProjectMcpPlan {
+  /** Files this run should own; empty when no integration writes a project MCP file. */
+  targets: ProjectMcpTarget[]
   warnings: string[]
 }
 
 /**
- * Decide what goes into the shared project MCP file for the current config.
+ * Decide what goes into the project MCP files for the current config.
  *
  * Claude Code contributes when its scope is `project`; Copilot CLI contributes when
- * it is enabled. When both write the same server name, the definitions are compared
- * and a warning is raised if they differ.
+ * it is enabled. They share the repository-root `.mcp.json` unless Copilot CLI is
+ * pointed at `.github/mcp.json`, in which case each tool gets its own file.
  */
 export function planProjectMcp(args: {
   config: AgentsConfig
@@ -77,7 +82,7 @@ export function planProjectMcp(args: {
   const copilotUsesRootFile = copilotPath === paths.copilotCliMcp
 
   if (!claudeUsesProjectScope && !copilotCliEnabled) {
-    return { targetPath: null, servers: [], withTools: false, warnings }
+    return { targets: [], warnings }
   }
 
   // Both tools read the repository root file, so a Claude local scope plus Copilot CLI
@@ -90,17 +95,23 @@ export function planProjectMcp(args: {
     )
   }
 
+  const targets: ProjectMcpTarget[] = []
+
+  if (copilotCliEnabled && !copilotUsesRootFile) {
+    // Separate files: Copilot CLI reads .github/mcp.json, Claude Code the root file.
+    targets.push({ targetPath: copilotPath, servers: copilotServers, withTools: true })
+    if (claudeUsesProjectScope) {
+      targets.push({ targetPath: paths.copilotCliMcp, servers: claudeServers, withTools: false })
+    }
+    return { targets, warnings }
+  }
+
   if (!claudeUsesProjectScope) {
-    return { targetPath: copilotPath, servers: copilotServers, withTools: true, warnings }
+    return { targets: [{ targetPath: copilotPath, servers: copilotServers, withTools: true }], warnings }
   }
 
   if (!copilotCliEnabled) {
-    return { targetPath: paths.copilotCliMcp, servers: claudeServers, withTools: false, warnings }
-  }
-
-  if (!copilotUsesRootFile) {
-    // Copilot CLI was pointed at .github/mcp.json, so the root file belongs to Claude alone.
-    return { targetPath: paths.copilotCliMcp, servers: claudeServers, withTools: false, warnings }
+    return { targets: [{ targetPath: paths.copilotCliMcp, servers: claudeServers, withTools: false }], warnings }
   }
 
   const byName = new Map<string, ResolvedMcpServer>()
@@ -119,24 +130,61 @@ export function planProjectMcp(args: {
     byName.set(server.name, server)
   }
 
-  const merged = [...byName.values()].sort((a, b) => a.name.localeCompare(b.name))
-  if (claudeServers.length > 0 && copilotServers.length > 0) {
-    const claudeOnly = claudeServers.filter((server) => !copilotServers.some((item) => item.name === server.name))
-    const copilotOnly = copilotServers.filter((server) => !claudeServers.some((item) => item.name === server.name))
-    if (claudeOnly.length > 0 || copilotOnly.length > 0) {
-      warnings.push(
-        'Claude Code and Copilot CLI both read .mcp.json, so per-tool targets cannot isolate servers in it: '
-        + `${[...claudeOnly, ...copilotOnly].map((server) => server.name).join(', ')} will be visible to both.`,
-      )
-    }
+  const claudeOnly = claudeServers.filter((server) => !copilotServers.some((item) => item.name === server.name))
+  const copilotOnly = copilotServers.filter((server) => !claudeServers.some((item) => item.name === server.name))
+  if (claudeOnly.length > 0 || copilotOnly.length > 0) {
+    warnings.push(
+      'Claude Code and Copilot CLI both read .mcp.json, so per-tool targets cannot isolate servers in it: '
+      + `${[...claudeOnly, ...copilotOnly].map((server) => server.name).join(', ')} will be visible to both.`,
+    )
   }
 
-  return { targetPath: paths.copilotCliMcp, servers: merged, withTools: true, warnings }
+  const merged = [...byName.values()].sort((a, b) => a.name.localeCompare(b.name))
+  return { targets: [{ targetPath: paths.copilotCliMcp, servers: merged, withTools: true }], warnings }
+}
+
+/** State per file, so a plan with two files tracks each one separately. */
+interface ProjectMcpStateFile {
+  files: Record<string, string[]>
+}
+
+async function readStateFiles(statePath: string): Promise<Record<string, string[]>> {
+  if (!(await pathExists(statePath))) return {}
+  try {
+    const parsed = await readJson<ProjectMcpStateFile & ProjectMcpState>(statePath)
+    if (parsed.files && typeof parsed.files === 'object' && !Array.isArray(parsed.files)) {
+      return Object.fromEntries(
+        Object.entries(parsed.files).map(([file, names]) => [
+          file,
+          Array.isArray(names) ? names.filter((name): name is string => typeof name === 'string') : []
+        ]),
+      )
+    }
+    // Older state files tracked a single path.
+    if (typeof parsed.targetPath === 'string' && Array.isArray(parsed.managedNames)) {
+      return { [parsed.targetPath]: parsed.managedNames.filter((name): name is string => typeof name === 'string') }
+    }
+    return {}
+  } catch {
+    return {}
+  }
+}
+
+async function writeStateFiles(statePath: string, files: Record<string, string[]>): Promise<void> {
+  await ensureDir(path.dirname(statePath))
+  await writeJsonAtomic(statePath, {
+    files: Object.fromEntries(
+      Object.entries(files)
+        .filter(([, names]) => names.length > 0)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([file, names]) => [file, [...new Set(names)].sort((a, b) => a.localeCompare(b))]),
+    )
+  })
 }
 
 /**
- * Write (or clean up) the shared project MCP file, preserving servers that were
- * added to it by hand and removing only the entries agents previously wrote.
+ * Write the project MCP files for a plan, preserving servers and other top-level
+ * keys that the file already had, and removing only the entries agents wrote before.
  */
 export async function syncProjectMcpFile(args: {
   plan: ProjectMcpPlan
@@ -148,92 +196,111 @@ export async function syncProjectMcpFile(args: {
   warnings: string[]
 }): Promise<void> {
   const { plan, statePath, generatedPath, projectRoot, check, changed, warnings } = args
-  const state = await readProjectMcpState(statePath)
+  const previousFiles = await readStateFiles(statePath)
+  warnings.push(...plan.warnings)
 
-  const rendered = renderProjectMcpJson(plan.servers, {
-    tools: plan.withTools,
-    label: plan.targetPath ? path.relative(projectRoot, plan.targetPath) || plan.targetPath : '.mcp.json'
-  })
-  warnings.push(...rendered.warnings, ...plan.warnings)
+  const nextFiles: Record<string, string[]> = {}
+  const generatedPreview: Record<string, unknown> = {}
 
-  await writeManagedFile({
-    absolutePath: generatedPath,
-    content: `${JSON.stringify({ mcpServers: rendered.mcpServers }, null, 2)}\n`,
-    projectRoot,
-    check,
-    changed
-  })
+  for (const target of plan.targets) {
+    const rendered = renderProjectMcpJson(target.servers, {
+      tools: target.withTools,
+      label: path.relative(projectRoot, target.targetPath) || target.targetPath
+    })
+    warnings.push(...rendered.warnings)
+    Object.assign(generatedPreview, rendered.mcpServers)
 
-  const previousPath = state.targetPath
-  if (previousPath && previousPath !== plan.targetPath) {
-    await cleanupProjectMcpFile({
-      targetPath: previousPath,
-      managedNames: state.managedNames,
+    const written = await writeProjectMcpTarget({
+      targetPath: target.targetPath,
+      managedServers: rendered.mcpServers,
+      previousManagedNames: previousFiles[target.targetPath] ?? [],
       projectRoot,
       check,
       changed,
       warnings
     })
-  }
-
-  if (!plan.targetPath) {
-    if (previousPath === undefined && state.managedNames.length === 0) return
-    if (previousPath && previousPath === plan.targetPath) return
-    if (!previousPath) return
-    if (!check) await writeProjectMcpState(statePath, { managedNames: [] })
-    return
-  }
-
-  let existingServers: Record<string, unknown> = {}
-  if (await pathExists(plan.targetPath)) {
-    try {
-      const parsed = await readJson<unknown>(plan.targetPath)
-      if (!isRecord(parsed)) {
-        warnings.push(`Existing ${plan.targetPath} is not a JSON object; skipped project MCP sync.`)
-        return
-      }
-      existingServers = isRecord(parsed.mcpServers) ? parsed.mcpServers : {}
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
-      warnings.push(`Failed to read ${plan.targetPath}; skipped project MCP sync. ${message}`)
-      return
-    }
-  }
-
-  const next: Record<string, unknown> = { ...existingServers }
-  for (const name of state.managedNames) {
-    delete next[name]
-  }
-  for (const [name, server] of Object.entries(rendered.mcpServers)) {
-    next[name] = server
-  }
-
-  const unmanaged = Object.keys(next).filter((name) => !(name in rendered.mcpServers))
-  if (Object.keys(next).length === 0 && unmanaged.length === 0) {
-    if (await pathExists(plan.targetPath)) {
-      changed.push(toChangedEntry(projectRoot, plan.targetPath))
-      if (!check) await removeIfExists(plan.targetPath)
-    }
-    if (!check) {
-      await writeProjectMcpState(statePath, { managedNames: [], targetPath: plan.targetPath })
-    }
-    return
+    nextFiles[target.targetPath] = written
   }
 
   await writeManagedFile({
-    absolutePath: plan.targetPath,
-    content: `${JSON.stringify({ mcpServers: next }, null, 2)}\n`,
+    absolutePath: generatedPath,
+    content: `${JSON.stringify({ mcpServers: generatedPreview }, null, 2)}\n`,
     projectRoot,
     check,
     changed
   })
 
-  if (!check) {
-    await writeProjectMcpState(statePath, {
-      managedNames: Object.keys(rendered.mcpServers),
-      targetPath: plan.targetPath
-    })
+  // Files this run no longer owns lose their managed entries.
+  for (const [file, managedNames] of Object.entries(previousFiles)) {
+    if (nextFiles[file] !== undefined) continue
+    await cleanupProjectMcpFile({ targetPath: file, managedNames, projectRoot, check, changed, warnings })
   }
+
+  if (!check) {
+    await writeStateFiles(statePath, nextFiles)
+  }
+}
+
+/**
+ * Merge the managed servers into one file.
+ *
+ * @returns The server names now owned by agents in that file.
+ */
+async function writeProjectMcpTarget(args: {
+  targetPath: string
+  managedServers: Record<string, unknown>
+  previousManagedNames: string[]
+  projectRoot: string
+  check: boolean
+  changed: string[]
+  warnings: string[]
+}): Promise<string[]> {
+  const { targetPath, managedServers, previousManagedNames, projectRoot, check, changed, warnings } = args
+
+  let existing: Record<string, unknown> = {}
+  if (await pathExists(targetPath)) {
+    try {
+      const parsed = await readJson<unknown>(targetPath)
+      if (!isRecord(parsed)) {
+        warnings.push(`Existing ${targetPath} is not a JSON object; skipped project MCP sync.`)
+        return previousManagedNames
+      }
+      existing = parsed
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      warnings.push(`Failed to read ${targetPath}; skipped project MCP sync. ${message}`)
+      return previousManagedNames
+    }
+  }
+
+  const existingServers = isRecord(existing.mcpServers) ? existing.mcpServers : {}
+  const nextServers: Record<string, unknown> = { ...existingServers }
+  for (const name of previousManagedNames) {
+    delete nextServers[name]
+  }
+  for (const [name, server] of Object.entries(managedServers)) {
+    nextServers[name] = server
+  }
+
+  const otherKeys = Object.keys(existing).filter((key) => key !== 'mcpServers')
+  if (Object.keys(nextServers).length === 0 && otherKeys.length === 0) {
+    if (await pathExists(targetPath)) {
+      changed.push(toChangedEntry(projectRoot, targetPath))
+      if (!check) await removeIfExists(targetPath)
+    }
+    return []
+  }
+
+  await writeManagedFile({
+    absolutePath: targetPath,
+    // Other top-level keys (Copilot CLI's `inputs`, for example) are kept.
+    content: `${JSON.stringify({ ...existing, mcpServers: nextServers }, null, 2)}\n`,
+    projectRoot,
+    check,
+    changed
+  })
+
+  return Object.keys(managedServers)
 }
 
 async function cleanupProjectMcpFile(args: {

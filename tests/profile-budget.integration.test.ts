@@ -4,6 +4,7 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { afterEach, describe, expect, it } from 'vitest'
 import { runInit } from '../src/commands/init.js'
 import { runProfileRemove, runProfileSet, runProfileUse } from '../src/commands/profile.js'
+import { runMcpBudget } from '../src/commands/mcp-budget.js'
 import { loadAgentsConfig, saveAgentsConfig } from '../src/core/config.js'
 import { performSync } from '../src/core/sync.js'
 import { getProjectPaths } from '../src/core/paths.js'
@@ -111,15 +112,39 @@ describe('profiles', () => {
     expect(config.profiles).toBeUndefined()
   })
 
-  it('warns and keeps every server when the active profile disappears from the file', async () => {
+  it('fails on an explicit profile that does not exist instead of syncing everything', async () => {
+    const projectRoot = await makeProject()
+    await runProfileSet({ projectRoot, name: 'ci', servers: ['alpha'], json: true })
+
+    await expect(
+      performSync({ projectRoot, check: false, verbose: false, profile: 'ghost' }),
+    ).rejects.toThrow(/Profile "ghost" is not defined/)
+  })
+
+  it('warns and keeps every server when the active profile vanished from the file', async () => {
     const projectRoot = await makeProject()
     await runProfileSet({ projectRoot, name: 'ci', servers: ['alpha'], json: true })
     await runProfileUse({ projectRoot, name: 'ci', sync: false, json: true })
 
-    const result = await performSync({ projectRoot, check: false, verbose: false, profile: 'ghost' })
+    // Simulate a teammate deleting the profile while it is still the active one.
+    const config = await loadAgentsConfig(projectRoot)
+    const previousActive = config.activeProfile
+    delete config.profiles
+    config.activeProfile = previousActive
+    await saveAgentsConfig(projectRoot, config)
 
-    expect(result.warnings.join(' ')).toContain('Profile "ghost" is not defined')
+    const result = await performSync({ projectRoot, check: false, verbose: false })
+
+    expect(result.warnings.join(' ')).toContain('is not defined')
     expect(await readCursorServers(projectRoot)).toEqual(['alpha', 'beta', 'gamma'])
+  })
+
+  it('rejects a non-numeric timeout', async () => {
+    const projectRoot = await makeProject()
+
+    await expect(
+      runMcpBudget({ projectRoot, timeoutMs: Number.NaN, json: true, verbose: false }),
+    ).rejects.toThrow(/Invalid --timeout/)
   })
 })
 

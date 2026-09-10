@@ -42,12 +42,12 @@ export async function validateSkillsDirectory(skillsDir: string): Promise<string
       if (name !== skill.name) {
         warnings.push(`Skill directory "${skill.name}" at "${skill.relativePath}" does not match frontmatter name "${name}".`)
       }
-      if (name.length > MAX_NAME_LENGTH || !SKILL_NAME_RE.test(name)) {
+      if (name.includes('--')) {
+        warnings.push(`Skill "${skill.relativePath}" has consecutive hyphens in its name, which the spec disallows.`)
+      } else if (name.length > MAX_NAME_LENGTH || !SKILL_NAME_RE.test(name)) {
         warnings.push(
           `Skill "${skill.relativePath}" has an invalid name: use 1-${String(MAX_NAME_LENGTH)} lowercase letters, digits and single hyphens.`,
         )
-      } else if (name.includes('--')) {
-        warnings.push(`Skill "${skill.relativePath}" has consecutive hyphens in its name, which the spec disallows.`)
       }
     }
 

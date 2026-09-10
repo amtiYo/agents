@@ -75,6 +75,11 @@ export interface ProjectPaths {
   generatedZed: string
   generatedGoose: string
   generatedGooseState: string
+  generatedAmpState: string
+  generatedDroidState: string
+  generatedKiloState: string
+  generatedDevinState: string
+  generatedZedState: string
   generatedClaudeProjectMcp: string
   generatedProjectMcpState: string
   geminiSkillsBridge: string
@@ -294,6 +299,11 @@ export function getProjectPaths(projectRoot: string): ProjectPaths {
     generatedZed: path.join(generatedDir, 'zed.settings.json'),
     generatedGoose: path.join(generatedDir, 'goose.config.yaml'),
     generatedGooseState: path.join(generatedDir, 'goose.state.json'),
+    generatedAmpState: path.join(generatedDir, 'amp.state.json'),
+    generatedDroidState: path.join(generatedDir, 'droid.state.json'),
+    generatedKiloState: path.join(generatedDir, 'kilo.state.json'),
+    generatedDevinState: path.join(generatedDir, 'devin.state.json'),
+    generatedZedState: path.join(generatedDir, 'zed.state.json'),
     generatedClaudeProjectMcp: path.join(generatedDir, 'claude.project.mcp.json'),
     generatedProjectMcpState: path.join(generatedDir, 'project-mcp.state.json'),
     geminiSkillsBridge: path.join(root, '.gemini', 'skills'),

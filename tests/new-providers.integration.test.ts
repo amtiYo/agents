@@ -273,3 +273,108 @@ describe('warning scope', () => {
     expect(result.warnings.join(' ')).toContain('Goose reads secrets from the environment')
   })
 })
+
+describe('shared config safety', () => {
+  it('keeps servers a user added to the Droid config', async () => {
+    const projectRoot = await setupProject(['droid'])
+    const paths = getProjectPaths(projectRoot)
+
+    const payload = await readJsonFile<{ mcpServers: Record<string, unknown> }>(paths.droidMcp)
+    payload.mcpServers.handwritten = { type: 'stdio', command: 'mine' }
+    await writeFile(paths.droidMcp, `${JSON.stringify(payload, null, 2)}\n`, 'utf8')
+
+    await performSync({ projectRoot, check: false, verbose: false })
+
+    const after = await readJsonFile<{ mcpServers: Record<string, unknown> }>(paths.droidMcp)
+    expect(Object.keys(after.mcpServers).sort()).toEqual(['handwritten', 'local', 'remote'])
+  })
+
+  it('removes only its own entries when the integration is disabled', async () => {
+    const projectRoot = await setupProject(['droid'])
+    const paths = getProjectPaths(projectRoot)
+
+    const payload = await readJsonFile<{ mcpServers: Record<string, unknown> }>(paths.droidMcp)
+    payload.mcpServers.handwritten = { type: 'stdio', command: 'mine' }
+    await writeFile(paths.droidMcp, `${JSON.stringify(payload, null, 2)}\n`, 'utf8')
+
+    const config = await loadAgentsConfig(projectRoot)
+    config.integrations.enabled = []
+    await saveAgentsConfig(projectRoot, config)
+    await performSync({ projectRoot, check: false, verbose: false })
+
+    const after = await readJsonFile<{ mcpServers: Record<string, unknown> }>(paths.droidMcp)
+    expect(Object.keys(after.mcpServers)).toEqual(['handwritten'])
+  })
+
+  it('syncs a Zed settings file that contains comments', async () => {
+    const projectRoot = await setupProject(['zed'])
+    const paths = getProjectPaths(projectRoot)
+
+    await writeFile(
+      paths.zedSettings,
+      '{\n  // Zed ships comments in settings.json\n  "theme": "One Dark",\n  "context_servers": {}\n}\n',
+      'utf8',
+    )
+
+    const result = await performSync({ projectRoot, check: false, verbose: false })
+
+    expect(result.warnings.join(' ')).not.toContain('skipped Zed sync')
+    const raw = await readFile(paths.zedSettings, 'utf8')
+    expect(raw).toContain('// Zed ships comments')
+    expect(raw).toContain('"local"')
+  })
+
+  it('keeps context servers a user added to Zed settings', async () => {
+    const projectRoot = await setupProject(['zed'])
+    const paths = getProjectPaths(projectRoot)
+
+    const settings = await readJsonFile<Record<string, Record<string, unknown>>>(paths.zedSettings)
+    settings.context_servers.mine = { source: 'custom', command: 'my-server' }
+    await writeFile(paths.zedSettings, `${JSON.stringify(settings, null, 2)}\n`, 'utf8')
+
+    await performSync({ projectRoot, check: false, verbose: false })
+
+    const after = await readJsonFile<Record<string, Record<string, unknown>>>(paths.zedSettings)
+    expect(Object.keys(after.context_servers).sort()).toEqual(['local', 'mine', 'remote'])
+  })
+
+  it('removes Goose extensions on reset but keeps other settings', async () => {
+    const projectRoot = await setupProject(['goose'])
+    const paths = getProjectPaths(projectRoot)
+
+    await writeFile(
+      paths.gooseConfig,
+      `GOOSE_PROVIDER: anthropic\n${await readFile(paths.gooseConfig, 'utf8')}`,
+      'utf8',
+    )
+    await performSync({ projectRoot, check: false, verbose: false })
+
+    await runReset({ projectRoot, localOnly: false, hard: false })
+
+    const after = YAML.parse(await readFile(paths.gooseConfig, 'utf8')) as {
+      GOOSE_PROVIDER?: string
+      extensions?: Record<string, unknown>
+    }
+    expect(after.GOOSE_PROVIDER).toBe('anthropic')
+    expect(after.extensions ?? {}).toEqual({})
+  })
+
+  it('removes Kilo entries on reset even when the file has comments', async () => {
+    const projectRoot = await setupProject(['kilo'])
+    const paths = getProjectPaths(projectRoot)
+
+    await writeFile(
+      paths.kiloConfig,
+      '{\n  // user comment\n  "model": "sonnet",\n  "mcp": {}\n}\n',
+      'utf8',
+    )
+    await performSync({ projectRoot, check: false, verbose: false })
+
+    const result = await runReset({ projectRoot, localOnly: false, hard: false })
+    expect(JSON.stringify(result ?? {})).not.toContain('not valid JSONC')
+
+    const raw = await readFile(paths.kiloConfig, 'utf8')
+    expect(raw).toContain('"model": "sonnet"')
+    expect(raw).not.toContain('"local"')
+  })
+})

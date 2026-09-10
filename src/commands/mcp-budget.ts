@@ -41,7 +41,14 @@ function toRow(result: ProbeResult): BudgetRow {
  * definitions occupy, largest first.
  */
 export async function runMcpBudget(options: McpBudgetOptions): Promise<void> {
-  const resolved = await loadResolvedRegistry(options.projectRoot, { profile: options.profile })
+  if (!Number.isFinite(options.timeoutMs) || options.timeoutMs <= 0) {
+    throw new Error(`Invalid --timeout value; expected a positive number of milliseconds.`)
+  }
+
+  const resolved = await loadResolvedRegistry(
+    options.projectRoot,
+    options.profile === undefined ? undefined : { profile: options.profile },
+  )
 
   // Servers can target different tools; measuring one entry per unique name is enough.
   const seen = new Map<string, (typeof resolved.serversByTarget)['codex'][number]>()

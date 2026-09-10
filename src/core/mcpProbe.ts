@@ -1,8 +1,9 @@
 import { spawn } from 'node:child_process'
+import { CLI_VERSION } from './version.js'
 import type { ResolvedMcpServer } from '../types.js'
 
 const PROTOCOL_VERSION = '2025-06-18'
-const CLIENT_INFO = { name: 'agents-cli', version: '0.9.0' }
+const CLIENT_INFO = { name: 'agents-cli', version: CLI_VERSION }
 
 export interface ProbedTool {
   name: string
