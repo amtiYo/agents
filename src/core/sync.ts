@@ -29,7 +29,7 @@ import { validateEnvKey, validateEnvValueForShell, validateHeaderKey, validateSe
 import { acquireSyncLock } from './syncLock.js'
 import { planProjectMcp, syncProjectMcpFile } from './projectMcp.js'
 import * as ui from './ui.js'
-import type { IntegrationName, ResolvedMcpServer, SyncOptions, SyncResult } from '../types.js'
+import type { AgentsConfig, IntegrationName, ResolvedMcpServer, SyncOptions, SyncResult } from '../types.js'
 
 interface ClaudeState {
   managedNames: string[]
@@ -210,18 +210,32 @@ export async function performSync(options: SyncOptions): Promise<SyncResult> {
       projectRoot
     })
 
-    const previousSourceHash = config.lastSyncSourceHash ?? null
+    // Sync bookkeeping lives in .agents/generated (gitignored). Keeping it in the
+    // committed config meant every teammate's sync produced a diff.
+    const syncState = await readSyncState(paths.generatedSyncState, config)
+    const previousSourceHash = syncState.lastSyncSourceHash
     const sourceStateChanged = sourceFingerprint !== previousSourceHash
     if (sourceStateChanged) {
-      changed.push('.agents/agents.json')
+      changed.push('.agents/generated/sync.state.json')
     }
     if (!check && sourceStateChanged) {
-      if (previousSourceHash === null && config.lastSync !== null) {
-        config.lastSyncSourceHash = sourceFingerprint
-      } else {
-        config.lastSync = new Date().toISOString()
-        config.lastSyncSourceHash = sourceFingerprint
+      await writeJsonAtomic(paths.generatedSyncState, {
+        lastSync: new Date().toISOString(),
+        lastSyncSourceHash: sourceFingerprint
+      })
+    }
+
+    // Older configs carried the same fields; move them to the state file once, so the
+    // committed config settles and a later run does not report drift again.
+    if (!check && (config.lastSync !== null || config.lastSyncSourceHash !== null)) {
+      if (!sourceStateChanged && !(await pathExists(paths.generatedSyncState))) {
+        await writeJsonAtomic(paths.generatedSyncState, {
+          lastSync: config.lastSync,
+          lastSyncSourceHash: config.lastSyncSourceHash
+        })
       }
+      config.lastSync = null
+      config.lastSyncSourceHash = null
       await saveAgentsConfig(projectRoot, config)
     }
 
@@ -660,4 +674,29 @@ function validateResolvedServers(resolvedByTarget: Record<IntegrationName, Resol
 
 function uniqueSorted(values: string[]): string[] {
   return [...new Set(values)].sort((a, b) => a.localeCompare(b))
+}
+
+interface SyncState {
+  lastSync: string | null
+  lastSyncSourceHash: string | null
+}
+
+/** Read the sync state, falling back to the fields older configs stored inline. */
+async function readSyncState(statePath: string, config: AgentsConfig): Promise<SyncState> {
+  if (await pathExists(statePath)) {
+    try {
+      const parsed = await readJson<Partial<SyncState>>(statePath)
+      return {
+        lastSync: typeof parsed.lastSync === 'string' ? parsed.lastSync : null,
+        lastSyncSourceHash: typeof parsed.lastSyncSourceHash === 'string' ? parsed.lastSyncSourceHash : null
+      }
+    } catch {
+      return { lastSync: null, lastSyncSourceHash: null }
+    }
+  }
+
+  return {
+    lastSync: config.lastSync ?? null,
+    lastSyncSourceHash: config.lastSyncSourceHash ?? null
+  }
 }

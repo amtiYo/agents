@@ -30,6 +30,15 @@ afterEach(async () => {
   }
 })
 
+async function readSyncState(projectRoot: string): Promise<{ lastSync: string | null }> {
+  const statePath = path.join(projectRoot, '.agents', 'generated', 'sync.state.json')
+  try {
+    return JSON.parse(await readFile(statePath, 'utf8')) as { lastSync: string | null }
+  } catch {
+    return { lastSync: null }
+  }
+}
+
 describe('mcp command integration', () => {
   it('adds, imports, lists, and removes MCP servers', async () => {
     const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-mcp-cmds-'))
@@ -64,8 +73,9 @@ describe('mcp command integration', () => {
     expect(configAfterAdd.mcp.servers.context7.args[3]).toMatch(/^\$\{[A-Z0-9_]+\}$/)
     expect(configAfterAdd.mcp.servers.context7.targets).toBeUndefined()
     expect(localAfterAdd.mcpServers.context7.args[3]).toBe('secret')
-    expect(typeof configAfterAdd.lastSync).toBe('string')
-    const lastSyncAfterAdd = configAfterAdd.lastSync
+    const stateAfterAdd = await readSyncState(projectRoot)
+    expect(typeof stateAfterAdd.lastSync).toBe('string')
+    const lastSyncAfterAdd = stateAfterAdd.lastSync
 
     const importOutput = await captureStdout(async () => {
       await runMcpImport({
@@ -121,8 +131,9 @@ describe('mcp command integration', () => {
     const configAfterSync = JSON.parse(
       await readFile(path.join(projectRoot, '.agents', 'agents.json'), 'utf8'),
     ) as AgentsFile
-    expect(configAfterSync.lastSync).toBeTypeOf('string')
-    expect(configAfterSync.lastSync).not.toBe(lastSyncAfterAdd)
+    const stateAfterSync = await readSyncState(projectRoot)
+    expect(stateAfterSync.lastSync).toBeTypeOf('string')
+    expect(stateAfterSync.lastSync).not.toBe(lastSyncAfterAdd)
 
     await waitForTimestampTick()
 
@@ -135,7 +146,7 @@ describe('mcp command integration', () => {
     const configAfterNoopSync = JSON.parse(
       await readFile(path.join(projectRoot, '.agents', 'agents.json'), 'utf8'),
     ) as AgentsFile
-    expect(configAfterNoopSync.lastSync).toBe(configAfterSync.lastSync)
+    expect((await readSyncState(projectRoot)).lastSync).toBe(stateAfterSync.lastSync)
 
     const check = await performSync({
       projectRoot,

@@ -77,8 +77,8 @@
       ]
     }
   },
-  "lastSync": "2026-09-10T21:45:22.878Z",
-  "lastSyncSourceHash": "ae98debae6aaa7234aaa38835398796866936a6bc7bdb16452edea020ee4fad8",
+  "lastSync": null,
+  "lastSyncSourceHash": null,
   "profiles": {
     "minimal": {
       "description": "Filesystem only, for low-context sessions",

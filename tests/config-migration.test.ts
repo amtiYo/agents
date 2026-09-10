@@ -10,6 +10,7 @@ import {
 } from '../src/core/config.js'
 import { loadResolvedRegistry, resolveFromConfigAndLocal } from '../src/core/mcp.js'
 import { performSync } from '../src/core/sync.js'
+import { runInit } from '../src/commands/init.js'
 import { AGENTS_SCHEMA_VERSION } from '../src/types.js'
 import type { AgentsConfig } from '../src/types.js'
 
@@ -233,5 +234,57 @@ describe('migration during sync', () => {
     expect(resolved.serversByTarget.grok.map((server) => server.name)).toEqual(['filesystem'])
     expect(resolved.serversByTarget.amp.map((server) => server.name)).toEqual(['filesystem'])
     expect(resolved.serversByTarget.zed.map((server) => server.name)).toEqual(['filesystem'])
+  })
+})
+
+describe('sync bookkeeping', () => {
+  it('keeps lastSync out of the committed config', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'agents-bookkeeping-'))
+    tempDirs.push(dir)
+    await runInit({ projectRoot: dir, force: true })
+
+    await performSync({ projectRoot: dir, check: false, verbose: false })
+    const first = JSON.parse(await readFile(path.join(dir, '.agents', 'agents.json'), 'utf8')) as {
+      lastSync: string | null
+      lastSyncSourceHash: string | null
+    }
+    expect(first.lastSync).toBeNull()
+    expect(first.lastSyncSourceHash).toBeNull()
+
+    const state = JSON.parse(
+      await readFile(path.join(dir, '.agents', 'generated', 'sync.state.json'), 'utf8'),
+    ) as { lastSyncSourceHash: string }
+    expect(state.lastSyncSourceHash).toMatch(/^[a-f0-9]{64}$/)
+  })
+
+  it('does not rewrite the config on a second sync', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'agents-bookkeeping-'))
+    tempDirs.push(dir)
+    await runInit({ projectRoot: dir, force: true })
+
+    await performSync({ projectRoot: dir, check: false, verbose: false })
+    const before = await readFile(path.join(dir, '.agents', 'agents.json'), 'utf8')
+
+    const second = await performSync({ projectRoot: dir, check: false, verbose: false })
+
+    expect(await readFile(path.join(dir, '.agents', 'agents.json'), 'utf8')).toBe(before)
+    expect(second.changed).toEqual([])
+  })
+
+  it('adopts the bookkeeping fields an older config still carries', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'agents-bookkeeping-'))
+    tempDirs.push(dir)
+    await runInit({ projectRoot: dir, force: true })
+
+    const configPath = path.join(dir, '.agents', 'agents.json')
+    const config = JSON.parse(await readFile(configPath, 'utf8')) as Record<string, unknown>
+    config.lastSync = '2026-01-01T00:00:00.000Z'
+    config.lastSyncSourceHash = 'stale-hash'
+    await writeFile(configPath, `${JSON.stringify(config, null, 2)}\n`, 'utf8')
+
+    await performSync({ projectRoot: dir, check: false, verbose: false })
+
+    const after = JSON.parse(await readFile(configPath, 'utf8')) as { lastSync: string | null }
+    expect(after.lastSync).toBeNull()
   })
 })
