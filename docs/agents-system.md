@@ -275,7 +275,12 @@ plugin name so nothing already defined is replaced.
 - ❌ `.agents/mcp_config.json`
 - ❌ `.codex/`, `.claude/`, `.cursor/`, `.gemini/`
 - ❌ `.windsurf/`, `.opencode/`, `.junie/`, `.mcp.json`, `opencode.json`
-- ❌ `.grok/config.toml`, `.amp/settings.json`, `.factory/mcp.json`, `.kilo/kilo.jsonc`, `.devin/mcp_config.json`, `.zed/settings.json`, `.github/mcp.json`
+- ❌ `.grok/config.toml`, `.factory/mcp.json`, `.devin/mcp_config.json`
+
+**Never gitignored, whatever the sync mode:** `.zed/settings.json`, `.amp/settings.json`,
+`.kilo/kilo.jsonc` and `.github/mcp.json`. Those files hold the tool's own settings, or
+belong in review, so the sync merges its entries into them and leaves the rest, and the
+file's place in git is the team's decision.
 - ❌ legacy `.antigravity/` (if present from older versions)
 
 ---

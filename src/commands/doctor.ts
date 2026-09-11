@@ -183,7 +183,8 @@ export async function runDoctor(options: DoctorOptions): Promise<void> {
       })
     }
     const codexTrust = await getCodexTrustState(options.projectRoot)
-    codexTrustNeedsFix = codexTrust !== 'trusted'
+    // An unreadable config is reported above; trying to set trust in it would fail.
+    codexTrustNeedsFix = codexTrust === 'untrusted'
     if (codexTrustNeedsFix && !applyFixes && !previewFixes) {
       issues.push({
         level: 'warning',

@@ -26,7 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **Breaking:** Claude Code now writes MCP servers to `.mcp.json` in the repository root (project scope), which is committed and shared with the team, instead of registering them in the machine-local `~/.claude.json` through the `claude` CLI. Projects migrating from schema 3 keep the previous behaviour; new projects can opt back in with `integrations.options.claudeScope = "local"`.
+- **Breaking:** Claude Code now writes MCP servers to `.mcp.json` in the repository root, the project scope Anthropic documents for teams, instead of registering them in the machine-local `~/.claude.json` through the `claude` CLI. Whether that file is committed follows `syncMode`: `source-only` gitignores it and each clone regenerates it, `commit-generated` keeps it in review. Projects migrating from schema 3 keep the previous behaviour; new projects can opt back in with `integrations.options.claudeScope = "local"`.
 - `.mcp.json` is written once for both Claude Code and Copilot CLI, since both read it. Two consequences are now reported instead of being silent: per-tool targets cannot isolate servers inside that file, and Claude Code on local scope alongside Copilot CLI registers every server twice.
 - Codex trust is set by editing the project section of `~/.codex/config.toml` in place. The previous implementation reparsed and reserialized the whole file, discarding comments and ordering.
 - Codex output no longer contains `autoApprove`, which is not a documented Codex key, and now emits `startup_timeout_sec`, `tool_timeout_sec` and `bearer_token_env_var`.

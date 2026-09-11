@@ -266,9 +266,32 @@ export async function loadAgentsConfigDetailed(projectRoot: string): Promise<Loa
   return { config, migratedFrom }
 }
 
+/**
+ * Write the config, keeping a copy of the previous file when this save replaces an
+ * older schema version.
+ *
+ * Every command that edits the config goes through here, so the backup does not depend
+ * on the caller remembering that the file it loaded was migrated.
+ */
 export async function saveAgentsConfig(projectRoot: string, config: AgentsConfig): Promise<void> {
   const paths = getProjectPaths(projectRoot)
   await ensureDir(path.dirname(paths.agentsConfig))
+
+  if (await pathExists(paths.agentsConfig)) {
+    try {
+      const onDisk = await readJson<{ schemaVersion?: unknown }>(paths.agentsConfig)
+      const previous = typeof onDisk.schemaVersion === 'number' ? onDisk.schemaVersion : null
+      if (previous !== null && previous < config.schemaVersion) {
+        const backupPath = `${paths.agentsConfig}.v${String(previous)}.bak`
+        if (!(await pathExists(backupPath))) {
+          await copyFile(paths.agentsConfig, backupPath)
+        }
+      }
+    } catch {
+      // An unreadable current file has nothing worth backing up.
+    }
+  }
+
   await writeJsonAtomic(paths.agentsConfig, config)
 }
 
@@ -283,10 +306,7 @@ export async function persistMigratedConfig(
   migratedFrom: number,
 ): Promise<string> {
   const paths = getProjectPaths(projectRoot)
-  const backupPath = `${paths.agentsConfig}.v${String(migratedFrom)}.bak`
-  if (await pathExists(paths.agentsConfig)) {
-    await copyFile(paths.agentsConfig, backupPath)
-  }
+  // saveAgentsConfig writes the backup itself; the path is returned for the message.
   await saveAgentsConfig(projectRoot, config)
-  return backupPath
+  return `${paths.agentsConfig}.v${String(migratedFrom)}.bak`
 }

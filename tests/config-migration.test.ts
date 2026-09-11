@@ -6,7 +6,8 @@ import {
   createDefaultAgentsConfig,
   loadAgentsConfigDetailed,
   migrateAgentsConfig,
-  persistMigratedConfig
+  persistMigratedConfig,
+  saveAgentsConfig
 } from '../src/core/config.js'
 import { loadResolvedRegistry, resolveFromConfigAndLocal } from '../src/core/mcp.js'
 import { performSync } from '../src/core/sync.js'
@@ -286,5 +287,43 @@ describe('sync bookkeeping', () => {
 
     const after = JSON.parse(await readFile(configPath, 'utf8')) as { lastSync: string | null }
     expect(after.lastSync).toBeNull()
+  })
+})
+
+describe('legacy bookkeeping adoption', () => {
+  it('keeps the old timestamp and stops reporting drift on check', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'agents-legacy-hash-'))
+    tempDirs.push(dir)
+    await runInit({ projectRoot: dir, force: true })
+
+    const configPath = path.join(dir, '.agents', 'agents.json')
+    const config = JSON.parse(await readFile(configPath, 'utf8')) as Record<string, unknown>
+    config.lastSync = '2026-01-01T00:00:00.000Z'
+    delete config.lastSyncSourceHash
+    await writeFile(configPath, `${JSON.stringify(config, null, 2)}\n`, 'utf8')
+
+    await performSync({ projectRoot: dir, check: false, verbose: false })
+
+    const state = JSON.parse(
+      await readFile(path.join(dir, '.agents', 'generated', 'sync.state.json'), 'utf8'),
+    ) as { lastSync: string; lastSyncSourceHash: string }
+    expect(state.lastSync).toBe('2026-01-01T00:00:00.000Z')
+
+    const drift = await performSync({ projectRoot: dir, check: true, verbose: false })
+    expect(drift.changed).toEqual([])
+  })
+
+  it('backs up the previous file on any save that raises the schema version', async () => {
+    const dir = await makeProject(schemaV3Config())
+
+    // A command that edits the config without going through the migration helper.
+    const { config } = await loadAgentsConfigDetailed(dir)
+    config.mcp.servers.extra = { transport: 'stdio', command: 'extra-server' }
+    await saveAgentsConfig(dir, config)
+
+    const backup = JSON.parse(
+      await readFile(path.join(dir, '.agents', 'agents.json.v3.bak'), 'utf8'),
+    ) as { schemaVersion: number }
+    expect(backup.schemaVersion).toBe(3)
   })
 })

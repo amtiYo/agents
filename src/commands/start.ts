@@ -14,6 +14,7 @@ import { INTEGRATIONS } from '../integrations/registry.js'
 import { getProjectPaths, toHomeRelativePath } from '../core/paths.js'
 import { runReset } from './reset.js'
 import { ensureCodexProjectTrusted, getCodexTrustState } from '../core/trust.js'
+import type { CodexTrustState } from '../core/trust.js'
 import { formatWarnings, normalizeWarnings } from '../core/warnings.js'
 
 const DEFAULT_INTEGRATION_OPTIONS: AgentsConfig['integrations']['options'] = {
@@ -264,14 +265,21 @@ async function resolveIntegrationAccess(args: {
   }
 
   if (selectedIntegrations.includes('codex')) {
-    let state: 'trusted' | 'untrusted' = 'untrusted'
+    let state: CodexTrustState = 'untrusted'
     try {
       state = await getCodexTrustState(projectRoot)
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       warnings.push(`Failed reading Codex trust state: ${message}`)
     }
-    if (state === 'trusted') {
+    if (state === 'unreadable') {
+      // Codex ignores every project while its global config cannot be parsed, so
+      // trusting this one would change nothing.
+      summaries.codex = 'global config unreadable (run agents doctor)'
+      warnings.push(
+        'Codex global config cannot be parsed, so Codex ignores project settings. Run "agents doctor" for the parse error.',
+      )
+    } else if (state === 'trusted') {
       summaries.codex = 'already trusted'
     } else {
       let approve = autoApprove

@@ -222,8 +222,11 @@ export async function performSync(options: SyncOptions): Promise<SyncResult> {
       changed.push('.agents/generated/sync.state.json')
     }
     if (!check && sourceStateChanged) {
+      // A config from before the hash existed keeps its timestamp: nothing changed,
+      // the hash is simply being recorded for the first time.
+      const adoptHashOnly = previousSourceHash === null && syncState.lastSync !== null
       await writeJsonAtomic(paths.generatedSyncState, {
-        lastSync: new Date().toISOString(),
+        lastSync: adoptHashOnly ? syncState.lastSync : new Date().toISOString(),
         lastSyncSourceHash: sourceFingerprint
       })
     }

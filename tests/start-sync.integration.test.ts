@@ -379,7 +379,7 @@ describe('start + sync flow', () => {
     })
 
     expect(await exists(path.join(projectRoot, '.agents', 'agents.json'))).toBe(true)
-    expect(output).toContain('Codex trust setup skipped')
+    expect(output).toContain('Codex global config cannot be parsed')
   })
 
   it('does not modify README/CONTRIBUTING by default in non-interactive mode', async () => {

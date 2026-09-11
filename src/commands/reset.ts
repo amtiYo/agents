@@ -460,15 +460,16 @@ async function cleanupGrokConfig(args: {
     return
   }
 
+  // Nothing of ours in the file means nothing to clean, even if the file is blank.
+  if (cleaned === existing) return
+
   if (cleaned.trim().length === 0) {
     await removeResetTarget(args.configPath, args.projectRoot, args.removed)
     return
   }
 
-  if (cleaned !== existing) {
-    await writeTextAtomic(args.configPath, cleaned)
-    args.removed.push(path.relative(args.projectRoot, args.configPath) || args.configPath)
-  }
+  await writeTextAtomic(args.configPath, cleaned)
+  args.removed.push(path.relative(args.projectRoot, args.configPath) || args.configPath)
 }
 
 /**

@@ -333,3 +333,36 @@ describe('reset for projects synced by an older release', () => {
     expect(Object.keys(after.mcpServers)).toEqual(['handwritten'])
   })
 })
+
+describe('first sync into an existing .mcp.json', () => {
+  it('warns before replacing a hand-written server of the same name', async () => {
+    const projectRoot = await setupProject(['claude'])
+    const paths = getProjectPaths(projectRoot)
+
+    await writeFile(
+      paths.copilotCliMcp,
+      `${JSON.stringify({ mcpServers: { docs: { type: 'stdio', command: 'my-own-docs-server' } } }, null, 2)}\n`,
+      'utf8',
+    )
+
+    const result = await performSync({ projectRoot, check: false, verbose: false })
+
+    expect(result.warnings.join(' ')).toContain('already had a server named "docs"')
+    const after = await readMcpJson(paths.copilotCliMcp)
+    expect(after.mcpServers.docs?.command).toBe('npx')
+  })
+
+  it('keeps the generated preview separated per file', async () => {
+    const projectRoot = await setupProject(['claude', 'copilot_cli'], (config) => {
+      config.integrations.options.copilotCliPath = '.github/mcp.json'
+    })
+    const paths = getProjectPaths(projectRoot)
+
+    await performSync({ projectRoot, check: false, verbose: false })
+
+    const preview = JSON.parse(await readFile(paths.generatedClaudeProjectMcp, 'utf8')) as {
+      files: Record<string, Record<string, unknown>>
+    }
+    expect(Object.keys(preview.files).sort()).toEqual(['.github/mcp.json', '.mcp.json'])
+  })
+})

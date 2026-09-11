@@ -92,6 +92,16 @@ export function resolveFromConfigAndLocal(input: {
   const warnings: string[] = []
   const missingRequiredEnv: string[] = []
 
+  // A profile that names a server which was since renamed or removed would otherwise
+  // narrow the run, possibly to nothing, without a word.
+  if (profileServers) {
+    for (const wanted of [...profileServers].sort((a, b) => a.localeCompare(b))) {
+      if (!servers[wanted]) {
+        warnings.push(`Profile references MCP server "${wanted}", which is not configured; ignored.`)
+      }
+    }
+  }
+
   const serversByTarget = Object.fromEntries(
     ALL_INTEGRATIONS.map((id) => [id, [] as ResolvedMcpServer[]]),
   ) as Record<IntegrationName, ResolvedMcpServer[]>

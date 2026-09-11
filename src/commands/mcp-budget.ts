@@ -1,3 +1,4 @@
+import { loadAgentsConfig } from '../core/config.js'
 import { loadResolvedRegistry } from '../core/mcp.js'
 import { estimateTokens, probeServerTools, type ProbeResult } from '../core/mcpProbe.js'
 import * as ui from '../core/ui.js'
@@ -45,10 +46,14 @@ export async function runMcpBudget(options: McpBudgetOptions): Promise<void> {
     throw new Error(`Invalid --timeout value; expected a positive number of milliseconds.`)
   }
 
+  const config = await loadAgentsConfig(options.projectRoot)
   const resolved = await loadResolvedRegistry(
     options.projectRoot,
     options.profile === undefined ? undefined : { profile: options.profile },
   )
+  // Without --profile the active profile from the config applies, and the report has
+  // to say which set was measured.
+  const appliedProfile = options.profile === undefined ? config.activeProfile ?? null : options.profile
 
   // Servers can target different tools; measuring one entry per unique name is enough.
   const seen = new Map<string, (typeof resolved.serversByTarget)['codex'][number]>()
@@ -60,7 +65,19 @@ export async function runMcpBudget(options: McpBudgetOptions): Promise<void> {
 
   const servers = [...seen.values()].sort((a, b) => a.name.localeCompare(b.name))
   if (servers.length === 0) {
+    if (options.json) {
+      ui.json({
+        profile: appliedProfile,
+        totals: { tools: 0, estimatedTokens: 0 },
+        servers: [],
+        warnings: resolved.warnings,
+        missingRequiredEnv: resolved.missingRequiredEnv
+      })
+      return
+    }
     ui.info('No MCP servers selected.')
+    for (const warning of resolved.warnings) ui.warning(warning)
+    for (const entry of resolved.missingRequiredEnv) ui.warning(`Missing required env: ${entry}`)
     return
   }
 
@@ -79,8 +96,10 @@ export async function runMcpBudget(options: McpBudgetOptions): Promise<void> {
 
   if (options.json) {
     ui.json({
-      profile: options.profile ?? null,
+      profile: appliedProfile,
       totals: { tools: totalTools, estimatedTokens: totalTokens },
+      warnings: resolved.warnings,
+      missingRequiredEnv: resolved.missingRequiredEnv,
       servers: rows,
       tools: options.verbose
         ? Object.fromEntries(
@@ -128,6 +147,9 @@ export async function runMcpBudget(options: McpBudgetOptions): Promise<void> {
   ui.keyValue('Tools', String(totalTools))
   ui.keyValue('Estimated', `~${String(totalTokens)} tokens of context`)
   ui.hint('Token counts are an estimate from the size of the tool definitions, not a model-side measurement.')
+
+  for (const warning of resolved.warnings) ui.warning(warning)
+  for (const entry of resolved.missingRequiredEnv) ui.warning(`Missing required env: ${entry}`)
 
   const failed = rows.filter((row) => row.status === 'error')
   if (failed.length > 0) {

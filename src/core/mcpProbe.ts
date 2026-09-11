@@ -77,6 +77,11 @@ async function probeStdioServer(server: ResolvedMcpServer, timeoutMs: number): P
       settled = true
       clearTimeout(timer)
       child.kill('SIGTERM')
+      // A server that ignores SIGTERM would otherwise hold the event loop open.
+      const hardKill = setTimeout(() => {
+        if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL')
+      }, 2000)
+      hardKill.unref()
       resolve(result)
     }
 
@@ -91,8 +96,13 @@ async function probeStdioServer(server: ResolvedMcpServer, timeoutMs: number): P
     }, timeoutMs)
 
     const send = (message: unknown): void => {
+      if (child.stdin.destroyed) return
       child.stdin.write(`${JSON.stringify(message)}\n`)
     }
+
+    // A command that fails to start reports through the child's own error event; the
+    // stdin EPIPE that follows must not become an unhandled error.
+    child.stdin.on('error', () => undefined)
 
     child.on('error', (error: Error) => {
       finish({ server: server.name, ok: false, tools: [], characters: 0, error: error.message })
@@ -321,7 +331,9 @@ async function probeHttpServer(server: ResolvedMcpServer, timeoutMs: number): Pr
       ok: false,
       tools: [],
       characters: 0,
-      error: message === 'This operation was aborted' ? `timed out after ${String(timeoutMs)}ms` : message
+      error: error instanceof Error && error.name === 'AbortError'
+        ? `timed out after ${String(timeoutMs)}ms`
+        : message
     }
   }
 }

@@ -31,14 +31,6 @@ export async function readProjectMcpState(statePath: string): Promise<ProjectMcp
   }
 }
 
-async function writeProjectMcpState(statePath: string, state: ProjectMcpState): Promise<void> {
-  await ensureDir(path.dirname(statePath))
-  await writeJsonAtomic(statePath, {
-    managedNames: [...new Set(state.managedNames)].sort((a, b) => a.localeCompare(b)),
-    ...(state.targetPath ? { targetPath: state.targetPath } : {})
-  })
-}
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
@@ -216,7 +208,7 @@ export async function syncProjectMcpFile(args: {
   warnings.push(...plan.warnings)
 
   const nextFiles: Record<string, string[]> = {}
-  const generatedPreview: Record<string, unknown> = {}
+  const generatedPreview: Record<string, Record<string, unknown>> = {}
 
   for (const target of plan.targets) {
     const rendered = renderProjectMcpJson(target.servers, {
@@ -224,12 +216,15 @@ export async function syncProjectMcpFile(args: {
       label: path.relative(projectRoot, target.targetPath) || target.targetPath
     })
     warnings.push(...rendered.warnings)
-    Object.assign(generatedPreview, rendered.mcpServers)
+    // Keyed per file: with two targets a merged preview would hide which server
+    // belongs where, and identical names would shadow each other.
+    generatedPreview[path.relative(projectRoot, target.targetPath) || target.targetPath] = rendered.mcpServers
 
     const written = await writeProjectMcpTarget({
       targetPath: target.targetPath,
       managedServers: rendered.mcpServers,
       previousManagedNames: previousFiles[target.targetPath] ?? (hasState ? [] : knownServerNames ?? []),
+      adopting: !hasState && previousFiles[target.targetPath] === undefined,
       projectRoot,
       check,
       changed,
@@ -240,7 +235,7 @@ export async function syncProjectMcpFile(args: {
 
   await writeManagedFile({
     absolutePath: generatedPath,
-    content: `${JSON.stringify({ mcpServers: generatedPreview }, null, 2)}\n`,
+    content: `${JSON.stringify({ files: generatedPreview }, null, 2)}\n`,
     projectRoot,
     check,
     changed
@@ -266,12 +261,14 @@ async function writeProjectMcpTarget(args: {
   targetPath: string
   managedServers: Record<string, unknown>
   previousManagedNames: string[]
+  /** True when the managed set came from the config because no state file existed. */
+  adopting: boolean
   projectRoot: string
   check: boolean
   changed: string[]
   warnings: string[]
 }): Promise<string[]> {
-  const { targetPath, managedServers, previousManagedNames, projectRoot, check, changed, warnings } = args
+  const { targetPath, managedServers, previousManagedNames, adopting, projectRoot, check, changed, warnings } = args
 
   let existing: Record<string, unknown> = {}
   if (await pathExists(targetPath)) {
@@ -295,6 +292,13 @@ async function writeProjectMcpTarget(args: {
     delete nextServers[name]
   }
   for (const [name, server] of Object.entries(managedServers)) {
+    // Only when adopting a file this CLI has not written before: an entry already
+    // there under the same name belongs to whoever wrote it by hand.
+    if (adopting && name in existingServers && JSON.stringify(existingServers[name]) !== JSON.stringify(server)) {
+      warnings.push(
+        `${path.basename(targetPath)} already had a server named "${name}" with a different definition; it was replaced by the one from .agents/agents.json.`,
+      )
+    }
     nextServers[name] = server
   }
 

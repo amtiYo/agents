@@ -5,6 +5,7 @@ import { parse, type ParseError } from 'jsonc-parser'
 import { loadAgentsConfig } from '../core/config.js'
 import { listDirNames, pathExists, readJson, readTextOrEmpty } from '../core/fs.js'
 import { loadResolvedRegistry } from '../core/mcp.js'
+import TOML from '@iarna/toml'
 import { parse as parseJsonc } from 'jsonc-parser'
 import { getProjectPaths, toHomeRelativePath } from '../core/paths.js'
 import { readGooseDocument, readGooseExtensions } from '../core/goose.js'
@@ -411,16 +412,21 @@ function probeClaude(projectRoot: string, expectedServerNames: string[]): string
   })
 
   const managed = managedLines.length
+  const total = String(expectedServerNames.length)
   const unhealthy = managedLines.filter((line) => line.includes('\u2717') || line.toLowerCase().includes('failed')).length
   const pending = managedLines.filter((line) => line.toLowerCase().includes('pending approval')).length
+  const needsAuth = managedLines.filter((line) => line.toLowerCase().includes('needs authentication')).length
 
   if (unhealthy > 0) {
-    return `${String(managed)}/${String(expectedServerNames.length)} MCP server(s), ${String(unhealthy)} unhealthy`
+    return `${String(managed)}/${total} MCP server(s), ${String(unhealthy)} unhealthy`
+  }
+  if (needsAuth > 0) {
+    return `${String(managed)}/${total} MCP server(s), ${String(needsAuth)} need authentication`
   }
   if (pending > 0) {
-    return `${String(managed)}/${String(expectedServerNames.length)} MCP server(s), ${String(pending)} waiting for approval`
+    return `${String(managed)}/${total} MCP server(s), ${String(pending)} waiting for approval`
   }
-  return `${String(managed)}/${String(expectedServerNames.length)} MCP server(s) detected`
+  return `${String(managed)}/${total} MCP server(s) detected`
 }
 
 function probeGemini(projectRoot: string): string {
@@ -627,6 +633,7 @@ function compact(input: string): string {
 
 async function probeCodexTrust(projectRoot: string): Promise<string> {
   const state = await getCodexTrustState(projectRoot)
+  if (state === 'unreadable') return 'global config unreadable'
   return state === 'trusted' ? 'trusted' : 'untrusted'
 }
 
@@ -660,14 +667,22 @@ async function readJsoncObject(filePath: string): Promise<Record<string, Record<
 async function probeTomlMcpFile(filePath: string, label: string, expectedServerNames: string[]): Promise<string> {
   if (!(await pathExists(filePath))) return `missing ${label}`
   const raw = await readTextOrEmpty(filePath)
-  const found = new Set<string>()
-  for (const match of raw.matchAll(/^\s*\[mcp_servers\.(?:"([^"]+)"|([^.\]]+))\]/gm)) {
-    const name = match[1] ?? match[2]
-    if (name) found.add(name)
+
+  // Parse first: a duplicate table in invalid TOML would otherwise count as a server
+  // while the tool itself refuses to read the file.
+  let parsed: { mcp_servers?: unknown }
+  try {
+    parsed = TOML.parse(raw) as { mcp_servers?: unknown }
+  } catch (error) {
+    return `invalid ${label} (${error instanceof Error ? error.message.split('\n')[0] : String(error)})`
   }
-  const missing = expectedServerNames.filter((name) => !found.has(name))
+
+  const servers = typeof parsed.mcp_servers === 'object' && parsed.mcp_servers !== null && !Array.isArray(parsed.mcp_servers)
+    ? (parsed.mcp_servers as Record<string, unknown>)
+    : {}
+  const missing = expectedServerNames.filter((name) => !(name in servers))
   if (missing.length > 0) return `missing servers in ${label}: ${missing.join(', ')}`
-  return `${String(found.size)} server(s) configured`
+  return `${String(Object.keys(servers).length)} server(s) configured`
 }
 
 /** Count agents-managed extensions in the Goose YAML config. */

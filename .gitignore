@@ -30,3 +30,4 @@ opencode.json
 .devin/mcp_config.json
 .zed/settings.json
 .github/mcp.json
+.agents/agents.json.*.bak

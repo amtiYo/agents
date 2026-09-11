@@ -11,7 +11,8 @@ function toPluginName(directoryName: string): string {
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/-{2,}/g, '-')
     .replace(/^-+|-+$/g, '')
-  return slug.length > 0 ? slug.slice(0, 64) : 'agents-plugin'
+  const truncated = slug.slice(0, 64).replace(/-+$/, '')
+  return truncated.length > 0 ? truncated : 'agents-plugin'
 }
 
 export interface PluginExportOptions {

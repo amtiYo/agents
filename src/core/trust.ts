@@ -7,7 +7,7 @@ type CodexConfig = {
   projects?: Record<string, { trust_level?: string } & Record<string, unknown>>
 } & Record<string, unknown>
 
-export type CodexTrustState = 'trusted' | 'untrusted'
+export type CodexTrustState = 'trusted' | 'untrusted' | 'unreadable'
 
 export function getCodexConfigPath(): string {
   const override = process.env.AGENTS_CODEX_CONFIG_PATH
@@ -29,8 +29,8 @@ function projectHeader(projectKey: string): string {
 /**
  * Read the trust level of a project from the Codex global config.
  *
- * Falls back to a line scan when the file cannot be parsed, so an unrelated syntax
- * error elsewhere in the user's config does not report a trusted project as untrusted.
+ * A file Codex itself cannot parse gets its own state: Codex ignores every project
+ * while that is true, so reporting `trusted` there would hide the real problem.
  */
 export async function getCodexTrustState(projectRoot: string): Promise<CodexTrustState> {
   const configPath = getCodexConfigPath()
@@ -45,7 +45,7 @@ export async function getCodexTrustState(projectRoot: string): Promise<CodexTrus
     const parsed = TOML.parse(raw) as CodexConfig
     return parsed.projects?.[projectKey]?.trust_level === 'trusted' ? 'trusted' : 'untrusted'
   } catch {
-    return findSectionTrustLevel(raw, projectKey) === 'trusted' ? 'trusted' : 'untrusted'
+    return 'unreadable'
   }
 }
 
@@ -128,10 +128,12 @@ export async function ensureCodexProjectTrusted(projectRoot: string): Promise<{ 
   const next = [...lines]
   let replaced = false
   for (let index = headerIndex + 1; index < next.length; index += 1) {
-    const line = next[index]?.trim() ?? ''
+    const raw = next[index] ?? ''
+    const line = raw.trim()
     if (line.startsWith('[')) break
     if (/^trust_level\s*=/.test(line)) {
-      next[index] = 'trust_level = "trusted"'
+      // Replace only the value, so indentation and any trailing comment survive.
+      next[index] = raw.replace(/^(\s*trust_level\s*=\s*)("[^"]*"|'[^']*'|\S+)/, '$1"trusted"')
       replaced = true
       break
     }

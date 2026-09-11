@@ -16,6 +16,7 @@ import { runSync } from './commands/sync.js'
 import { runUpdate } from './commands/update.js'
 import { runWatch } from './commands/watch.js'
 import { runSkillsList } from './commands/skills-list.js'
+import { INTEGRATION_IDS } from './integrations/registry.js'
 import { runPluginExport, runPluginImport, runPluginValidate } from './commands/plugin.js'
 import { runProfileList, runProfileRemove, runProfileSet, runProfileUse } from './commands/profile.js'
 import { runMcpBudget } from './commands/mcp-budget.js'
@@ -106,7 +107,7 @@ async function main(): Promise<void> {
     .description('Enable LLM integrations and sync')
     .option('--path <dir>', 'Target project directory', process.cwd())
     .option('-g, --global', 'Target global user home directory (~/.agents)', false)
-    .option('--llm <list>', 'Comma-separated list: codex,claude,claude_desktop,gemini,copilot_vscode,copilot_cli,cursor,antigravity,windsurf,opencode,junie')
+    .option('--llm <list>', `Comma-separated list: ${INTEGRATION_IDS.join(',')}`)
     .option('--interactive', 'Open interactive selector')
     .option('--verbose', 'Print detailed sync output', false)
     .action(async (opts: { path: string; global: boolean; llm?: string; interactive?: boolean; verbose: boolean }) => {
@@ -123,7 +124,7 @@ async function main(): Promise<void> {
     .description('Disable LLM integrations and sync')
     .option('--path <dir>', 'Target project directory', process.cwd())
     .option('-g, --global', 'Target global user home directory (~/.agents)', false)
-    .option('--llm <list>', 'Comma-separated list: codex,claude,claude_desktop,gemini,copilot_vscode,copilot_cli,cursor,antigravity,windsurf,opencode,junie')
+    .option('--llm <list>', `Comma-separated list: ${INTEGRATION_IDS.join(',')}`)
     .option('--interactive', 'Open interactive selector')
     .option('--verbose', 'Print detailed sync output', false)
     .action(async (opts: { path: string; global: boolean; llm?: string; interactive?: boolean; verbose: boolean }) => {
@@ -437,7 +438,7 @@ async function main(): Promise<void> {
       await runMcpBudget({
         projectRoot: resolveTargetDirectory(opts),
         profile: opts.profile,
-        timeoutMs: Number.parseInt(opts.timeout, 10),
+        timeoutMs: parseTimeoutOption(opts.timeout),
         verbose: Boolean(opts.verbose),
         json: Boolean(opts.json)
       })
@@ -584,6 +585,15 @@ async function main(): Promise<void> {
 
 function collectOption(value: string, previous: string[]): string[] {
   return [...previous, value]
+}
+
+/** Parse a millisecond option, rejecting values like "15ms" that parseInt would accept. */
+function parseTimeoutOption(value: string): number {
+  const trimmed = value.trim()
+  if (!/^\d+$/.test(trimmed)) {
+    throw new Error(`Invalid --timeout value "${value}"; expected a whole number of milliseconds.`)
+  }
+  return Number(trimmed)
 }
 
 main().catch((error: unknown) => {

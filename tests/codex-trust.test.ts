@@ -90,7 +90,7 @@ describe('codex trust', () => {
     expect(await readFile(configPath, 'utf8')).toBe(before)
   })
 
-  it('still reads trust from a config that fails to parse', async () => {
+  it('reports a config Codex cannot parse as unreadable, not trusted', async () => {
     await writeGlobalConfig(
       [
         '[projects."/repo/example"]',
@@ -105,7 +105,19 @@ describe('codex trust', () => {
       ].join('\n'),
     )
 
-    expect(await getCodexTrustState('/repo/example')).toBe('trusted')
+    // Codex ignores every project while the file is broken, so "trusted" would lie.
+    expect(await getCodexTrustState('/repo/example')).toBe('unreadable')
+  })
+
+  it('keeps indentation and an inline comment when raising trust', async () => {
+    const configPath = await writeGlobalConfig(
+      ['[projects."/repo/example"]', '  trust_level = "untrusted" # set by policy', ''].join('\n'),
+    )
+
+    await ensureCodexProjectTrusted('/repo/example')
+
+    const content = await readFile(configPath, 'utf8')
+    expect(content).toContain('  trust_level = "trusted" # set by policy')
   })
 
   it('refuses to edit a config Codex cannot parse', async () => {

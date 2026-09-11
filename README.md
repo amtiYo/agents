@@ -121,9 +121,9 @@ your-project/
 └── .claude/skills → .agents/skills   │  Skill bridges
 ```
 
-> **Git strategy:** by default only `.agents/agents.json`, `.agents/skills/` and `AGENTS.md` are committed; generated files are gitignored and rebuilt by `agents sync`. Switch to `commit-generated` if you would rather review them in pull requests, which is also how you commit `.mcp.json` for people who have not installed this CLI.
+> **Git strategy.** In the default `source-only` mode, only `.agents/agents.json`, `.agents/skills/` and `AGENTS.md` are committed: everything the sync generates is gitignored and rebuilt from them. In `commit-generated` mode the generated files stay out of `.gitignore`, so a clone gets working tool configs without installing this CLI. That is how you commit `.mcp.json` for the rest of the team.
 >
-> Settings files that belong to a tool rather than to this CLI (`.zed/settings.json`, `.amp/settings.json`, `.kilo/kilo.jsonc`, `.github/mcp.json`) are never added to `.gitignore`: the sync merges into them and leaves the rest of the file to you.
+> Either way, files that hold a tool's own settings (`.zed/settings.json`, `.amp/settings.json`, `.kilo/kilo.jsonc`) and `.github/mcp.json` are never added to `.gitignore`: the sync merges its entries into them and leaves the rest of the file, including whether you track it, to you.
 
 ---
 
@@ -294,6 +294,10 @@ agents mcp add https://mcpservers.org/servers/context7-mcp
 git add .agents/agents.json .agents/skills/ AGENTS.md && git commit -m "Add agents config"
 ```
 
+In `source-only` mode that is everything the team needs: each clone runs `agents sync` and
+gets the tool configs locally. Switch `syncMode` to `commit-generated` if you would rather
+commit `.mcp.json` and the rest for people who do not install the CLI.
+
 **New member onboards:**
 ```bash
 git clone <repo> && cd <repo>
@@ -318,7 +322,7 @@ No. <code>AGENTS.md</code> stays the instruction file every tool reads. This CLI
 <details>
 <summary><b>Why does Claude Code use <code>.mcp.json</code> now?</b></summary>
 <br/>
-Project scope is the location Anthropic documents for teams: it is committed, so a clone gets the same servers. Before 0.9.0 the CLI registered servers in the machine-local <code>~/.claude.json</code>, which nobody else could see. Set <code>integrations.options.claudeScope</code> to <code>"local"</code> for the old behaviour; projects upgrading from schema 3 keep it automatically.
+Project scope is the location Anthropic documents for teams: it lives in the repository, so everyone working on it gets the same servers, and in `commit-generated` mode it is reviewed like any other file. Before 0.9.0 the CLI registered servers in the machine-local <code>~/.claude.json</code>, which nobody else could see. Set <code>integrations.options.claudeScope</code> to <code>"local"</code> for the old behaviour; projects upgrading from schema 3 keep it automatically.
 </details>
 
 <details>

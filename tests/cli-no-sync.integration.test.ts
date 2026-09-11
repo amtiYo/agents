@@ -114,8 +114,10 @@ async function readSyncState(projectRoot: string): Promise<{ lastSync: string | 
   const statePath = path.join(projectRoot, '.agents', 'generated', 'sync.state.json')
   try {
     return JSON.parse(await readFile(statePath, 'utf8')) as { lastSync: string | null }
-  } catch {
-    return { lastSync: null }
+  } catch (error: unknown) {
+    // Only "not written yet" is an expected outcome; a corrupt file must fail the test.
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return { lastSync: null }
+    throw error
   }
 }
 
