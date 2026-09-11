@@ -439,3 +439,32 @@ describe('disabling an integration', () => {
     expect(after.context_servers).toEqual({})
   })
 })
+
+describe('reset without sync state', () => {
+  it('removes only the Goose extensions this project would have written', async () => {
+    const projectRoot = await setupProject(['goose'])
+    const paths = getProjectPaths(projectRoot)
+
+    // A server that never goes to Goose, plus an extension the user added by hand.
+    const config = await loadAgentsConfig(projectRoot)
+    config.mcp.servers.cursoronly = { transport: 'stdio', command: 'cursor-server', targets: ['cursor'] }
+    await saveAgentsConfig(projectRoot, config)
+    await performSync({ projectRoot, check: false, verbose: false })
+
+    const doc = YAML.parse(await readFile(paths.gooseConfig, 'utf8')) as {
+      extensions: Record<string, unknown>
+    }
+    doc.extensions.cursoronly = { name: 'cursoronly', type: 'stdio', cmd: 'mine' }
+    await writeFile(paths.gooseConfig, YAML.stringify(doc), 'utf8')
+
+    // Simulate a clone: the state directory is gitignored and absent.
+    await rm(path.join(projectRoot, '.agents', 'generated'), { recursive: true, force: true })
+
+    await runReset({ projectRoot, localOnly: false, hard: false })
+
+    const after = YAML.parse(await readFile(paths.gooseConfig, 'utf8')) as {
+      extensions?: Record<string, unknown>
+    }
+    expect(Object.keys(after.extensions ?? {})).toEqual(['cursoronly'])
+  })
+})

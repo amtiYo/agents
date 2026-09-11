@@ -80,12 +80,22 @@ export async function runProfileSet(options: ProfileSetOptions): Promise<void> {
     : { changed: [], warnings: [] }
 
   if (options.json) {
-    ui.json({ name: options.name, profile: config.profiles[options.name], changed: result.changed })
+    ui.json({
+      name: options.name,
+      profile: config.profiles[options.name],
+      changed: result.changed,
+      warnings: result.warnings
+    })
     return
   }
   ui.success(`Profile "${options.name}" saved with ${ui.formatCount(options.servers.length, 'server', 'servers')}`)
   if (shouldSync) {
     ui.keyValue('Updated files', String(result.changed.length))
+    // A sync can skip a tool config and say why; hiding that would make the save look
+    // more complete than it is.
+    for (const warning of result.warnings) {
+      ui.warning(warning)
+    }
   } else if (wasActive) {
     ui.hint('It is the active profile. Run agents sync to apply the new set.')
   } else {
@@ -164,12 +174,20 @@ export async function runProfileRemove(options: ProfileRemoveOptions): Promise<v
     : { changed: [], warnings: [] }
 
   if (options.json) {
-    ui.json({ removed: options.name, active: config.activeProfile ?? null, changed: result.changed })
+    ui.json({
+      removed: options.name,
+      active: config.activeProfile ?? null,
+      changed: result.changed,
+      warnings: result.warnings
+    })
     return
   }
   ui.success(`Profile "${options.name}" removed`)
   if (shouldSync) {
     ui.keyValue('Updated files', String(result.changed.length))
+    for (const warning of result.warnings) {
+      ui.warning(warning)
+    }
   } else if (wasActive) {
     ui.hint('It was the active profile. Run agents sync to restore every server in tool configs.')
   }

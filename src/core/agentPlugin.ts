@@ -107,14 +107,19 @@ export function buildPluginMcp(servers: Record<string, McpServerDefinition>): {
   }
 
   /**
-   * Flag a credential-shaped field whose value carries no variable at all.
+   * Flag a credential-shaped field that would publish a literal value.
    *
-   * `Bearer ${TEAM_TOKEN}` is fine: the package ships the placeholder and the client
-   * resolves it. `Bearer abc123` is not, because that value would be published.
+   * Only a bare `${VAR}` reference is safe. `${VAR:-sk-live-...}` is not: the fallback
+   * is a literal and travels with the package, and neither is `Bearer abc123`.
    */
   const checkLiteralSecret = (serverName: string, field: string, key: string, value: string): void => {
     if (!isSecretLikeKey(key)) return
-    if (/\$\{[A-Z0-9_]+(?::-[^}]*)?\}/.test(value)) return
+    const withoutRefs = value.replace(/\$\{[A-Z0-9_]+\}/g, '')
+    const hasReference = withoutRefs !== value
+    const hasFallback = /\$\{[A-Z0-9_]+:-/.test(value)
+    // A prefix such as "Bearer " is fine; anything else left over is a literal.
+    const leftover = withoutRefs.replace(/^\s*(?:Bearer|Token|Basic)?\s*/i, '').trim()
+    if (hasReference && !hasFallback && leftover.length === 0) return
     literalSecrets.push(`${serverName}.${field}.${key}`)
   }
 
@@ -364,8 +369,8 @@ export async function validatePlugin(pluginDir: string): Promise<ValidatePluginR
               errors.push(`mcp.json server "${name}" command must be a bare name or a ./-relative path`)
             }
           } else if (server.type === 'streamable-http' || server.type === 'sse') {
-            if (!server.url) {
-              errors.push(`mcp.json server "${name}" is remote but has no url`)
+            if (typeof server.url !== 'string' || server.url.length === 0) {
+              errors.push(`mcp.json server "${name}" is remote but has no usable url`)
             } else if (server.url.includes('#')) {
               errors.push(`mcp.json server "${name}" url must not contain a fragment`)
             }
@@ -455,7 +460,7 @@ export async function importPlugin(args: {
       config.mcp.servers[targetName] = server.type === 'stdio'
         ? {
             transport: 'stdio',
-            command: server.command ?? '',
+            command: toProjectPlaceholder(server.command ?? ''),
             ...(server.args ? { args: server.args.map(toProjectPlaceholder) } : {}),
             ...(server.env
               ? { env: Object.fromEntries(Object.entries(server.env).map(([k, v]) => [k, toProjectPlaceholder(v)])) }
@@ -464,8 +469,14 @@ export async function importPlugin(args: {
           }
         : {
             transport: server.type === 'sse' ? 'sse' : 'http',
-            url: server.url ?? '',
-            ...(server.headers ? { headers: server.headers } : {})
+            url: toProjectPlaceholder(server.url ?? ''),
+            ...(server.headers
+              ? {
+                  headers: Object.fromEntries(
+                    Object.entries(server.headers).map(([key, value]) => [key, toProjectPlaceholder(value)]),
+                  )
+                }
+              : {})
           }
       addedServers.push(targetName)
     }

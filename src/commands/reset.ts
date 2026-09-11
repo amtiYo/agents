@@ -6,6 +6,7 @@ import { readGooseDocument, readGooseExtensions, setGooseExtensions, writeGooseC
 import { getProjectPaths } from '../core/paths.js'
 import type { ProjectPaths } from '../core/paths.js'
 import { loadAgentsConfig } from '../core/config.js'
+import { loadResolvedRegistry } from '../core/mcp.js'
 import { readProjectMcpManagedNames } from '../core/projectMcp.js'
 import { pathExists, readJson, readTextOrEmpty, removeIfExists, writeJsonAtomic, writeTextAtomic } from '../core/fs.js'
 import {
@@ -569,11 +570,12 @@ async function cleanupGooseConfig(args: {
   }
 
   // .agents/generated is gitignored, so a clone has no state. Fall back to the servers
-  // the config names, the same way the project MCP cleanup does.
+  // that would have been written for Goose, resolved exactly as the sync resolves them:
+  // taking every configured server could delete a user's own extension of the same name.
   if (managedNames.length === 0) {
     try {
-      const config = await loadAgentsConfig(args.projectRoot)
-      managedNames = Object.keys(config.mcp.servers)
+      const resolved = await loadResolvedRegistry(args.projectRoot)
+      managedNames = resolved.serversByTarget.goose.map((server) => server.name)
     } catch {
       managedNames = []
     }

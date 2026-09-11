@@ -366,3 +366,84 @@ describe('plugin export safety', () => {
     expect(result.errors.join(' ')).toContain('"args" field that is not an array')
   })
 })
+
+describe('plugin secret handling', () => {
+  it('refuses a placeholder whose fallback is a literal credential', () => {
+    const { literalSecrets } = buildPluginMcp({
+      api: {
+        transport: 'http',
+        url: 'https://x/mcp',
+        headers: { Authorization: 'Bearer ${TOKEN:-sk-live-fallback}' }
+      }
+    })
+
+    expect(literalSecrets).toEqual(['api.headers.Authorization'])
+  })
+
+  it('refuses a value that mixes a reference with a literal', () => {
+    const { literalSecrets } = buildPluginMcp({
+      api: {
+        transport: 'http',
+        url: 'https://x/mcp',
+        headers: { Authorization: '${TOKEN}-sk-live-suffix' }
+      }
+    })
+
+    expect(literalSecrets).toEqual(['api.headers.Authorization'])
+  })
+
+  it('accepts a bare reference behind a scheme word', () => {
+    const { literalSecrets } = buildPluginMcp({
+      api: { transport: 'http', url: 'https://x/mcp', headers: { Authorization: 'Bearer ${TOKEN}' } }
+    })
+
+    expect(literalSecrets).toEqual([])
+  })
+
+  it('rejects a remote server whose url is not a string', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'agents-plugin-url-'))
+    tempDirs.push(dir)
+    await writeFile(
+      path.join(dir, 'plugin.json'),
+      `${JSON.stringify({ $schema: PLUGIN_MANIFEST_SCHEMA, name: 'typed' }, null, 2)}\n`,
+      'utf8',
+    )
+    await writeFile(
+      path.join(dir, 'mcp.json'),
+      `${JSON.stringify(
+        { $schema: PLUGIN_MCP_SCHEMA, mcpServers: { bad: { type: 'streamable-http', url: 42 } } },
+        null,
+        2,
+      )}\n`,
+      'utf8',
+    )
+
+    const result = await validatePlugin(dir)
+    expect(result.ok).toBe(false)
+    expect(result.errors.join(' ')).toContain('not a string')
+  })
+
+  it('restores ${PROJECT_ROOT} in url and headers on import', async () => {
+    const source = await makeProject()
+    const config = await loadAgentsConfig(source)
+    config.mcp.servers = {
+      api: {
+        transport: 'http',
+        url: 'https://mcp.example.com/mcp',
+        headers: { 'X-Workspace': '${PROJECT_ROOT}' }
+      }
+    }
+    await saveAgentsConfig(source, config)
+
+    const outDir = path.join(source, 'dist', 'plugin')
+    await exportPlugin({ projectRoot: source, outDir, name: 'team-stack' })
+
+    const target = await mkdtemp(path.join(os.tmpdir(), 'agents-plugin-target-'))
+    tempDirs.push(target)
+    await runInit({ projectRoot: target, force: true })
+    await importPlugin({ projectRoot: target, pluginDir: outDir })
+
+    const imported = await loadAgentsConfig(target)
+    expect(imported.mcp.servers['team-stack.api']?.headers?.['X-Workspace']).toBe('${PROJECT_ROOT}')
+  })
+})
