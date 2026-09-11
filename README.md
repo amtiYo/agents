@@ -30,7 +30,7 @@ Instructions converged on `AGENTS.md` and skills converged on `SKILL.md`. MCP se
 | Format | Tools |
 |:--|:--|
 | TOML, `mcp_servers` tables | Codex (`.codex/config.toml`), Grok Build (`.grok/config.toml`) |
-| JSON, `mcpServers` key | Claude Code and Copilot CLI (`.mcp.json`), Claude Desktop (global), Cursor (`.cursor/mcp.json`), Antigravity (`.agents/mcp_config.json`), Devin Desktop (global), Devin CLI (`.devin/mcp_config.json`), Junie (`.junie/mcp/mcp.json`), Factory Droid (`.factory/mcp.json`) |
+| JSON, `mcpServers` key | Claude Code and Copilot CLI (`.mcp.json`), Claude Desktop (global), Gemini CLI (`.gemini/settings.json`), Cursor (`.cursor/mcp.json`), Antigravity (`.agents/mcp_config.json`), Devin Desktop (global), Devin CLI (`.devin/mcp_config.json`), Junie (`.junie/mcp/mcp.json`), Factory Droid (`.factory/mcp.json`) |
 | JSON, another key | Copilot VS Code (`servers`), OpenCode and Kilo (`mcp`), Amp (`amp.mcpServers`), Zed (`context_servers`) |
 | YAML | Goose (`extensions` in `~/.config/goose/config.yaml`) |
 

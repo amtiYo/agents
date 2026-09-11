@@ -888,7 +888,10 @@ async function mergeManagedKey(args: {
   }
 
   const otherKeys = Object.keys(existing).filter((item) => item !== key)
-  if (removeEmptyFile && Object.keys(nextEntries).length === 0 && otherKeys.length === 0) {
+  // A JSONC file can hold comments that never appear in the parsed object, so an
+  // "empty" object is not proof that the file is ours to delete.
+  const safeToRemove = removeEmptyFile && !jsonc && !hasNonWhitespaceOutsideKey(existingText, key)
+  if (safeToRemove && Object.keys(nextEntries).length === 0 && otherKeys.length === 0) {
     if (await pathExists(targetPath)) {
       context.changed.push(toChangedEntry(context.projectRoot, targetPath))
       if (!context.check) await removeIfExists(targetPath)
@@ -920,6 +923,7 @@ async function mergeManagedKey(args: {
   }
 }
 
+/** Merge managed entries into one key of a plain JSON settings file. */
 async function mergeJsonKey(args: {
   context: HookContext
   targetPath: string
@@ -932,6 +936,7 @@ async function mergeJsonKey(args: {
   await mergeManagedKey({ ...args, jsonc: false })
 }
 
+/** Merge managed entries into one key of a JSONC file, keeping comments intact. */
 async function mergeJsoncKey(args: {
   context: HookContext
   targetPath: string
@@ -991,5 +996,29 @@ async function syncManagedGooseGlobal(context: HookContext): Promise<void> {
     }
   } finally {
     if (releaseLock) await releaseLock()
+  }
+}
+
+/**
+ * Check whether a JSON document carries anything besides the given top-level key.
+ *
+ * Used before deleting a settings file: the parsed object hides comments, so the raw
+ * text is what decides whether the file was only ever this CLI's to write.
+ */
+function hasNonWhitespaceOutsideKey(rawText: string, key: string): boolean {
+  const trimmed = rawText.trim()
+  if (trimmed.length === 0) return false
+
+  try {
+    const parsed = JSON.parse(trimmed) as unknown
+    if (!isRecord(parsed)) return true
+    const keys = Object.keys(parsed)
+    if (keys.some((item) => item !== key)) return true
+    // Re-serialising only the managed key must reproduce the file, otherwise something
+    // else (a comment, a stray value) is in there.
+    const rebuilt = JSON.stringify({ [key]: parsed[key] }, null, 2)
+    return trimmed !== rebuilt.trim()
+  } catch {
+    return true
   }
 }

@@ -405,11 +405,16 @@ function probeClaude(projectRoot: string, expectedServerNames: string[]): string
     .split('\n')
     .map((line) => line.trim())
 
-  const wanted = new Set([...expectedServerNames, ...expectedServerNames.map((name) => `agents__${name}`)])
-  const managedLines = lines.filter((line) => {
+  // One line per expected server: a project-scope entry and its local-scope twin are
+  // the same server, not two.
+  const linesByName = new Map<string, string>()
+  for (const line of lines) {
     const name = line.match(/^([a-zA-Z0-9._:-]+):/)?.[1]
-    return name !== undefined && wanted.has(name)
-  })
+    if (name !== undefined && !linesByName.has(name)) linesByName.set(name, line)
+  }
+  const managedLines = expectedServerNames
+    .map((name) => linesByName.get(name) ?? linesByName.get(`agents__${name}`))
+    .filter((line): line is string => line !== undefined)
 
   const managed = managedLines.length
   const total = String(expectedServerNames.length)
@@ -446,6 +451,7 @@ function probeGemini(projectRoot: string): string {
   return 'gemini mcp list succeeded'
 }
 
+/** Report whether the VS Code MCP file lists the servers this project expects. */
 async function probeCopilot(vscodeMcpPath: string): Promise<string> {
   if (!(await pathExists(vscodeMcpPath))) return 'missing .vscode/mcp.json'
   try {
@@ -457,6 +463,11 @@ async function probeCopilot(vscodeMcpPath: string): Promise<string> {
   }
 }
 
+/**
+ * Compare a JSON (or JSONC) config against the servers this project expects.
+ *
+ * @param key - Top-level key holding the server map, which differs per tool.
+ */
 async function probeMcpServersFile(
   filePath: string,
   label: string,
@@ -605,6 +616,7 @@ async function probeAntigravitySkills(sourcePath: string, bridgePath: string): P
   return `${health.expectedSkillNames.length} skill(s) in flat copy bridge`
 }
 
+/** Report whether the VS Code workspace hides the directories the sync generates. */
 async function probeVscodeHidden(settingsPath: string): Promise<string> {
   if (!(await pathExists(settingsPath))) return 'settings file missing'
   try {
@@ -627,6 +639,7 @@ async function probeVscodeHidden(settingsPath: string): Promise<string> {
   }
 }
 
+/** Reduce a multi-line CLI error to its last line, for one-line status output. */
 function compact(input: string): string {
   return input.trim().split('\n').at(-1) ?? 'unknown'
 }
@@ -637,6 +650,7 @@ async function probeCodexTrust(projectRoot: string): Promise<string> {
   return state === 'trusted' ? 'trusted' : 'untrusted'
 }
 
+/** Pull server names out of `codex mcp list --json`, whose field name has varied. */
 function extractCodexServerNames(entries: Array<Record<string, unknown>>): string[] {
   const names: string[] = []
   for (const entry of entries) {

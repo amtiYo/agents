@@ -17,6 +17,7 @@ export function getCodexConfigPath(): string {
   return path.join(os.homedir(), '.codex', 'config.toml')
 }
 
+/** Escape a value for a TOML basic string, used for the project path in a header. */
 function escapeTomlBasicString(value: string): string {
   return value.replaceAll('\\', '\\\\').replaceAll('"', '\\"')
 }

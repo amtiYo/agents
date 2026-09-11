@@ -47,6 +47,13 @@ export async function loadLocalOverrides(projectRoot: string): Promise<LocalOver
   }
 }
 
+/**
+ * Load the project config and resolve it into the servers each integration receives.
+ *
+ * @param options.profile - Profile for this run; omit to use the config's active
+ * profile, pass `null` for every server. An explicitly named profile that does not
+ * exist is an error rather than a silent widening.
+ */
 export async function loadResolvedRegistry(
   projectRoot: string,
   options?: { profile?: string | null },
@@ -80,6 +87,12 @@ export async function loadResolvedRegistry(
   return { ...resolved, warnings: [...warnings, ...resolved.warnings] }
 }
 
+/**
+ * Merge shared config with local overrides and group the result by integration.
+ *
+ * Servers are skipped when disabled, outside the profile, or missing required env;
+ * each skip that the user would otherwise not notice produces a warning.
+ */
 export function resolveFromConfigAndLocal(input: {
   projectRoot: string
   servers: Record<string, McpServerDefinition>
@@ -173,12 +186,19 @@ function normalizeTargets(targets: IntegrationName[] | undefined): IntegrationNa
   return out
 }
 
+/** Whether two integration lists hold exactly the same ids, regardless of order. */
 function sameSet(a: IntegrationName[], b: IntegrationName[]): boolean {
   if (a.length !== b.length) return false
   const bSet = new Set(b)
   return a.every((id) => bSet.has(id))
 }
 
+/**
+ * Expand placeholders in one server definition and copy through the optional fields.
+ *
+ * `${PROJECT_ROOT}`, `${VAR}` and `${VAR:-default}` are resolved here; a plain `${VAR}`
+ * with nothing to resolve to is left in place and reported.
+ */
 function resolveServer(
   name: string,
   server: McpServerDefinition,

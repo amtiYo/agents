@@ -44,6 +44,14 @@ interface ClaudeDesktopState {
   managedNames: string[]
 }
 
+/**
+ * Materialize every enabled integration from `.agents`.
+ *
+ * Holds the sync lock, migrates the schema when needed, applies the active profile,
+ * renders each tool's format and writes atomically. With `check: true` nothing is
+ * written and the result lists what a real run would change, which is what
+ * `agents sync --check` reports as drift.
+ */
 export async function performSync(options: SyncOptions): Promise<SyncResult> {
   const { projectRoot, check, verbose, profile } = options
   const paths = getProjectPaths(projectRoot)
@@ -51,13 +59,23 @@ export async function performSync(options: SyncOptions): Promise<SyncResult> {
   try {
     const { config, migratedFrom } = await loadAgentsConfigDetailed(projectRoot)
     const sourceFingerprint = await computeSharedSourceFingerprint(projectRoot, config)
+    const changed: string[] = []
 
     const migrationWarnings: string[] = []
-    if (migratedFrom !== null && !check) {
-      const backupPath = await persistMigratedConfig(projectRoot, config, migratedFrom)
-      migrationWarnings.push(
-        `Migrated .agents/agents.json from schema ${String(migratedFrom)} to ${String(config.schemaVersion)}; previous file kept at ${path.basename(backupPath)}.`,
-      )
+    if (migratedFrom !== null) {
+      // The file is under version control, so a check run has to report that a later
+      // sync will rewrite it.
+      changed.push('.agents/agents.json')
+      if (check) {
+        migrationWarnings.push(
+          `.agents/agents.json is schema ${String(migratedFrom)}; running sync migrates it to ${String(config.schemaVersion)} and keeps a .bak copy.`,
+        )
+      } else {
+        const backupPath = await persistMigratedConfig(projectRoot, config, migratedFrom)
+        migrationWarnings.push(
+          `Migrated .agents/agents.json from schema ${String(migratedFrom)} to ${String(config.schemaVersion)}; previous file kept at ${path.basename(backupPath)}.`,
+        )
+      }
     }
 
     const resolved = await loadResolvedRegistry(projectRoot, profile === undefined ? undefined : { profile })
@@ -66,8 +84,6 @@ export async function performSync(options: SyncOptions): Promise<SyncResult> {
       warnings.push(`Skipped servers because required env vars are missing: ${resolved.missingRequiredEnv.join('; ')}`)
     }
     validateResolvedServers(resolved.serversByTarget)
-
-    const changed: string[] = []
 
     if (!check) {
       const gitignoreChanged = await ensureProjectGitignore(projectRoot, config.syncMode)
@@ -233,16 +249,21 @@ export async function performSync(options: SyncOptions): Promise<SyncResult> {
 
     // Older configs carried the same fields; move them to the state file once, so the
     // committed config settles and a later run does not report drift again.
-    if (!check && (config.lastSync !== null || config.lastSyncSourceHash !== null)) {
-      if (!sourceStateChanged && !(await pathExists(paths.generatedSyncState))) {
-        await writeJsonAtomic(paths.generatedSyncState, {
-          lastSync: config.lastSync,
-          lastSyncSourceHash: config.lastSyncSourceHash
-        })
+    if (config.lastSync !== null || config.lastSyncSourceHash !== null) {
+      if (!changed.includes('.agents/agents.json')) {
+        changed.push('.agents/agents.json')
       }
-      config.lastSync = null
-      config.lastSyncSourceHash = null
-      await saveAgentsConfig(projectRoot, config)
+      if (!check) {
+        if (!sourceStateChanged && !(await pathExists(paths.generatedSyncState))) {
+          await writeJsonAtomic(paths.generatedSyncState, {
+            lastSync: config.lastSync,
+            lastSyncSourceHash: config.lastSyncSourceHash
+          })
+        }
+        config.lastSync = null
+        config.lastSyncSourceHash = null
+        await saveAgentsConfig(projectRoot, config)
+      }
     }
 
     const sortedChanged = uniqueSorted(changed)
@@ -650,6 +671,7 @@ function isCursorAlreadyEnabledError(stderr: string): boolean {
   return lowered.includes('already enabled') || lowered.includes('already approved')
 }
 
+/** Reject server names, env keys and header names that a tool config must not carry. */
 function validateResolvedServers(resolvedByTarget: Record<IntegrationName, ResolvedMcpServer[]>): void {
   for (const [target, servers] of Object.entries(resolvedByTarget)) {
     for (const server of servers) {
@@ -678,6 +700,7 @@ function validateResolvedServers(resolvedByTarget: Record<IntegrationName, Resol
   }
 }
 
+/** Deduplicate and sort a list for stable output. */
 function uniqueSorted(values: string[]): string[] {
   return [...new Set(values)].sort((a, b) => a.localeCompare(b))
 }

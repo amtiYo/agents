@@ -113,10 +113,12 @@ export function renderMcpToml(servers: ResolvedMcpServer[], options: TomlRenderO
   }
 }
 
+/** Render MCP servers for Codex, whose headers live in an `http_headers` table. */
 export function renderCodexToml(servers: ResolvedMcpServer[]): RenderResult {
   return renderMcpToml(servers, CODEX_TOML_OPTIONS)
 }
 
+/** Render MCP servers for Grok Build, which uses a plain `headers` table and marks sse. */
 export function renderGrokToml(servers: ResolvedMcpServer[]): RenderResult {
   return renderMcpToml(servers, GROK_TOML_OPTIONS)
 }
@@ -413,6 +415,7 @@ export function renderOpencodeMcp(servers: ResolvedMcpServer[]): {
   return { mcp: out, warnings }
 }
 
+/** Render MCP servers for Junie, which reads a plain `mcpServers` map. */
 export function renderJunieMcp(servers: ResolvedMcpServer[]): {
   mcpServers: Record<string, unknown>
   warnings: string[]

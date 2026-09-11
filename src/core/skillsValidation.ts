@@ -8,6 +8,11 @@ const MAX_NAME_LENGTH = 64
 /** Optional frontmatter fields defined by the Agent Skills specification. */
 const KNOWN_OPTIONAL_FIELDS = new Set(['license', 'compatibility', 'metadata', 'allowed-tools'])
 
+/**
+ * Check every skill under a directory against the Agent Skills specification.
+ *
+ * @returns One warning per problem found; an empty array means the directory is clean.
+ */
 export async function validateSkillsDirectory(skillsDir: string): Promise<string[]> {
   const warnings: string[] = []
   const discovery = await discoverSkills(skillsDir)
@@ -71,6 +76,7 @@ export async function validateSkillsDirectory(skillsDir: string): Promise<string
   return warnings
 }
 
+/** Read top-level YAML frontmatter keys, ignoring nested blocks such as `metadata`. */
 function extractFrontmatter(raw: string): Record<string, string> | null {
   const match = raw.match(/^---\s*\n([\s\S]*?)\n---\s*\n?/u)
   if (!match) return null

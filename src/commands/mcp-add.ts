@@ -40,6 +40,12 @@ export interface McpAddOptions {
   nonInteractive: boolean
 }
 
+/**
+ * Add an MCP server to `.agents/agents.json`, interactively or from flags.
+ *
+ * A name that is a URL goes through the import flow instead. Secret-looking values are
+ * split into `.agents/local.json` and replaced with placeholders in the committed file.
+ */
 export async function runMcpAdd(options: McpAddOptions): Promise<void> {
   const nameInput = options.name?.trim()
   if (nameInput && isHttpUrl(nameInput)) {

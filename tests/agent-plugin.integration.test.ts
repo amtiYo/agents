@@ -276,3 +276,93 @@ describe('plugin name derivation', () => {
     expect(result.requiredEnv).not.toContain('PLUGIN_ROOT')
   })
 })
+
+describe('plugin export safety', () => {
+  it('refuses to export a literal credential from the committed config', async () => {
+    const projectRoot = await makeProject()
+    const config = await loadAgentsConfig(projectRoot)
+    config.mcp.servers.api = {
+      transport: 'http',
+      url: 'https://mcp.example.com/mcp',
+      headers: { Authorization: 'Bearer sk-live-not-a-placeholder' }
+    }
+    await saveAgentsConfig(projectRoot, config)
+
+    await expect(
+      exportPlugin({ projectRoot, outDir: path.join(projectRoot, 'dist', 'plugin'), name: 'team-stack' }),
+    ).rejects.toThrow(/literal values that look like credentials/)
+  })
+
+  it('exports the same config when the caller opts in', async () => {
+    const projectRoot = await makeProject()
+    const config = await loadAgentsConfig(projectRoot)
+    config.mcp.servers.api = {
+      transport: 'http',
+      url: 'https://mcp.example.com/mcp',
+      headers: { Authorization: 'Bearer sk-live-not-a-placeholder' }
+    }
+    await saveAgentsConfig(projectRoot, config)
+
+    const outDir = path.join(projectRoot, 'dist', 'plugin')
+    await exportPlugin({ projectRoot, outDir, name: 'team-stack', allowLiteralSecrets: true })
+
+    expect(await readFile(path.join(outDir, 'mcp.json'), 'utf8')).toContain('sk-live-not-a-placeholder')
+  })
+
+  it('accepts a credential that is a placeholder inside a larger value', () => {
+    const { literalSecrets } = buildPluginMcp({
+      api: { transport: 'http', url: 'https://x/mcp', headers: { Authorization: 'Bearer ${TEAM_TOKEN}' } }
+    })
+
+    expect(literalSecrets).toEqual([])
+  })
+
+  it('normalises ${PROJECT_ROOT} in command and collects variables from cwd', () => {
+    const { file, requiredEnv } = buildPluginMcp({
+      local: {
+        transport: 'stdio',
+        command: '${PROJECT_ROOT}/bin/server',
+        cwd: '${WORKSPACE_DIR}/data'
+      }
+    })
+
+    expect(file.mcpServers.local?.command).toBe('${PLUGIN_ROOT}/bin/server')
+    expect(requiredEnv).toContain('WORKSPACE_DIR')
+  })
+
+  it('drops a skills directory that a later export no longer has', async () => {
+    const projectRoot = await makeProject()
+    const outDir = path.join(projectRoot, 'dist', 'plugin')
+
+    await exportPlugin({ projectRoot, outDir, name: 'team-stack' })
+    expect(await pathExists(path.join(outDir, 'skills'))).toBe(true)
+
+    await rm(path.join(projectRoot, '.agents', 'skills'), { recursive: true, force: true })
+    await exportPlugin({ projectRoot, outDir, name: 'team-stack' })
+
+    expect(await pathExists(path.join(outDir, 'skills'))).toBe(false)
+  })
+
+  it('rejects a plugin whose server fields have the wrong types', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'agents-plugin-typed-'))
+    tempDirs.push(dir)
+    await writeFile(
+      path.join(dir, 'plugin.json'),
+      `${JSON.stringify({ $schema: PLUGIN_MANIFEST_SCHEMA, name: 'typed' }, null, 2)}\n`,
+      'utf8',
+    )
+    await writeFile(
+      path.join(dir, 'mcp.json'),
+      `${JSON.stringify(
+        { $schema: PLUGIN_MCP_SCHEMA, mcpServers: { bad: { type: 'stdio', command: 'server', args: 'not-an-array' } } },
+        null,
+        2,
+      )}\n`,
+      'utf8',
+    )
+
+    const result = await validatePlugin(dir)
+    expect(result.ok).toBe(false)
+    expect(result.errors.join(' ')).toContain('"args" field that is not an array')
+  })
+})

@@ -8,10 +8,12 @@ export interface ProfileListOptions {
   json: boolean
 }
 
+/** Names of the configured profiles, sorted for stable output. */
 function profileNames(config: AgentsConfig): string[] {
   return Object.keys(config.profiles ?? {}).sort((a, b) => a.localeCompare(b))
 }
 
+/** Show the configured profiles and which one is active. */
 export async function runProfileList(options: ProfileListOptions): Promise<void> {
   const config = await loadAgentsConfig(options.projectRoot)
   const names = profileNames(config)
@@ -47,6 +49,7 @@ export interface ProfileSetOptions {
   name: string
   servers: string[]
   description?: string
+  sync?: boolean
   json: boolean
 }
 
@@ -59,6 +62,7 @@ export async function runProfileSet(options: ProfileSetOptions): Promise<void> {
     throw new Error(`Unknown MCP server(s): ${unknown.join(', ')}. Configured: ${Object.keys(config.mcp.servers).join(', ')}`)
   }
 
+  const wasActive = config.activeProfile === options.name
   config.profiles = {
     ...config.profiles,
     [options.name]: {
@@ -68,12 +72,25 @@ export async function runProfileSet(options: ProfileSetOptions): Promise<void> {
   }
   await saveAgentsConfig(options.projectRoot, config)
 
+  // Replacing the active profile changes the server set, and tool configs still hold
+  // the previous one until a sync runs.
+  const shouldSync = wasActive && options.sync !== false
+  const result = shouldSync
+    ? await performSync({ projectRoot: options.projectRoot, check: false, verbose: false })
+    : { changed: [], warnings: [] }
+
   if (options.json) {
-    ui.json({ name: options.name, profile: config.profiles[options.name] })
+    ui.json({ name: options.name, profile: config.profiles[options.name], changed: result.changed })
     return
   }
   ui.success(`Profile "${options.name}" saved with ${ui.formatCount(options.servers.length, 'server', 'servers')}`)
-  ui.hint(`Activate it with: agents profile use ${options.name}`)
+  if (shouldSync) {
+    ui.keyValue('Updated files', String(result.changed.length))
+  } else if (wasActive) {
+    ui.hint('It is the active profile. Run agents sync to apply the new set.')
+  } else {
+    ui.hint(`Activate it with: agents profile use ${options.name}`)
+  }
 }
 
 export interface ProfileUseOptions {
@@ -121,6 +138,10 @@ export interface ProfileRemoveOptions {
   json: boolean
 }
 
+/**
+ * Delete a profile, re-syncing when it was the active one so tool configs widen back
+ * to every server.
+ */
 export async function runProfileRemove(options: ProfileRemoveOptions): Promise<void> {
   const config = await loadAgentsConfig(options.projectRoot)
   if (!config.profiles?.[options.name]) {

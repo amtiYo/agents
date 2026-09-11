@@ -370,8 +370,7 @@ describe('shared config safety', () => {
     )
     await performSync({ projectRoot, check: false, verbose: false })
 
-    const result = await runReset({ projectRoot, localOnly: false, hard: false })
-    expect(JSON.stringify(result ?? {})).not.toContain('not valid JSONC')
+    await runReset({ projectRoot, localOnly: false, hard: false })
 
     const raw = await readFile(paths.kiloConfig, 'utf8')
     expect(raw).toContain('"model": "sonnet"')

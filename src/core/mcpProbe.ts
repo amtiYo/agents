@@ -29,10 +29,12 @@ interface JsonRpcResponse {
   error?: { message?: string }
 }
 
+/** Size of one tool definition as the client receives it, in characters of JSON. */
 function toolCharacters(tool: unknown): number {
   return JSON.stringify(tool ?? {}).length
 }
 
+/** Read the tool list out of a `tools/list` result, tolerating malformed entries. */
 function extractTools(result: unknown): ProbedTool[] {
   if (typeof result !== 'object' || result === null) return []
   const tools = (result as { tools?: unknown }).tools
@@ -56,6 +58,11 @@ export function estimateTokens(characters: number): number {
   return Math.ceil(characters / 4)
 }
 
+/**
+ * Start a stdio MCP server, run the handshake and read its tool list.
+ *
+ * The process is always terminated: on success, on protocol error and on timeout.
+ */
 async function probeStdioServer(server: ResolvedMcpServer, timeoutMs: number): Promise<ProbeResult> {
   if (!server.command) {
     return { server: server.name, ok: false, tools: [], characters: 0, error: 'no command' }
@@ -197,6 +204,7 @@ async function probeStdioServer(server: ResolvedMcpServer, timeoutMs: number): P
   })
 }
 
+/** Send one JSON-RPC message over HTTP with a timeout, returning the raw body too. */
 async function postJsonRpc(
   url: string,
   headers: Record<string, string>,
@@ -224,10 +232,17 @@ async function postJsonRpc(
   }
 }
 
-/** Pull the JSON-RPC payload out of a plain JSON body or an SSE stream. */
+/**
+ * Pull the answer out of a plain JSON body or an SSE stream.
+ *
+ * A streamable-HTTP server may send notifications before the result, and one SSE event
+ * may spread its payload over several `data:` lines, so events are reassembled and
+ * anything carrying `method` is skipped.
+ */
 function parseRpcBody(text: string): JsonRpcResponse | undefined {
   const trimmed = text.trim()
   if (!trimmed) return undefined
+
   if (trimmed.startsWith('{')) {
     try {
       return JSON.parse(trimmed) as JsonRpcResponse
@@ -236,19 +251,43 @@ function parseRpcBody(text: string): JsonRpcResponse | undefined {
     }
   }
 
-  for (const line of trimmed.split('\n')) {
-    if (!line.startsWith('data:')) continue
-    const payload = line.slice(5).trim()
+  const events: string[] = []
+  let current: string[] = []
+  for (const rawLine of trimmed.split(/\r?\n/)) {
+    const line = rawLine.trimEnd()
+    if (line === '') {
+      if (current.length > 0) events.push(current.join('\n'))
+      current = []
+      continue
+    }
+    if (line.startsWith('data:')) {
+      current.push(line.slice(5).trimStart())
+    }
+  }
+  if (current.length > 0) events.push(current.join('\n'))
+
+  for (const payload of events) {
     if (!payload) continue
+    let message: JsonRpcResponse
     try {
-      return JSON.parse(payload) as JsonRpcResponse
+      message = JSON.parse(payload) as JsonRpcResponse
     } catch {
       continue
     }
+    if (typeof message.method === 'string') continue
+    if (message.result === undefined && message.error === undefined) continue
+    return message
   }
+
   return undefined
 }
 
+/**
+ * Run the MCP handshake against a remote server and read its tool list.
+ *
+ * Carries the session id the server may hand out and sends the initialized
+ * notification before asking for tools, as the specification requires.
+ */
 async function probeHttpServer(server: ResolvedMcpServer, timeoutMs: number): Promise<ProbeResult> {
   if (!server.url) {
     return { server: server.name, ok: false, tools: [], characters: 0, error: 'no url' }

@@ -214,6 +214,12 @@ function testServer(name: string, server: McpServerDefinition): ServerTestResult
   }
 }
 
+/**
+ * Ask each tool's own CLI what it sees, one probe per tool rather than per server.
+ *
+ * Only Claude Code, Gemini CLI and Cursor expose their MCP state; everything else is
+ * reported as unsupported so the output stays honest.
+ */
 function runRuntimeChecks(entries: McpServerEntry[], projectRoot: string, timeoutMs: number): RuntimeCheckResult {
   const claudeProbe = probeClaude(projectRoot, timeoutMs)
   const geminiProbe = probeGemini(projectRoot, timeoutMs)
@@ -270,6 +276,7 @@ function runRuntimeChecks(entries: McpServerEntry[], projectRoot: string, timeou
   }
 }
 
+/** Map one server to what `claude mcp list` says about it, in either scope. */
 function checkClaudeServer(name: string, probe: RuntimeProbe<Record<string, ClaudeRuntimeStatus>>): RuntimeIntegrationResult {
   if (!probe.available || !probe.data) {
     return {
@@ -454,6 +461,7 @@ function probeCursor(projectRoot: string, timeoutMs: number): RuntimeProbe<Recor
   }
 }
 
+/** Turn `claude mcp list` output into a per-server status, including pending states. */
 function parseClaudeRuntimeStatuses(output: string): Record<string, ClaudeRuntimeStatus> {
   const statuses: Record<string, ClaudeRuntimeStatus> = {}
   const lines = output

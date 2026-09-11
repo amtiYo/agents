@@ -46,6 +46,7 @@ function resolvePath(input: string | undefined): string {
   return path.resolve(trimmed)
 }
 
+/** Wire up every command and dispatch the current argv. */
 async function main(): Promise<void> {
   const program = new Command()
 
@@ -524,6 +525,7 @@ async function main(): Promise<void> {
     .option('--description <text>', 'Plugin description')
     .option('--author <name>', 'Plugin author')
     .option('--license <spdx>', 'Plugin license')
+    .option('--allow-literal-secrets', 'Export credential-shaped fields that hold literal values', false)
     .option('--json', 'Output machine-readable JSON', false)
     .action(async (opts: {
       path: string
@@ -534,6 +536,7 @@ async function main(): Promise<void> {
       description?: string
       author?: string
       license?: string
+      allowLiteralSecrets: boolean
       json: boolean
     }) => {
       await runPluginExport({
@@ -544,6 +547,7 @@ async function main(): Promise<void> {
         description: opts.description,
         author: opts.author,
         license: opts.license,
+        allowLiteralSecrets: Boolean(opts.allowLiteralSecrets),
         json: Boolean(opts.json)
       })
     })
@@ -583,6 +587,7 @@ async function main(): Promise<void> {
   await program.parseAsync(process.argv)
 }
 
+/** Commander collector for repeatable options. */
 function collectOption(value: string, previous: string[]): string[] {
   return [...previous, value]
 }

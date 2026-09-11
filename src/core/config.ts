@@ -73,6 +73,12 @@ const DEFAULT_MCP_SERVERS: Record<string, McpServerDefinition> = {
   }
 }
 
+/**
+ * Build a fresh `.agents/agents.json` for a new project.
+ *
+ * @param args - Integrations to enable, their options, sync mode and the servers to
+ * start from; every field falls back to the defaults a first-time setup expects.
+ */
 export function createDefaultAgentsConfig(args?: {
   enabledIntegrations?: IntegrationName[]
   integrationOptions?: {
@@ -120,10 +126,12 @@ export function createDefaultAgentsConfig(args?: {
 /** Lowest schema version this CLI can read and migrate forward. */
 export const MIN_SUPPORTED_SCHEMA_VERSION = 3
 
+/** Coerce a stored Claude scope to a known value, defaulting to project scope. */
 function normalizeClaudeScope(value: unknown): ClaudeScope {
   return value === 'local' ? 'local' : 'project'
 }
 
+/** Coerce a stored Copilot CLI path to one of the two files Copilot CLI reads. */
 function normalizeCopilotCliPath(value: unknown): CopilotCliPath {
   return value === '.github/mcp.json' ? '.github/mcp.json' : '.mcp.json'
 }
@@ -194,10 +202,20 @@ export interface LoadedAgentsConfig {
   migratedFrom: number | null
 }
 
+/**
+ * Read and normalize the project config, migrating an older schema in memory.
+ *
+ * The migration is not written back here; callers that save go through
+ * {@link saveAgentsConfig}, which keeps a backup of the previous file.
+ */
 export async function loadAgentsConfig(projectRoot: string): Promise<AgentsConfig> {
   return (await loadAgentsConfigDetailed(projectRoot)).config
 }
 
+/**
+ * Same as {@link loadAgentsConfig}, but also reports which schema version the file
+ * was migrated from, so a caller can tell the user what happened.
+ */
 export async function loadAgentsConfigDetailed(projectRoot: string): Promise<LoadedAgentsConfig> {
   const paths = getProjectPaths(projectRoot)
   if (!(await pathExists(paths.agentsConfig))) {

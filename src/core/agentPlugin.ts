@@ -1,9 +1,10 @@
 import path from 'node:path'
-import { copyDir, ensureDir, pathExists, readJson, writeJsonAtomic } from './fs.js'
+import { copyDir, ensureDir, pathExists, readJson, removeIfExists, writeJsonAtomic } from './fs.js'
 import { discoverSkills } from './skillsDiscovery.js'
 import { getProjectPaths } from './paths.js'
 import { loadAgentsConfig, saveAgentsConfig } from './config.js'
 import { validateServerName } from './mcpValidation.js'
+import { isSecretLikeKey } from './mcpSecrets.js'
 import type { McpServerDefinition, McpTransportType } from '../types.js'
 
 export const PLUGIN_SPEC_VERSION = '1.0.0'
@@ -83,46 +84,66 @@ export function buildPluginMcp(servers: Record<string, McpServerDefinition>): {
   file: PluginMcpFile
   warnings: string[]
   requiredEnv: string[]
+  /** Fields whose literal value looks like a credential; the export refuses to ship them. */
+  literalSecrets: string[]
 } {
   const warnings: string[] = []
   const requiredEnv = new Set<string>()
+  const literalSecrets: string[] = []
   const mcpServers: Record<string, PluginMcpServer> = {}
+
+  // ${PLUGIN_ROOT} and ${PLUGIN_DATA} are expanded by the plugin client itself,
+  // and ${PROJECT_ROOT} is rewritten to ${PLUGIN_ROOT}, so none of them is required env.
+  const clientPlaceholders = new Set(['PROJECT_ROOT', 'PLUGIN_ROOT', 'PLUGIN_DATA'])
+
+  /** Rewrite the project placeholder and record every other variable the value needs. */
+  const normalize = (value: string): string => {
+    const rewritten = value.replaceAll('${PROJECT_ROOT}', '${PLUGIN_ROOT}')
+    for (const match of rewritten.matchAll(/\$\{([A-Z0-9_]+)(?::-[^}]*)?\}/g)) {
+      const key = match[1]
+      if (key && !clientPlaceholders.has(key)) requiredEnv.add(key)
+    }
+    return rewritten
+  }
+
+  /**
+   * Flag a credential-shaped field whose value carries no variable at all.
+   *
+   * `Bearer ${TEAM_TOKEN}` is fine: the package ships the placeholder and the client
+   * resolves it. `Bearer abc123` is not, because that value would be published.
+   */
+  const checkLiteralSecret = (serverName: string, field: string, key: string, value: string): void => {
+    if (!isSecretLikeKey(key)) return
+    if (/\$\{[A-Z0-9_]+(?::-[^}]*)?\}/.test(value)) return
+    literalSecrets.push(`${serverName}.${field}.${key}`)
+  }
 
   for (const name of Object.keys(servers).sort((a, b) => a.localeCompare(b))) {
     const server = servers[name]
     if (!server || server.enabled === false) continue
-
-    // ${PLUGIN_ROOT} and ${PLUGIN_DATA} are expanded by the plugin client itself,
-    // and ${PROJECT_ROOT} is rewritten above, so none of them is a required variable.
-    const clientPlaceholders = new Set(['PROJECT_ROOT', 'PLUGIN_ROOT', 'PLUGIN_DATA'])
-    const collectEnvRefs = (value: string | undefined): void => {
-      if (!value) return
-      for (const match of value.matchAll(/\$\{([A-Z0-9_]+)(?::-[^}]*)?\}/g)) {
-        const key = match[1]
-        if (key && !clientPlaceholders.has(key)) requiredEnv.add(key)
-      }
-    }
 
     if (server.transport === 'stdio') {
       if (!server.command) {
         warnings.push(`Server "${name}" has no command; skipped in the plugin.`)
         continue
       }
-      const args = (server.args ?? []).map((arg) => arg.replaceAll('${PROJECT_ROOT}', '${PLUGIN_ROOT}'))
+      const command = normalize(server.command)
+      const args = (server.args ?? []).map(normalize)
       const env = server.env
         ? Object.fromEntries(
-            Object.entries(server.env).map(([key, value]) => [key, value.replaceAll('${PROJECT_ROOT}', '${PLUGIN_ROOT}')]),
+            Object.entries(server.env).map(([key, value]) => {
+              checkLiteralSecret(name, 'env', key, value)
+              return [key, normalize(value)]
+            }),
           )
         : undefined
-      collectEnvRefs(server.command)
-      args.forEach(collectEnvRefs)
-      Object.values(env ?? {}).forEach(collectEnvRefs)
+
       mcpServers[name] = {
         type: 'stdio',
-        command: server.command,
+        command,
         ...(args.length > 0 ? { args } : {}),
         ...(env ? { env } : {}),
-        ...(server.cwd ? { cwd: server.cwd.replaceAll('${PROJECT_ROOT}', '${PLUGIN_ROOT}') } : {})
+        ...(server.cwd ? { cwd: normalize(server.cwd) } : {})
       }
       continue
     }
@@ -131,22 +152,31 @@ export function buildPluginMcp(servers: Record<string, McpServerDefinition>): {
       warnings.push(`Server "${name}" has no url; skipped in the plugin.`)
       continue
     }
-    collectEnvRefs(server.url)
-    Object.values(server.headers ?? {}).forEach(collectEnvRefs)
+
+    const headers = server.headers
+      ? Object.fromEntries(
+          Object.entries(server.headers).map(([key, value]) => {
+            checkLiteralSecret(name, 'headers', key, value)
+            return [key, normalize(value)]
+          }),
+        )
+      : undefined
+
     if (server.transport === 'sse') {
       warnings.push(`Server "${name}" uses the deprecated sse transport; plugin clients may drop it within a year.`)
     }
     mcpServers[name] = {
       type: toPluginTransport(server.transport),
-      url: server.url,
-      ...(server.headers ? { headers: { ...server.headers } } : {})
+      url: normalize(server.url),
+      ...(headers ? { headers } : {})
     }
   }
 
   return {
     file: { $schema: PLUGIN_MCP_SCHEMA, mcpServers },
     warnings,
-    requiredEnv: [...requiredEnv].sort()
+    requiredEnv: [...requiredEnv].sort(),
+    literalSecrets: literalSecrets.sort()
   }
 }
 
@@ -158,6 +188,8 @@ export interface ExportPluginOptions {
   description?: string
   author?: string
   license?: string
+  /** Ship credential-shaped fields that hold literal values instead of refusing. */
+  allowLiteralSecrets?: boolean
 }
 
 export interface ExportPluginResult {
@@ -174,7 +206,16 @@ export async function exportPlugin(options: ExportPluginOptions): Promise<Export
 
   const paths = getProjectPaths(options.projectRoot)
   const config = await loadAgentsConfig(options.projectRoot)
-  const { file, warnings, requiredEnv } = buildPluginMcp(config.mcp.servers)
+  const { file, warnings, requiredEnv, literalSecrets } = buildPluginMcp(config.mcp.servers)
+
+  // A package is meant to be published; a literal token in the committed config would
+  // travel with it.
+  if (literalSecrets.length > 0 && options.allowLiteralSecrets !== true) {
+    throw new Error(
+      `Refusing to export: ${literalSecrets.join(', ')} hold literal values that look like credentials. `
+      + 'Replace them with ${VAR} placeholders, or pass --allow-literal-secrets if they are not secret.',
+    )
+  }
 
   const manifest: PluginManifest = {
     $schema: PLUGIN_MANIFEST_SCHEMA,
@@ -190,12 +231,19 @@ export async function exportPlugin(options: ExportPluginOptions): Promise<Export
   await writeJsonAtomic(path.join(outDir, 'plugin.json'), manifest)
   await writeJsonAtomic(path.join(outDir, 'mcp.json'), file)
 
+  // Always replace the previous skills directory: a re-export of a project that lost a
+  // skill must not keep shipping it.
+  const skillsOut = path.join(outDir, 'skills')
+  await removeIfExists(skillsOut)
+
   let skillCount = 0
   if (await pathExists(paths.agentsSkillsDir)) {
     const discovery = await discoverSkills(paths.agentsSkillsDir)
     skillCount = discovery.skills.length
     if (skillCount > 0) {
-      await copyDir(paths.agentsSkillsDir, path.join(outDir, 'skills'), { dereference: true })
+      // Symlinks are copied as symlinks: following them would pull files from outside
+      // the project into a package that gets published.
+      await copyDir(paths.agentsSkillsDir, skillsOut)
     }
     for (const duplicate of discovery.duplicates) {
       warnings.push(`Skill name "${duplicate.name}" is duplicated; plugin clients expect unique skill names.`)
@@ -209,6 +257,21 @@ export async function exportPlugin(options: ExportPluginOptions): Promise<Export
     requiredEnv,
     warnings
   }
+}
+
+/** Check that a value read from an untrusted plugin has the type the spec requires. */
+function isStringArray(value: unknown): boolean {
+  return Array.isArray(value) && value.every((item) => typeof item === 'string')
+}
+
+/** Whether a value is an object whose values are all strings. */
+function isStringRecord(value: unknown): boolean {
+  return (
+    typeof value === 'object'
+    && value !== null
+    && !Array.isArray(value)
+    && Object.values(value as Record<string, unknown>).every((item) => typeof item === 'string')
+  )
 }
 
 export interface ValidatePluginResult {
@@ -275,6 +338,25 @@ export async function validatePlugin(pluginDir: string): Promise<ValidatePluginR
             continue
           }
           const server = raw as PluginMcpServer
+          if (server.args !== undefined && !isStringArray(server.args)) {
+            errors.push(`mcp.json server "${name}" has an "args" field that is not an array of strings`)
+          }
+          if (server.env !== undefined && !isStringRecord(server.env)) {
+            errors.push(`mcp.json server "${name}" has an "env" field that is not a map of strings`)
+          }
+          if (server.headers !== undefined && !isStringRecord(server.headers)) {
+            errors.push(`mcp.json server "${name}" has a "headers" field that is not a map of strings`)
+          }
+          if (server.cwd !== undefined && typeof server.cwd !== 'string') {
+            errors.push(`mcp.json server "${name}" has a "cwd" field that is not a string`)
+          }
+          if (server.url !== undefined && typeof server.url !== 'string') {
+            errors.push(`mcp.json server "${name}" has a "url" field that is not a string`)
+          }
+          if (server.command !== undefined && typeof server.command !== 'string') {
+            errors.push(`mcp.json server "${name}" has a "command" field that is not a string`)
+            continue
+          }
           if (server.type === 'stdio') {
             if (!server.command) {
               errors.push(`mcp.json server "${name}" is stdio but has no command`)
@@ -399,7 +481,7 @@ export async function importPlugin(args: {
         warnings.push(`Skill "${skill.name}" already exists in .agents/skills; left untouched.`)
         continue
       }
-      await copyDir(path.dirname(skill.skillFilePath), targetDir, { dereference: true })
+      await copyDir(path.dirname(skill.skillFilePath), targetDir)
       addedSkills.push(skill.name)
     }
   }

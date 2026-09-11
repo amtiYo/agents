@@ -16,6 +16,7 @@ export interface ProjectMcpState {
   targetPath?: string
 }
 
+/** Read the legacy single-file state shape, kept for configs written before 0.9.0. */
 export async function readProjectMcpState(statePath: string): Promise<ProjectMcpState> {
   if (!(await pathExists(statePath))) return { managedNames: [] }
   try {
@@ -31,6 +32,7 @@ export async function readProjectMcpState(statePath: string): Promise<ProjectMcp
   }
 }
 
+/** Narrow an unknown value to a plain object. */
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
@@ -149,6 +151,7 @@ export async function readProjectMcpManagedNames(statePath: string): Promise<Rec
   return readStateFiles(statePath)
 }
 
+/** Read the per-file ownership record, upgrading the pre-0.9.0 single-file shape. */
 async function readStateFiles(statePath: string): Promise<Record<string, string[]>> {
   if (!(await pathExists(statePath))) return {}
   try {
@@ -171,6 +174,7 @@ async function readStateFiles(statePath: string): Promise<Record<string, string[
   }
 }
 
+/** Persist which servers agents owns in each project MCP file. */
 async function writeStateFiles(statePath: string, files: Record<string, string[]>): Promise<void> {
   await ensureDir(path.dirname(statePath))
   await writeJsonAtomic(statePath, {
@@ -241,10 +245,22 @@ export async function syncProjectMcpFile(args: {
     changed
   })
 
-  // Files this run no longer owns lose their managed entries.
+  // Files this run no longer owns lose their managed entries. If the cleanup cannot be
+  // done, the names stay in state: otherwise the next sync would not know what to remove
+  // once the file is readable again.
   for (const [file, managedNames] of Object.entries(previousFiles)) {
     if (nextFiles[file] !== undefined) continue
-    await cleanupProjectMcpFile({ targetPath: file, managedNames, projectRoot, check, changed, warnings })
+    const cleaned = await cleanupProjectMcpFile({
+      targetPath: file,
+      managedNames,
+      projectRoot,
+      check,
+      changed,
+      warnings
+    })
+    if (!cleaned) {
+      nextFiles[file] = managedNames
+    }
   }
 
   if (!check) {
@@ -323,6 +339,12 @@ async function writeProjectMcpTarget(args: {
   return Object.keys(managedServers)
 }
 
+/**
+ * Remove the agents-managed servers from a file this run no longer writes.
+ *
+ * @returns `true` when the file was handled, `false` when it could not be read and the
+ * ownership record has to be kept for a later run.
+ */
 async function cleanupProjectMcpFile(args: {
   targetPath: string
   managedNames: string[]
@@ -330,9 +352,9 @@ async function cleanupProjectMcpFile(args: {
   check: boolean
   changed: string[]
   warnings: string[]
-}): Promise<void> {
+}): Promise<boolean> {
   const { targetPath, managedNames, projectRoot, check, changed, warnings } = args
-  if (managedNames.length === 0 || !(await pathExists(targetPath))) return
+  if (managedNames.length === 0 || !(await pathExists(targetPath))) return true
 
   let parsed: unknown
   try {
@@ -340,10 +362,13 @@ async function cleanupProjectMcpFile(args: {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     warnings.push(`Failed to read ${targetPath} while cleaning up managed MCP servers. ${message}`)
-    return
+    return false
   }
 
-  if (!isRecord(parsed)) return
+  if (!isRecord(parsed)) {
+    warnings.push(`${targetPath} is not a JSON object; left untouched and still tracked.`)
+    return false
+  }
   const servers = isRecord(parsed.mcpServers) ? { ...parsed.mcpServers } : {}
   for (const name of managedNames) {
     delete servers[name]
@@ -353,7 +378,7 @@ async function cleanupProjectMcpFile(args: {
   if (Object.keys(servers).length === 0 && otherKeys.length === 0) {
     changed.push(toChangedEntry(projectRoot, targetPath))
     if (!check) await removeIfExists(targetPath)
-    return
+    return true
   }
 
   await writeManagedFile({
@@ -363,4 +388,5 @@ async function cleanupProjectMcpFile(args: {
     check,
     changed
   })
+  return true
 }

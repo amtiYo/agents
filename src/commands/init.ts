@@ -9,6 +9,7 @@ export interface InitOptions {
   force: boolean
 }
 
+/** Scaffold `.agents/` and a starter AGENTS.md without the guided setup. */
 export async function runInit(options: InitOptions): Promise<void> {
   const projectRoot = path.resolve(options.projectRoot)
 

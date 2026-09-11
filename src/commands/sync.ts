@@ -10,6 +10,12 @@ export interface SyncCommandOptions {
   profile?: string | null
 }
 
+/**
+ * Run a sync and print what changed.
+ *
+ * With `check`, nothing is written and the command exits with code 2 when a tool config
+ * has drifted, which is what makes it usable as a CI gate.
+ */
 export async function runSync(options: SyncCommandOptions): Promise<void> {
   const spin = ui.spinner()
   spin.start(options.check ? 'Checking for changes...' : 'Syncing configurations...')

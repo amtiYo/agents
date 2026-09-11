@@ -110,6 +110,7 @@ export async function resolveDirectoryPath(directoryPath: string): Promise<strin
   }
 }
 
+/** Copy a file, creating the destination directory when it does not exist. */
 export async function copyFile(fromPath: string, toPath: string): Promise<void> {
   await ensureDir(path.dirname(toPath))
   await copyFileRaw(fromPath, toPath)

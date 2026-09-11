@@ -23,6 +23,8 @@ export interface PluginExportOptions {
   description?: string
   author?: string
   license?: string
+  /** Ship credential-shaped fields that hold literal values instead of refusing. */
+  allowLiteralSecrets?: boolean
   json: boolean
 }
 
@@ -38,7 +40,8 @@ export async function runPluginExport(options: PluginExportOptions): Promise<voi
     version: options.version,
     description: options.description,
     author: options.author,
-    license: options.license
+    license: options.license,
+    allowLiteralSecrets: options.allowLiteralSecrets
   })
 
   if (options.json) {
@@ -63,6 +66,7 @@ export interface PluginValidateOptions {
   json: boolean
 }
 
+/** Check a plugin directory against the specification and exit non-zero if it fails. */
 export async function runPluginValidate(options: PluginValidateOptions): Promise<void> {
   const result = await validatePlugin(options.pluginDir)
 

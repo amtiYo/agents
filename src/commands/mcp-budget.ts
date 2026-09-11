@@ -21,6 +21,7 @@ interface BudgetRow {
   detail?: string
 }
 
+/** Fold a probe result into the one row per server the report prints. */
 function toRow(result: ProbeResult): BudgetRow {
   if (result.skipped) {
     return { server: result.server, tools: 0, characters: 0, tokens: 0, status: 'skipped', detail: result.skipped }

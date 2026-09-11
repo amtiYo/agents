@@ -34,7 +34,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Skill descriptions may be up to 1024 characters, as the Agent Skills specification allows, instead of 300. Names with consecutive hyphens are rejected, and `license`, `compatibility`, `metadata` and `allowed-tools` are recognised.
 - `agents sync` only reports warnings from integrations that are enabled.
 - `agents status` shows which integrations read `.agents/skills` directly instead of through a bridge.
-- Dependencies updated, including commander 15, @clack/prompts 1.8 and the typescript-eslint packages.
+- Dependencies updated, including @clack/prompts 1.8, tsx and the typescript-eslint packages. `commander` stays on 14: version 15 requires Node 22.12, and this package supports Node 20.12. `engines` moves to the 20.12 floor `@clack/prompts` already requires.
+- Vitest updated to 4.1.11, closing GHSA-82fw-gwwq-j7x9 (path traversal via `@vitest/mocker`) reported by Dependabot.
 
 ### Fixed
 

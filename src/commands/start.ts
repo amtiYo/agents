@@ -32,6 +32,10 @@ export interface StartOptions {
   injectDocs?: boolean
 }
 
+/**
+ * Guided setup: pick integrations, confirm the access each one needs, scaffold
+ * `.agents/`, then run the first sync.
+ */
 export async function runStart(options: StartOptions): Promise<void> {
   const projectRoot = path.resolve(options.projectRoot)
   if (!(await pathExists(projectRoot))) {

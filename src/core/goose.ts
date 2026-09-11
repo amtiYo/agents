@@ -41,6 +41,7 @@ export function setGooseExtensions(doc: YAML.Document.Parsed, extensions: Record
   return rendered === '{}\n' || rendered.trim() === 'null' ? '' : rendered
 }
 
+/** Write the Goose config, creating `~/.config/goose` when it does not exist. */
 export async function writeGooseConfig(configPath: string, content: string): Promise<void> {
   await ensureDir(path.dirname(configPath))
   await writeTextAtomic(configPath, content)

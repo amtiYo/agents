@@ -48,12 +48,12 @@ function schemaV3Config(): Record<string, unknown> {
   }
 }
 
-describe('schema migration', () => {
-  afterEach(async () => {
-    await Promise.all(tempDirs.map((dir) => rm(dir, { recursive: true, force: true })))
-    tempDirs.length = 0
-  })
+// Module level, so every describe in this file gets its temp directories cleaned up.
+afterEach(async () => {
+  await Promise.all(tempDirs.splice(0, tempDirs.length).map((dir) => rm(dir, { recursive: true, force: true })))
+})
 
+describe('schema migration', () => {
   it('migrates a version 3 config and keeps Claude on local scope', async () => {
     const dir = await makeProject(schemaV3Config())
     const { config, migratedFrom } = await loadAgentsConfigDetailed(dir)

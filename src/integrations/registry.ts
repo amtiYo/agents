@@ -54,14 +54,21 @@ export function resolveIntegrationName(input: string): IntegrationName | undefin
   return INTEGRATION_ALIASES[normalized]
 }
 
+/** Look up an integration definition by its canonical id. */
 export function getIntegration(id: IntegrationName): IntegrationDefinition | undefined {
   return INTEGRATIONS.find((item) => item.id === id)
 }
 
+/** Whether the tool finds `.agents/skills` itself, so no bridge directory is needed. */
 export function hasNativeSkillsDiscovery(id: IntegrationName): boolean {
   return getIntegration(id)?.nativeSkills === true
 }
 
+/**
+ * Parse a comma-separated `--llm` value into canonical integration ids.
+ *
+ * @throws When a name is neither an id nor a known alias.
+ */
 export function parseIntegrationList(input: string): IntegrationName[] {
   const parsed = input
     .split(',')

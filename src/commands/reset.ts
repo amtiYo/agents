@@ -567,6 +567,17 @@ async function cleanupGooseConfig(args: {
       managedNames = []
     }
   }
+
+  // .agents/generated is gitignored, so a clone has no state. Fall back to the servers
+  // the config names, the same way the project MCP cleanup does.
+  if (managedNames.length === 0) {
+    try {
+      const config = await loadAgentsConfig(args.projectRoot)
+      managedNames = Object.keys(config.mcp.servers)
+    } catch {
+      managedNames = []
+    }
+  }
   if (managedNames.length === 0) return
 
   let doc

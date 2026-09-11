@@ -220,3 +220,27 @@ describe('profile edge cases', () => {
     expect(await readCursorServers(projectRoot)).toEqual(['alpha', 'beta', 'gamma'])
   })
 })
+
+describe('replacing the active profile', () => {
+  it('re-syncs so tool configs follow the new set', async () => {
+    const projectRoot = await makeProject()
+    await runProfileSet({ projectRoot, name: 'ci', servers: ['alpha'], json: true })
+    await runProfileUse({ projectRoot, name: 'ci', sync: true, json: true })
+    expect(await readCursorServers(projectRoot)).toEqual(['alpha'])
+
+    await runProfileSet({ projectRoot, name: 'ci', servers: ['beta', 'gamma'], json: true })
+
+    expect(await readCursorServers(projectRoot)).toEqual(['beta', 'gamma'])
+  })
+
+  it('leaves configs alone when the replaced profile is not active', async () => {
+    const projectRoot = await makeProject()
+    await runProfileSet({ projectRoot, name: 'ci', servers: ['alpha'], json: true })
+
+    await runProfileSet({ projectRoot, name: 'ci', servers: ['beta'], json: true })
+
+    const config = await loadAgentsConfig(projectRoot)
+    expect(config.activeProfile).toBeNull()
+    expect(config.profiles?.ci?.servers).toEqual(['beta'])
+  })
+})
