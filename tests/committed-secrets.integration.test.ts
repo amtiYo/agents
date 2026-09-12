@@ -137,10 +137,14 @@ describe('secrets in configs that are not gitignored', () => {
     config.integrations.options.copilotCliPath = '.github/mcp.json'
     await saveAgentsConfig(projectRoot, config)
 
-    await performSync({ projectRoot, check: false, verbose: false })
+    const result = await performSync({ projectRoot, check: false, verbose: false })
 
     const content = await readFile(path.join(projectRoot, '.github', 'mcp.json'), 'utf8')
     expect(content).not.toContain(SECRET)
     expect(content).toContain('${API_TOKEN}')
+    // Without the warning the server simply stops working with no stated reason, so the
+    // message is part of the behaviour, not decoration.
+    expect(result.warnings.join(' ')).toContain('"probe"')
+    expect(result.warnings.join(' ')).toContain('env.API_TOKEN')
   })
 })

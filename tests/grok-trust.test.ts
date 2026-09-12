@@ -1,6 +1,6 @@
 import os from 'node:os'
 import path from 'node:path'
-import { chmod, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { ensureGrokProjectTrusted, getGrokTrustState, getGrokTrustedFoldersPath } from '../src/core/trust.js'
 
@@ -89,15 +89,16 @@ describe('grok trust', () => {
   })
 
   it('reports a trust file it cannot read instead of failing', async () => {
-    const trustPath = await writeTrustFile('[folders."/tmp/my-project"]\ntrusted = true\n')
-    await chmod(trustPath, 0o000)
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'agents-grok-trust-'))
+    tempDirs.push(dir)
+    // A directory in the file's place fails the read for every user, including root,
+    // which a mode of 0000 does not. The failure itself is what matters here: status and
+    // doctor call this, and a rejected promise would take both down.
+    const trustPath = path.join(dir, 'trusted_folders.toml')
+    await mkdir(trustPath, { recursive: true })
+    process.env.AGENTS_GROK_TRUSTED_FOLDERS_PATH = trustPath
 
-    try {
-      // status and doctor call this; an EACCES thrown here would take both down.
-      expect(await getGrokTrustState('/tmp/my-project')).toBe('unreadable')
-    } finally {
-      await chmod(trustPath, 0o600)
-    }
+    expect(await getGrokTrustState('/tmp/my-project')).toBe('unreadable')
   })
 
   it('never loses a decision when two projects write at the same time', async () => {
