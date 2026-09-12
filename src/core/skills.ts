@@ -1,13 +1,72 @@
 import path from 'node:path'
 import { createHash, randomUUID } from 'node:crypto'
-import { lstat, readdir, readFile, readlink, rename, stat, symlink } from 'node:fs/promises'
+import { lstat, readdir, readFile, readlink, realpath, rename, stat, symlink } from 'node:fs/promises'
 import { copyDir, ensureDir, pathExists, removeIfExists, resolveDirectoryPath, writeTextAtomic } from './fs.js'
-import { getProjectPaths } from './paths.js'
+import { getProjectPaths, type ProjectPaths } from './paths.js'
 import { discoverSkills, type DiscoveredSkill, type SkillDiscoveryResult } from './skillsDiscovery.js'
 import type { IntegrationName } from '../types.js'
 
 /** Marker used to identify physical skill bridges managed by agents. */
 export const BRIDGE_MARKER_FILENAME = '.agents_bridge'
+
+/** Keys of ProjectPaths that hold a path, so a bridge definition cannot point at `isHome`. */
+type ProjectPathKey = {
+  [K in keyof ProjectPaths]: ProjectPaths[K] extends string ? K : never
+}[keyof ProjectPaths]
+
+/**
+ * A tool that reads skills from its own directory rather than from `.agents/skills`.
+ * The sync points that directory at the source, so the tool needs no copy of its own.
+ */
+export interface SkillBridgeDefinition {
+  integration: IntegrationName
+  /**
+   * Directory the tool reads skills from. The directory to create is derived from this
+   * path rather than kept as a second key: Kilo keeps kilo.jsonc under the XDG config
+   * directory and its skills under the home directory, so a separate key would point
+   * the sync at the wrong parent in global mode.
+   */
+  pathKey: ProjectPathKey
+  /** Path as it is shown in warnings and in `agents status`. */
+  label: string
+  /** `.gitignore` entry in source-only mode, where a broader entry does not already cover it. */
+  gitignoreEntry?: string
+}
+
+/**
+ * Every skill bridge the sync owns, in the order it writes them.
+ *
+ * Tools that discover `.agents/skills` on their own are absent here and carry
+ * `nativeSkills` in the integration registry instead.
+ */
+export const SKILL_BRIDGES: SkillBridgeDefinition[] = [
+  {
+    integration: 'claude',
+    pathKey: 'claudeSkillsBridge',
+    label: '.claude/skills',
+    gitignoreEntry: '.claude/skills'
+  },
+  { integration: 'cursor', pathKey: 'cursorSkillsBridge', label: '.cursor/skills' },
+  { integration: 'gemini', pathKey: 'geminiSkillsBridge', label: '.gemini/skills' },
+  { integration: 'windsurf', pathKey: 'windsurfSkillsBridge', label: '.windsurf/skills' },
+  {
+    integration: 'junie',
+    pathKey: 'junieSkillsBridge',
+    label: '.junie/skills',
+    gitignoreEntry: '.junie/skills'
+  },
+  {
+    integration: 'kilo',
+    pathKey: 'kiloSkillsBridge',
+    label: '.kilo/skills',
+    gitignoreEntry: '.kilo/skills'
+  }
+]
+
+/** `.gitignore` entries for the bridges, used by the source-only sync mode. */
+export const SKILL_BRIDGE_GITIGNORE_ENTRIES: string[] = SKILL_BRIDGES.flatMap((bridge) =>
+  bridge.gitignoreEntry ? [bridge.gitignoreEntry] : [],
+)
 
 export interface AntigravitySkillsBridgeHealth {
   expectedSkillNames: string[]
@@ -88,86 +147,66 @@ export async function syncSkills(args: {
   const hasSkills = discovery.skills.length > 0
   const antigravityEnabled = enabledIntegrations.includes('antigravity')
 
-  await syncToolSkillsBridge({
-    enabled: enabledIntegrations.includes('claude') && hasSkills,
-    projectRoot,
-    parentDir: paths.claudeDir,
-    bridgePath: paths.claudeSkillsBridge,
-    sourcePath: paths.agentsSkillsDir,
-    label: '.claude/skills',
-    check,
-    changed,
-    warnings
-  })
+  for (const bridge of SKILL_BRIDGES) {
+    // Antigravity does not follow symlinks, so it replaces the Gemini bridge with a flat copy.
+    if (bridge.integration === 'gemini' && antigravityEnabled) {
+      await syncAntigravitySkillsBridge({
+        enabled: hasSkills,
+        projectRoot,
+        parentDir: path.dirname(paths[bridge.pathKey]),
+        bridgePath: paths[bridge.pathKey],
+        sourcePath: paths.agentsSkillsDir,
+        label: bridge.label,
+        check,
+        changed,
+        warnings,
+        discovery
+      })
+      continue
+    }
 
-  await syncToolSkillsBridge({
-    enabled: enabledIntegrations.includes('cursor') && hasSkills,
-    projectRoot,
-    parentDir: paths.cursorDir,
-    bridgePath: paths.cursorSkillsBridge,
-    sourcePath: paths.agentsSkillsDir,
-    label: '.cursor/skills',
-    check,
-    changed,
-    warnings
-  })
-
-  if (antigravityEnabled) {
-    await syncAntigravitySkillsBridge({
-      enabled: hasSkills,
-      projectRoot,
-      parentDir: paths.geminiDir,
-      bridgePath: paths.geminiSkillsBridge,
-      sourcePath: paths.agentsSkillsDir,
-      label: '.gemini/skills',
-      check,
-      changed,
-      warnings,
-      discovery
-    })
-  } else {
     await syncToolSkillsBridge({
-      enabled: enabledIntegrations.includes('gemini') && hasSkills,
+      enabled: enabledIntegrations.includes(bridge.integration) && hasSkills,
       projectRoot,
-      parentDir: paths.geminiDir,
-      bridgePath: paths.geminiSkillsBridge,
+      parentDir: path.dirname(paths[bridge.pathKey]),
+      bridgePath: paths[bridge.pathKey],
       sourcePath: paths.agentsSkillsDir,
-      label: '.gemini/skills',
+      label: bridge.label,
       check,
       changed,
       warnings
     })
   }
 
-  await syncToolSkillsBridge({
-    enabled: enabledIntegrations.includes('windsurf') && hasSkills,
-    projectRoot,
-    parentDir: paths.windsurfDir,
-    bridgePath: paths.windsurfSkillsBridge,
-    sourcePath: paths.agentsSkillsDir,
-    label: '.windsurf/skills',
-    check,
-    changed,
-    warnings
-  })
-
-  await syncToolSkillsBridge({
-    enabled: enabledIntegrations.includes('junie') && hasSkills,
-    projectRoot,
-    parentDir: paths.junieDir,
-    bridgePath: paths.junieSkillsBridge,
-    sourcePath: paths.agentsSkillsDir,
-    label: '.junie/skills',
-    check,
-    changed,
-    warnings
-  })
+  warnings.push(...collectNestedSkillWarnings(enabledIntegrations, discovery))
 
   await cleanupLegacyAntigravityBridge({
     projectRoot,
     check,
     changed
   })
+}
+
+/**
+ * Warn about skills a tool cannot see because of where they sit.
+ *
+ * Zed only reads skills that are direct children of the skills root, so a grouping
+ * directory hides every skill under it without any error of its own.
+ */
+function collectNestedSkillWarnings(
+  enabledIntegrations: IntegrationName[],
+  discovery: SkillDiscoveryResult,
+): string[] {
+  if (!enabledIntegrations.includes('zed')) return []
+
+  const nested = discovery.skills.filter((skill) => skill.relativePath.includes('/'))
+  if (nested.length === 0) return []
+
+  const paths = nested.map((skill) => skill.relativePath).join(', ')
+  return [
+    `Zed only discovers skills directly under .agents/skills, so it will not load: ${paths}. `
+      + 'Move them to the top level of .agents/skills to make Zed see them.'
+  ]
 }
 
 async function syncToolSkillsBridge(args: {
@@ -207,10 +246,14 @@ async function syncToolSkillsBridge(args: {
       if (current === expectedRelative || path.resolve(path.dirname(bridgePath), current) === sourcePath) {
         return
       }
-      changed.push(path.relative(projectRoot, bridgePath) || bridgePath)
-      if (!check) {
-        await removeIfExists(bridgePath)
-      }
+      // A link to somewhere else is the user's own arrangement, such as a shared skills
+      // directory. Replacing it silently loses it; the flat Antigravity bridge already
+      // refuses in the same situation.
+      warnings.push(
+        `Found existing ${label} pointing somewhere else (${current}); left untouched. `
+          + 'Remove it to let the sync manage the bridge.',
+      )
+      return
     } else {
       const marker = path.join(bridgePath, BRIDGE_MARKER_FILENAME)
       if (await pathExists(marker)) {
@@ -242,6 +285,78 @@ async function syncToolSkillsBridge(args: {
     const message = error instanceof Error ? error.message : String(error)
     warnings.push(`${label} bridge fallback to copy mode: ${message}`)
   }
+}
+
+
+interface EscapingSkillLink {
+  skill: DiscoveredSkill
+  link: string
+}
+
+/**
+ * Split skills into those safe to dereference and those holding a symlink that leaves
+ * the project.
+ *
+ * A flat copy follows symlinks, which is how a skill kept elsewhere in the repository
+ * reaches the bridge. A link to `~/.ssh/id_rsa` would arrive the same way, as a real
+ * file inside the project, so the boundary is the project root rather than the skills
+ * directory.
+ */
+async function partitionEscapingSkills(
+  skills: DiscoveredSkill[],
+  projectRoot: string,
+): Promise<{ safe: DiscoveredSkill[]; escaping: EscapingSkillLink[] }> {
+  const root = await resolveDirectoryPath(projectRoot)
+  const safe: DiscoveredSkill[] = []
+  const escaping: EscapingSkillLink[] = []
+
+  for (const skill of skills) {
+    const link = await findEscapingLink(skill.sourcePath, skill.sourcePath, root)
+    if (link) escaping.push({ skill, link })
+    else safe.push(skill)
+  }
+
+  return { safe, escaping }
+}
+
+/** First symlink under `currentDir` whose target resolves outside `root`, if any. */
+async function findEscapingLink(skillRoot: string, currentDir: string, root: string): Promise<string | undefined> {
+  let entries
+  try {
+    entries = await readdir(currentDir, { withFileTypes: true })
+  } catch {
+    return undefined
+  }
+
+  for (const entry of entries) {
+    const absolutePath = path.join(currentDir, entry.name)
+    if (entry.isSymbolicLink()) {
+      let target: string
+      try {
+        target = await realpath(absolutePath)
+      } catch {
+        // A broken link copies as nothing; it cannot leak a file.
+        continue
+      }
+      if (!isInside(root, target)) {
+        return path.relative(skillRoot, absolutePath) || entry.name
+      }
+      continue
+    }
+
+    if (entry.isDirectory()) {
+      const nested = await findEscapingLink(skillRoot, absolutePath, root)
+      if (nested) return nested
+    }
+  }
+
+  return undefined
+}
+
+/** Whether `candidate` is the directory itself or sits under it. */
+function isInside(root: string, candidate: string): boolean {
+  const relative = path.relative(root, candidate)
+  return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative))
 }
 
 /** Synchronize the physical flat skill bridge required by Antigravity. */
@@ -280,6 +395,18 @@ async function syncAntigravitySkillsBridge(args: {
     return
   }
 
+  // The flat copy dereferences symlinks, which is what makes a skill linked from
+  // elsewhere in the repository work. A link that leaves the project is different: it
+  // would put a copy of someone's file into the project, so that skill is left out. The
+  // same list feeds the comparison below, so the bridge does not drift.
+  const { safe: bridgedSkills, escaping } = await partitionEscapingSkills(discovery.skills, projectRoot)
+  for (const item of escaping) {
+    warnings.push(
+      `Skill "${item.skill.relativePath}" links outside the project (${item.link}), so it is left out of the `
+        + `${label} flat copy; copying it would place a file from outside the project into the repository.`,
+    )
+  }
+
   if (!check) await ensureDir(parentDir)
 
   const exists = await pathExists(bridgePath)
@@ -299,7 +426,7 @@ async function syncAntigravitySkillsBridge(args: {
       if (await pathExists(marker)) {
         let inSync = false
         try {
-          inSync = await flatSkillDirectoriesEqual(discovery.skills, bridgePath)
+          inSync = await flatSkillDirectoriesEqual(bridgedSkills, bridgePath)
         } catch {
           inSync = false
         }
@@ -319,7 +446,7 @@ async function syncAntigravitySkillsBridge(args: {
   if (check) return
 
   try {
-    await replaceAntigravitySkillsBridge(discovery.skills, bridgePath)
+    await replaceAntigravitySkillsBridge(bridgedSkills, bridgePath)
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     warnings.push(`${label} bridge could not be materialized in flat copy mode: ${message}`)

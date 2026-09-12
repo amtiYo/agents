@@ -87,6 +87,7 @@ export interface ProjectPaths {
   claudeSkillsBridge: string
   cursorSkillsBridge: string
   windsurfSkillsBridge: string
+  kiloSkillsBridge: string
 }
 
 /** Resolve the effective user home directory, honoring AGENTS_HOME_DIR in test/override environments. */
@@ -311,6 +312,9 @@ export function getProjectPaths(projectRoot: string): ProjectPaths {
     geminiSkillsBridge: path.join(root, '.gemini', 'skills'),
     claudeSkillsBridge: path.join(root, '.claude', 'skills'),
     cursorSkillsBridge: path.join(root, '.cursor', 'skills'),
-    windsurfSkillsBridge: path.join(root, '.windsurf', 'skills')
+    windsurfSkillsBridge: path.join(root, '.windsurf', 'skills'),
+    // Kilo reads skills from its own directory. In global mode it looks under the home
+    // directory rather than the XDG config dir that holds kilo.jsonc.
+    kiloSkillsBridge: projectOrGlobal(root, homeDir, ['.kilo', 'skills'], path.join(homeDir, '.kilo', 'skills'))
   }
 }

@@ -5,7 +5,9 @@ export interface IntegrationDefinition {
   label: string
   requiredBinary?: string
   /**
-   * The tool discovers `.agents/skills` on its own, so no bridge directory is created for it.
+   * The tool discovers `.agents/skills` on its own, so no bridge directory is created
+   * for it. Antigravity is not one of these: it does not follow symlinks and does not
+   * read nested skills, so it gets a flat copy at `.gemini/skills` instead.
    */
   nativeSkills?: boolean
 }
@@ -18,17 +20,17 @@ export const INTEGRATIONS: IntegrationDefinition[] = [
   { id: 'copilot_vscode', label: 'Copilot VS Code', requiredBinary: 'code', nativeSkills: true },
   { id: 'copilot_cli', label: 'Copilot CLI', requiredBinary: 'copilot', nativeSkills: true },
   { id: 'cursor', label: 'Cursor', requiredBinary: 'cursor-agent' },
-  { id: 'antigravity', label: 'Antigravity', requiredBinary: 'agy', nativeSkills: true },
+  { id: 'antigravity', label: 'Antigravity', requiredBinary: 'agy' },
   { id: 'windsurf', label: 'Devin Desktop (Windsurf)' },
   { id: 'opencode', label: 'OpenCode', requiredBinary: 'opencode' },
   { id: 'junie', label: 'Junie', requiredBinary: 'junie' },
-  { id: 'grok', label: 'Grok Build', requiredBinary: 'grok' },
+  { id: 'grok', label: 'Grok Build', requiredBinary: 'grok', nativeSkills: true },
   { id: 'amp', label: 'Amp', requiredBinary: 'amp', nativeSkills: true },
-  { id: 'droid', label: 'Factory Droid', requiredBinary: 'droid' },
+  { id: 'droid', label: 'Factory Droid', requiredBinary: 'droid', nativeSkills: true },
   { id: 'kilo', label: 'Kilo', requiredBinary: 'kilo' },
-  { id: 'devin', label: 'Devin CLI', requiredBinary: 'devin' },
-  { id: 'zed', label: 'Zed', requiredBinary: 'zed' },
-  { id: 'goose', label: 'Goose', requiredBinary: 'goose' }
+  { id: 'devin', label: 'Devin CLI', requiredBinary: 'devin', nativeSkills: true },
+  { id: 'zed', label: 'Zed', requiredBinary: 'zed', nativeSkills: true },
+  { id: 'goose', label: 'Goose', requiredBinary: 'goose', nativeSkills: true }
 ]
 
 export const INTEGRATION_IDS: IntegrationName[] = INTEGRATIONS.map((item) => item.id)
