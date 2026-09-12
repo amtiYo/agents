@@ -153,6 +153,32 @@ describe('entries in a config shared by every project', () => {
     expect(result.warnings.join(' ')).toContain('not written by this project and was left alone')
   }, 25000)
 
+  it('ignores a state entry naming another project', async () => {
+    const globalDir = await mkdtemp(path.join(os.tmpdir(), 'agents-global-ws-'))
+    tempDirs.push(globalDir)
+    const windsurfPath = path.join(globalDir, 'mcp_config.json')
+    process.env.AGENTS_WINDSURF_MCP_PATH = windsurfPath
+
+    const first = await projectWithServer('windsurf', 'first-server')
+    const second = await projectWithServer('windsurf', 'second-server')
+    await performSync({ projectRoot: first, check: false, verbose: false })
+    await performSync({ projectRoot: second, check: false, verbose: false })
+
+    // .agents/generated is gitignored but a repository can still carry it, so a state
+    // file could name entries belonging to somebody else.
+    const statePath = path.join(first, '.agents', 'generated', 'windsurf.state.json')
+    await writeFile(
+      statePath,
+      `${JSON.stringify({ managedNames: [toProjectScopedName(second, 'fetch')] }, null, 2)}\n`,
+      'utf8',
+    )
+
+    await runReset({ projectRoot: first, localOnly: true })
+
+    const config = JSON.parse(await readFile(windsurfPath, 'utf8')) as { mcpServers: Record<string, unknown> }
+    expect(config.mcpServers[toProjectScopedName(second, 'fetch')]).toBeDefined()
+  }, 25000)
+
   it('does not delete a bare entry on reset without a state file', async () => {
     const globalDir = await mkdtemp(path.join(os.tmpdir(), 'agents-global-ws-'))
     tempDirs.push(globalDir)

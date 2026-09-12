@@ -27,12 +27,14 @@ replaces, and touches only the entries this CLI wrote before, tracked per file i
 
 ## What it will not do
 
-- Write a value from `.agents/local.json` into a file it does not add to `.gitignore`. Amp,
-  Zed, Kilo and `.github/mcp.json` keep the `${VAR}` placeholder from `agents.json`, and so
-  does every generated file in `commit-generated` mode.
+- Write a resolved secret into a file it does not add to `.gitignore`, whether the value
+  comes from `.agents/local.json` or from the environment. Amp, Zed, Kilo and
+  `.github/mcp.json` keep the `${VAR}` placeholder from `agents.json`, and so does every
+  generated file in `commit-generated` mode.
 - Follow a symlink that leaves the project when it builds the flat skill copy for
   Antigravity. A skill that links outside the project is reported and left out.
-- Act on a path outside the project recorded in `.agents/generated/`.
+- Act on a path or a name recorded in `.agents/generated/` that is not one this CLI writes
+  for this project.
 - Take over an existing skills directory or symlink it did not create.
 
 ## What it does run

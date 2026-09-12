@@ -149,7 +149,7 @@ export function resolveFromConfigAndLocal(input: {
     // The committed definition on its own, for configs that are not gitignored. The
     // warnings it would repeat are dropped: the same server already produced them above.
     const publicResolved = base
-      ? resolveServer(name, base, projectRoot, [])
+      ? resolveServer(name, base, projectRoot, [], 'committed')
       : resolved
     const localOnlyKeys = collectLocalOnlyKeys(base, override)
     if (localOnlyKeys.length > 0) {
@@ -248,6 +248,15 @@ function sameSet(a: IntegrationName[], b: IntegrationName[]): boolean {
 }
 
 /**
+ * How far placeholders are expanded.
+ *
+ * `full` produces what a tool needs to start the server. `committed` produces what may be
+ * written into a file that ends up in version control: `${PROJECT_ROOT}` and an explicit
+ * `${VAR:-default}` resolve, a bare `${VAR}` stays as it is.
+ */
+type ResolutionMode = 'full' | 'committed'
+
+/**
  * Expand placeholders in one server definition and copy through the optional fields.
  *
  * `${PROJECT_ROOT}`, `${VAR}` and `${VAR:-default}` are resolved here; a plain `${VAR}`
@@ -258,12 +267,17 @@ function resolveServer(
   server: McpServerDefinition,
   projectRoot: string,
   warnings: string[],
+  mode: ResolutionMode = 'full',
 ): ResolvedMcpServer {
   const resolveValue = (value: string | undefined): string | undefined => {
     if (!value) return value
     // ${VAR} and ${VAR:-fallback}; the fallback form never warns because it always resolves.
     return value.replace(/\$\{([A-Z0-9_]+)(?::-([^}]*))?\}/g, (_full, key: string, fallback?: string) => {
       if (key === 'PROJECT_ROOT') return projectRoot
+      // A committed config must not carry a value read from the environment: the variable
+      // is where the secret lives, and this CLI tells people to export exactly those. The
+      // fallback form is safe, its value is already in the committed file.
+      if (mode === 'committed') return fallback ?? `\${${key}}`
       const envValue = process.env[key]
       if (envValue !== undefined) return envValue
       if (fallback !== undefined) return fallback

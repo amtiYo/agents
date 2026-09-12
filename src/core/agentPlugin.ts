@@ -422,7 +422,8 @@ export interface ImportPluginResult {
 /** Commands that execute whatever string they are handed. */
 function isShellInterpreter(command: string | undefined): boolean {
   if (!command) return false
-  const base = command.split('/').at(-1) ?? command
+  // `CMD.EXE` is the same program as `cmd.exe`, and a package chooses how it spells it.
+  const base = (command.split(/[\\/]/).at(-1) ?? command).toLowerCase()
   return ['sh', 'bash', 'zsh', 'dash', 'ksh', 'fish', 'cmd', 'cmd.exe', 'powershell', 'powershell.exe', 'pwsh'].includes(
     base,
   )

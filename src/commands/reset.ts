@@ -566,8 +566,13 @@ async function cleanupWindsurfGlobalConfig(args: {
   if (await pathExists(args.statePath)) {
     try {
       const state = await readJson<{ managedNames?: unknown }>(args.statePath)
+      // The file is under .agents/generated, which a repository can carry. Only names
+      // carrying this project may be removed from a config shared with every other one.
+      const scopePrefix = toProjectScopedName(args.projectRoot, '')
       managedNames = Array.isArray(state.managedNames)
-        ? state.managedNames.filter((name): name is string => typeof name === 'string')
+        ? state.managedNames.filter(
+            (name): name is string => typeof name === 'string' && name.startsWith(scopePrefix),
+          )
         : []
     } catch {
       managedNames = []
@@ -632,8 +637,13 @@ async function cleanupGooseConfig(args: {
   if (await pathExists(args.statePath)) {
     try {
       const state = await readJson<{ managedNames?: unknown }>(args.statePath)
+      // The file is under .agents/generated, which a repository can carry. Only names
+      // carrying this project may be removed from a config shared with every other one.
+      const scopePrefix = toProjectScopedName(args.projectRoot, '')
       managedNames = Array.isArray(state.managedNames)
-        ? state.managedNames.filter((name): name is string => typeof name === 'string')
+        ? state.managedNames.filter(
+            (name): name is string => typeof name === 'string' && name.startsWith(scopePrefix),
+          )
         : []
     } catch {
       managedNames = []

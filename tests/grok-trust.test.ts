@@ -1,6 +1,6 @@
 import os from 'node:os'
 import path from 'node:path'
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { chmod, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { ensureGrokProjectTrusted, getGrokTrustState, getGrokTrustedFoldersPath } from '../src/core/trust.js'
 
@@ -86,6 +86,44 @@ describe('grok trust', () => {
     const result = await ensureGrokProjectTrusted('/tmp/my-project')
     expect(result.changed).toBe(false)
     expect(await readFile(trustPath, 'utf8')).toBe(before)
+  })
+
+  it('reports a trust file it cannot read instead of failing', async () => {
+    const trustPath = await writeTrustFile('[folders."/tmp/my-project"]\ntrusted = true\n')
+    await chmod(trustPath, 0o000)
+
+    try {
+      // status and doctor call this; an EACCES thrown here would take both down.
+      expect(await getGrokTrustState('/tmp/my-project')).toBe('unreadable')
+    } finally {
+      await chmod(trustPath, 0o600)
+    }
+  })
+
+  it('never loses a decision when two projects write at the same time', async () => {
+    const trustPath = await writeTrustFile('')
+
+    // The file is read and rewritten whole, so two writers without a lock would drop one
+    // of the two entries. The lock refuses the second writer rather than queueing it,
+    // which is how this CLI guards every other shared file: the caller retries.
+    const results = await Promise.allSettled([
+      ensureGrokProjectTrusted('/tmp/project-one'),
+      ensureGrokProjectTrusted('/tmp/project-two')
+    ])
+    const refused = results.filter((result) => result.status === 'rejected')
+    expect(refused.length).toBeLessThanOrEqual(1)
+    for (const rejection of refused) {
+      expect(String((rejection as PromiseRejectedResult).reason)).toContain('already running')
+    }
+
+    await ensureGrokProjectTrusted('/tmp/project-one')
+    await ensureGrokProjectTrusted('/tmp/project-two')
+
+    const written = await readFile(trustPath, 'utf8')
+    expect(written).toContain('[folders."/tmp/project-one"]')
+    expect(written).toContain('[folders."/tmp/project-two"]')
+    expect(await getGrokTrustState('/tmp/project-one')).toBe('trusted')
+    expect(await getGrokTrustState('/tmp/project-two')).toBe('trusted')
   })
 
   it('refuses to edit a trust file Grok itself cannot parse', async () => {

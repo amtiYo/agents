@@ -1,6 +1,7 @@
 import path from 'node:path'
 import TOML from '@iarna/toml'
 import { ensureDir, pathExists, readTextOrEmpty, writeTextAtomic } from './fs.js'
+import { acquireSyncLock } from './syncLock.js'
 import { getHomeDir } from './paths.js'
 
 type CodexConfig = {
@@ -37,12 +38,11 @@ export async function getCodexTrustState(projectRoot: string): Promise<CodexTrus
   const configPath = getCodexConfigPath()
   if (!(await pathExists(configPath))) return 'untrusted'
 
-  const raw = await readTextOrEmpty(configPath)
-  if (raw.trim().length === 0) return 'untrusted'
-
   const projectKey = path.resolve(projectRoot)
 
   try {
+    const raw = await readTextOrEmpty(configPath)
+    if (raw.trim().length === 0) return 'untrusted'
     const parsed = TOML.parse(raw) as CodexConfig
     return parsed.projects?.[projectKey]?.trust_level === 'trusted' ? 'trusted' : 'untrusted'
   } catch {
@@ -73,7 +73,7 @@ function findSectionTrustLevel(raw: string, projectKey: string): string | undefi
  * comments, ordering and settings this tool knows nothing about, and a config with
  * a syntax error elsewhere must still be fixable here.
  */
-export async function ensureCodexProjectTrusted(projectRoot: string): Promise<{ changed: boolean; path: string }> {
+async function ensureCodexProjectTrustedUnlocked(projectRoot: string): Promise<{ changed: boolean; path: string }> {
   const configPath = getCodexConfigPath()
   const projectKey = path.resolve(projectRoot)
   const raw = await readTextOrEmpty(configPath)
@@ -202,14 +202,14 @@ function grokFolderHeader(folderKey: string): string {
 /** Read whether Grok trusts this project. */
 export async function getGrokTrustState(projectRoot: string): Promise<GrokTrustState> {
   const trustPath = getGrokTrustedFoldersPath()
-  if (!(await pathExists(trustPath))) return 'untrusted'
-
-  const raw = await readTextOrEmpty(trustPath)
-  if (raw.trim().length === 0) return 'untrusted'
-
   const folderKey = path.resolve(projectRoot)
 
+  // A file that cannot be read, because of its permissions for instance, is a diagnostic
+  // like any other: status and doctor report it rather than failing on it.
   try {
+    if (!(await pathExists(trustPath))) return 'untrusted'
+    const raw = await readTextOrEmpty(trustPath)
+    if (raw.trim().length === 0) return 'untrusted'
     const parsed = TOML.parse(raw) as GrokTrustedFolders
     return parsed.folders?.[folderKey]?.trusted === true ? 'trusted' : 'untrusted'
   } catch {
@@ -223,7 +223,7 @@ export async function getGrokTrustState(projectRoot: string): Promise<GrokTrustS
  * Edited in place for the same reason as the Codex config: the file records when each
  * decision was made and this tool owns only the entry it adds.
  */
-export async function ensureGrokProjectTrusted(projectRoot: string): Promise<{ changed: boolean; path: string }> {
+async function ensureGrokProjectTrustedUnlocked(projectRoot: string): Promise<{ changed: boolean; path: string }> {
   const trustPath = getGrokTrustedFoldersPath()
   const folderKey = path.resolve(projectRoot)
   const raw = await readTextOrEmpty(trustPath)
@@ -313,4 +313,32 @@ export async function ensureGrokProjectTrusted(projectRoot: string): Promise<{ c
   await ensureDir(path.dirname(trustPath))
   await writeTextAtomic(trustPath, `${prefix}${block}`)
   return { changed: true, path: trustPath }
+}
+
+/**
+ * Record trust for a project, one writer at a time.
+ *
+ * Both trust files are shared by every project on the machine and are rewritten whole,
+ * so two syncs running at once would drop one of the two decisions. The lock is the same
+ * one the sync uses for the other files it shares.
+ */
+export async function ensureCodexProjectTrusted(projectRoot: string): Promise<{ changed: boolean; path: string }> {
+  const configPath = getCodexConfigPath()
+  const release = await acquireSyncLock(path.join(path.dirname(configPath), '.agents-codex-trust.lock'))
+  try {
+    return await ensureCodexProjectTrustedUnlocked(projectRoot)
+  } finally {
+    await release()
+  }
+}
+
+/** Record Grok folder trust, one writer at a time. See `ensureCodexProjectTrusted`. */
+export async function ensureGrokProjectTrusted(projectRoot: string): Promise<{ changed: boolean; path: string }> {
+  const trustPath = getGrokTrustedFoldersPath()
+  const release = await acquireSyncLock(path.join(path.dirname(trustPath), '.agents-grok-trust.lock'))
+  try {
+    return await ensureGrokProjectTrustedUnlocked(projectRoot)
+  } finally {
+    await release()
+  }
 }

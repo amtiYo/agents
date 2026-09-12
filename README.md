@@ -284,7 +284,7 @@ Values support `${VAR}` and `${VAR:-default}`, plus `${PROJECT_ROOT}`.
 - `agents doctor` warns about literal secrets in committed config.
 - Env keys and header names are validated before they reach a config file or a shell.
 - `agents plugin export` never reads `local.json`.
-- Values from `local.json` are written only into configs this CLI gitignores. Amp, Zed and Kilo share a file with the tool's own settings, and `.github/mcp.json` is a file teams review, so those keep the `${VAR}` placeholder from `agents.json` and the sync lists which variables to export in your shell. `commit-generated` mode holds secrets back from every generated config for the same reason.
+- A config this CLI does not gitignore keeps the `${VAR}` placeholder from `agents.json`, whether the value would have come from `local.json` or from your shell. Amp, Zed and Kilo share a file with the tool's own settings, and `.github/mcp.json` is a file teams review; the sync lists which variables to export so those tools can resolve them. `commit-generated` mode holds secrets back from every generated config for the same reason.
 - A config this CLI rewrites keeps the permissions it had, so a file you restricted to `0600` stays that way.
 
 ---

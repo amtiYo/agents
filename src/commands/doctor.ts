@@ -726,7 +726,11 @@ async function validateManagedConfigSyntax(
   }
   // Claude Code on project scope writes .mcp.json too, so the file has to be checked
   // even in a project that does not use Copilot CLI.
-  if (enabledIntegrations.includes('claude') && !enabledIntegrations.includes('copilot_cli')) {
+  // Copilot CLI pointed at .github/mcp.json does not cover .mcp.json, which Claude Code
+  // still writes on project scope.
+  const copilotCliCoversProjectMcp = enabledIntegrations.includes('copilot_cli')
+    && options.copilotCliPath === '.mcp.json'
+  if (enabledIntegrations.includes('claude') && !copilotCliCoversProjectMcp) {
     await validateJsonIfExists(paths.copilotCliMcp, '.mcp.json', issues)
   }
 }

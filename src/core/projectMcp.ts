@@ -168,7 +168,7 @@ async function readStateFiles(statePath: string, projectRoot: string): Promise<R
     if (parsed.files && typeof parsed.files === 'object' && !Array.isArray(parsed.files)) {
       return Object.fromEntries(
         Object.entries(parsed.files)
-          .filter(([file]) => isInsideProject(projectRoot, file))
+          .filter(([file]) => isManagedProjectMcpPath(projectRoot, file))
           .map(([file, names]) => [
             file,
             Array.isArray(names) ? names.filter((name): name is string => typeof name === 'string') : []
@@ -179,7 +179,7 @@ async function readStateFiles(statePath: string, projectRoot: string): Promise<R
     if (
       typeof parsed.targetPath === 'string'
       && Array.isArray(parsed.managedNames)
-      && isInsideProject(projectRoot, parsed.targetPath)
+      && isManagedProjectMcpPath(projectRoot, parsed.targetPath)
     ) {
       return { [parsed.targetPath]: parsed.managedNames.filter((name): name is string => typeof name === 'string') }
     }
@@ -190,11 +190,19 @@ async function readStateFiles(statePath: string, projectRoot: string): Promise<R
 }
 
 
-/** Whether a recorded path still belongs to this project. */
-function isInsideProject(projectRoot: string, candidate: string): boolean {
+/**
+ * Whether a recorded path is one this CLI writes for the project.
+ *
+ * The state file decides which files the sync rewrites and deletes, and it can arrive in
+ * a clone despite being gitignored. Lexical containment in the project is not enough: it
+ * would let a recorded path name any file in the repository. Only the two project MCP
+ * files exist, so the check is a comparison against them.
+ */
+function isManagedProjectMcpPath(projectRoot: string, candidate: string): boolean {
   if (!path.isAbsolute(candidate)) return false
-  const relative = path.relative(path.resolve(projectRoot), candidate)
-  return relative !== '' && !relative.startsWith('..') && !path.isAbsolute(relative)
+  const root = path.resolve(projectRoot)
+  const allowed = [path.join(root, '.mcp.json'), path.join(root, '.github', 'mcp.json')]
+  return allowed.includes(path.resolve(candidate))
 }
 
 /** Persist which servers agents owns in each project MCP file. */

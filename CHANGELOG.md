@@ -50,10 +50,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- Secrets no longer reach configs that end up in version control, whether they come from `.agents/local.json` or from the environment. A committed config keeps `${VAR}` as it is; `${PROJECT_ROOT}` and an explicit `${VAR:-default}` still resolve, because both are already in the committed file.
 - Secrets from `.agents/local.json` no longer reach configs that end up in version control. Amp, Zed and Kilo share a file with the tool's own settings, and Copilot CLI on `.github/mcp.json` writes a file teams review, so this CLI never adds them to `.gitignore`, and it was writing resolved secrets into them, one `git add` away from a published token. Those files now carry the committed definition, placeholders and all, and the sync says which values were held back and which variables to export. In `commit-generated` mode the same rule applies to every generated config.
 - Atomic writes keep the permissions of the file they replace. Rewriting a config the user had restricted to `0600`, such as `~/.config/goose/config.yaml` with a key in it, left it world-readable, because the rename replaced the inode with a fresh `0644` file.
 - The Antigravity flat copy no longer follows a symlink that leaves the project. A skill linked from elsewhere in the repository still works; a link to a file outside it would have placed a copy of that file inside the project, and the skill is left out with a warning instead.
-- `agents sync` ignores paths outside the project in `.agents/generated/project-mcp.state.json`. The directory is gitignored but can still arrive in a clone, and the paths in it decide which files the sync rewrites and deletes.
+- The state files in `.agents/generated` name only what this CLI writes. The directory is gitignored but can still arrive in a clone, and its contents decide which files the sync rewrites and which entries `reset` deletes: a path there is now accepted only if it is one of the two project MCP files, and a name only if it carries this project.
+- The flat skill copy follows a symlinked directory inside the project when looking for a link that leaves it. A link one level down, behind a directory link, was missed while the copy itself dereferenced both.
+- Recording project trust for Codex or folder trust for Grok takes a lock. Both files are shared by every project on the machine and are rewritten whole, so two syncs at once could drop one of the two decisions.
+- `agents status` and `agents doctor` report a trust file they cannot read instead of failing on it.
 - `AGENTS_HOME_DIR` now covers the update check, Claude Desktop and Antigravity paths, which read the real home directory through `os.homedir()`. A test run wrote its mock version into `~/.agents-dev/update-check.json`, after which the CLI announced an update that does not exist.
 
 ## [0.9.0] - 2026-09-12

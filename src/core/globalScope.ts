@@ -71,7 +71,7 @@ export function findLegacyManagedNames(
 
   for (const [name, generated] of Object.entries(generatedEntries)) {
     if (!(name in existingEntries)) continue
-    if (JSON.stringify(existingEntries[name]) === JSON.stringify(generated)) migrated.push(name)
+    if (deepEqual(existingEntries[name], generated)) migrated.push(name)
     else foreign.push(name)
   }
 
@@ -86,4 +86,32 @@ export function formatForeignLegacyWarnings(label: string, names: string[]): str
         + 'Entries this CLI writes now carry the project they came from; remove that one by hand '
         + 'if an older version of this project left it behind.',
   )
+}
+
+/**
+ * Compare two values by structure.
+ *
+ * Serializing both sides would depend on key order, and a formatter or a hand edit
+ * reorders keys without changing anything. An entry mistaken for someone else's that way
+ * would be left behind, and the tool would then start the same server twice.
+ */
+function deepEqual(left: unknown, right: unknown): boolean {
+  if (left === right) return true
+  if (typeof left !== typeof right) return false
+  if (left === null || right === null) return false
+
+  if (Array.isArray(left) || Array.isArray(right)) {
+    if (!Array.isArray(left) || !Array.isArray(right) || left.length !== right.length) return false
+    return left.every((item, index) => deepEqual(item, right[index]))
+  }
+
+  if (typeof left !== 'object') return false
+
+  const leftRecord = left as Record<string, unknown>
+  const rightRecord = right as Record<string, unknown>
+  const leftKeys = Object.keys(leftRecord).sort()
+  const rightKeys = Object.keys(rightRecord).sort()
+  if (leftKeys.length !== rightKeys.length) return false
+  if (!leftKeys.every((key, index) => key === rightKeys[index])) return false
+  return leftKeys.every((key) => deepEqual(leftRecord[key], rightRecord[key]))
 }

@@ -80,6 +80,57 @@ describe('secrets in configs that are not gitignored', () => {
     }
   })
 
+  it('keeps an exported environment value out of a committed config', { timeout: 25000 }, async () => {
+    // No local.json here: the value comes from the shell, which is what the sync asks for.
+    const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-exported-secret-'))
+    tempDirs.push(projectRoot)
+    await runInit({ projectRoot, force: true })
+    const config = await loadAgentsConfig(projectRoot)
+    config.integrations.enabled = ['amp', 'codex']
+    config.mcp.servers = {
+      probe: { transport: 'stdio', command: 'node', args: ['s.js'], env: { API_TOKEN: '${API_TOKEN}' } }
+    }
+    await saveAgentsConfig(projectRoot, config)
+
+    const previous = process.env.API_TOKEN
+    // The sync tells people to export exactly this variable so Amp can resolve it, which
+    // makes the exported value the common case rather than an unusual one.
+    process.env.API_TOKEN = 'sk-live-exported-0123456789'
+
+    try {
+      await performSync({ projectRoot, check: false, verbose: false })
+
+      const amp = await readFile(path.join(projectRoot, '.amp', 'settings.json'), 'utf8')
+      expect(amp).not.toContain('sk-live-exported-0123456789')
+      expect(amp).toContain('${API_TOKEN}')
+
+      // The gitignored config still gets the value, or the server would not start.
+      const codex = await readFile(path.join(projectRoot, '.codex', 'config.toml'), 'utf8')
+      expect(codex).toContain('sk-live-exported-0123456789')
+    } finally {
+      if (previous === undefined) delete process.env.API_TOKEN
+      else process.env.API_TOKEN = previous
+    }
+  })
+
+  it('resolves a default from the committed file even for a committed config', { timeout: 25000 }, async () => {
+    const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-committed-default-'))
+    tempDirs.push(projectRoot)
+    await runInit({ projectRoot, force: true })
+    const config = await loadAgentsConfig(projectRoot)
+    config.integrations.enabled = ['amp']
+    config.mcp.servers = {
+      probe: { transport: 'stdio', command: 'node', args: ['s.js'], env: { LOG_LEVEL: '${LOG_LEVEL:-error}' } }
+    }
+    await saveAgentsConfig(projectRoot, config)
+
+    await performSync({ projectRoot, check: false, verbose: false })
+
+    // The default is in the committed file already, so writing it leaks nothing.
+    const amp = await readFile(path.join(projectRoot, '.amp', 'settings.json'), 'utf8')
+    expect(amp).toContain('error')
+  })
+
   it('keeps the secret out of .github/mcp.json, which the team reviews', { timeout: 25000 }, async () => {
     const projectRoot = await projectWithSecret(['copilot_cli'])
     const config = await loadAgentsConfig(projectRoot)

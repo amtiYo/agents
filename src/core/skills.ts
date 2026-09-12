@@ -314,8 +314,23 @@ async function partitionEscapingSkills(
   return { safe, escaping }
 }
 
-/** First symlink under `currentDir` whose target resolves outside `root`, if any. */
-async function findEscapingLink(skillRoot: string, currentDir: string, root: string): Promise<string | undefined> {
+/**
+ * First symlink under `currentDir` whose target resolves outside `root`, if any.
+ *
+ * A symlink to a directory inside the project is followed rather than accepted: the copy
+ * dereferences it, so a link that leaves the project can sit one level down inside it.
+ * Visited real paths are remembered, because a link can point at its own ancestor.
+ */
+async function findEscapingLink(
+  skillRoot: string,
+  currentDir: string,
+  root: string,
+  visited: Set<string> = new Set<string>(),
+): Promise<string | undefined> {
+  const resolvedDir = await resolveDirectoryPath(currentDir)
+  if (visited.has(resolvedDir)) return undefined
+  visited.add(resolvedDir)
+
   let entries
   try {
     entries = await readdir(currentDir, { withFileTypes: true })
@@ -336,11 +351,16 @@ async function findEscapingLink(skillRoot: string, currentDir: string, root: str
       if (!isInside(root, target)) {
         return path.relative(skillRoot, absolutePath) || entry.name
       }
+      // The link stays in the project, but what it points at may not.
+      if (await isDirectoryTarget(absolutePath)) {
+        const nested = await findEscapingLink(skillRoot, absolutePath, root, visited)
+        if (nested) return nested
+      }
       continue
     }
 
     if (entry.isDirectory()) {
-      const nested = await findEscapingLink(skillRoot, absolutePath, root)
+      const nested = await findEscapingLink(skillRoot, absolutePath, root, visited)
       if (nested) return nested
     }
   }

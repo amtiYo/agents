@@ -36,8 +36,11 @@ describe('atomic writes keep the permissions of the file they replace', () => {
 
     await writeTextAtomic(target, '{}\n')
 
+    // Whatever the umask says, not a mode this CLI chose: a umask of 0077 legitimately
+    // produces 0600 here, and the old assertion called that a failure.
+    const umask = process.umask()
     expect(await pathExists(target)).toBe(true)
-    expect((await stat(target)).mode & 0o777).not.toBe(0o600)
+    expect((await stat(target)).mode & 0o777).toBe(0o666 & ~umask)
   })
 })
 
@@ -130,6 +133,41 @@ describe('secrets stay out of files the sync does not gitignore', () => {
   })
 })
 
+describe('a symlinked directory inside the project', () => {
+  it('is walked when looking for a link that leaves the project', { timeout: 25000 }, async () => {
+    const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-skill-nested-link-'))
+    tempDirs.push(projectRoot)
+    const outside = await mkdtemp(path.join(os.tmpdir(), 'agents-outside-'))
+    tempDirs.push(outside)
+    await writeFile(path.join(outside, 'id_rsa'), 'PRIVATE-KEY-CONTENT\n', 'utf8')
+
+    await runInit({ projectRoot, force: true })
+    const config = await loadAgentsConfig(projectRoot)
+    config.integrations.enabled = ['antigravity']
+    await saveAgentsConfig(projectRoot, config)
+
+    // The escaping link hides one level down, behind a symlink to a directory that is
+    // itself inside the project. The copy dereferences both.
+    const shared = path.join(projectRoot, 'shared')
+    await mkdir(shared, { recursive: true })
+    await symlink(path.join(outside, 'id_rsa'), path.join(shared, 'leak.txt'))
+
+    const skillDir = path.join(projectRoot, '.agents', 'skills', 'notes')
+    await mkdir(skillDir, { recursive: true })
+    await writeFile(
+      path.join(skillDir, 'SKILL.md'),
+      '---\nname: notes\ndescription: takes notes\n---\n\nNotes.\n',
+      'utf8',
+    )
+    await symlink(path.relative(skillDir, shared), path.join(skillDir, 'inner'))
+
+    const result = await performSync({ projectRoot, check: false, verbose: false })
+
+    expect(result.warnings.join(' ')).toContain('links outside the project')
+    expect(await pathExists(path.join(projectRoot, '.gemini', 'skills', 'notes'))).toBe(false)
+  })
+})
+
 describe('forged sync state', () => {
   it('ignores a project MCP state entry pointing outside the project', { timeout: 25000 }, async () => {
     const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-forged-state-'))
@@ -154,5 +192,28 @@ describe('forged sync state', () => {
     expect(await pathExists(victim)).toBe(true)
     const kept = await readFile(victim, 'utf8')
     expect(kept).toContain('important')
+  })
+
+  it('ignores a state entry naming another file inside the project', { timeout: 25000 }, async () => {
+    const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-forged-state-'))
+    tempDirs.push(projectRoot)
+
+    await runInit({ projectRoot, force: true })
+    const config = await loadAgentsConfig(projectRoot)
+    config.integrations.enabled = ['claude']
+    await saveAgentsConfig(projectRoot, config)
+
+    // Lexically inside the project, but not a file this CLI ever writes for it.
+    const victim = path.join(projectRoot, 'package.json')
+    await writeFile(victim, `${JSON.stringify({ name: 'not-ours', mcpServers: {} }, null, 2)}\n`, 'utf8')
+
+    const statePath = path.join(projectRoot, '.agents', 'generated', 'project-mcp.state.json')
+    await mkdir(path.dirname(statePath), { recursive: true })
+    await writeFile(statePath, `${JSON.stringify({ files: { [victim]: ['anything'] } }, null, 2)}\n`, 'utf8')
+
+    await performSync({ projectRoot, check: false, verbose: false })
+
+    const kept = JSON.parse(await readFile(victim, 'utf8')) as { name?: string }
+    expect(kept.name).toBe('not-ours')
   })
 })
