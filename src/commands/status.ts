@@ -10,7 +10,7 @@ import { parse as parseJsonc } from 'jsonc-parser'
 import { toProjectScopedName } from '../core/globalScope.js'
 import { getProjectPaths, toHomeRelativePath } from '../core/paths.js'
 import { readGooseDocument, readGooseExtensions } from '../core/goose.js'
-import { hasNativeSkillsDiscovery } from '../integrations/registry.js'
+import { hasNativeSkillsDiscovery, listManagedConfigs } from '../integrations/registry.js'
 import {
   getClaudeDesktopConfigPath,
   getClaudeDesktopConfigUnavailableDetail,
@@ -100,31 +100,26 @@ export async function runStatus(options: StatusOptions): Promise<void> {
     'AGENTS.md': await pathExists(paths.rootAgentsMd),
     '.vscode/settings.json': await pathExists(paths.vscodeSettings)
   }
-  if (enabled.has('codex')) {
-    files['.codex/config.toml'] = await pathExists(paths.codexConfig)
-  }
-  if (enabled.has('gemini')) {
-    files['.gemini/settings.json'] = await pathExists(paths.geminiSettings)
-  }
-  if (enabled.has('copilot_vscode')) {
-    files['.vscode/mcp.json'] = await pathExists(paths.vscodeMcp)
-  }
   const copilotCliMcpPath = config.integrations.options.copilotCliPath === '.github/mcp.json'
     ? paths.copilotCliGithubMcp
     : paths.copilotCliMcp
   const copilotCliMcpLabel = path.relative(paths.root, copilotCliMcpPath) || copilotCliMcpPath
   const claudeUsesProjectScope = config.integrations.options.claudeScope === 'project'
+
+  // One file per integration, from the registry: a tool added there appears here without
+  // a second list to keep in step.
+  for (const managed of listManagedConfigs(paths, config.integrations.enabled)) {
+    // Antigravity's workspace file is written only when its MCP sync is on.
+    if (managed.id === 'antigravity' && !antigravityMcpSyncEnabled) continue
+    files[managed.label] = await pathExists(managed.filePath)
+  }
+
+  // Files that depend on an option or a platform, so the registry cannot name them.
   if (enabled.has('copilot_cli')) {
     files[copilotCliMcpLabel] = await pathExists(copilotCliMcpPath)
   }
   if (enabled.has('claude') && claudeUsesProjectScope) {
     files['.mcp.json'] = await pathExists(paths.copilotCliMcp)
-  }
-  if (enabled.has('cursor')) {
-    files['.cursor/mcp.json'] = await pathExists(paths.cursorMcp)
-  }
-  if (enabled.has('antigravity') && antigravityMcpSyncEnabled) {
-    files['.agents/mcp_config.json'] = await pathExists(paths.antigravityWorkspaceMcp)
   }
   if (enabled.has('antigravity')) {
     files['.gemini/skills'] = await pathExists(paths.geminiSkillsBridge)
@@ -134,33 +129,6 @@ export async function runStatus(options: StatusOptions): Promise<void> {
   }
   if (enabled.has('windsurf')) {
     files[windsurfGlobalLabel] = await pathExists(windsurfGlobalPath)
-  }
-  if (enabled.has('opencode')) {
-    files[opencodeConfigLabel] = await pathExists(paths.opencodeConfig)
-  }
-  if (enabled.has('junie')) {
-    files['.junie/mcp/mcp.json'] = await pathExists(paths.junieMcp)
-  }
-  if (enabled.has('grok')) {
-    files[toHomeRelativePath(paths.grokConfig)] = await pathExists(paths.grokConfig)
-  }
-  if (enabled.has('amp')) {
-    files[toHomeRelativePath(paths.ampSettings)] = await pathExists(paths.ampSettings)
-  }
-  if (enabled.has('droid')) {
-    files[toHomeRelativePath(paths.droidMcp)] = await pathExists(paths.droidMcp)
-  }
-  if (enabled.has('kilo')) {
-    files[toHomeRelativePath(paths.kiloConfig)] = await pathExists(paths.kiloConfig)
-  }
-  if (enabled.has('devin')) {
-    files[toHomeRelativePath(paths.devinMcp)] = await pathExists(paths.devinMcp)
-  }
-  if (enabled.has('zed')) {
-    files[toHomeRelativePath(paths.zedSettings)] = await pathExists(paths.zedSettings)
-  }
-  if (enabled.has('goose')) {
-    files[toHomeRelativePath(paths.gooseConfig)] = await pathExists(paths.gooseConfig)
   }
   if (enabled.has('claude')) {
     files['CLAUDE.md'] = await pathExists(paths.rootClaudeMd)

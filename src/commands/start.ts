@@ -466,18 +466,19 @@ async function shouldOfferCleanup(projectRoot: string): Promise<boolean> {
   const candidates = [
     paths.generatedDir,
     paths.rootClaudeMd,
+    legacyAgentDir,
+    paths.copilotCliMcp,
+    // Directories a tool owns, which hold more than the file the registry names.
     paths.codexDir,
     paths.geminiDir,
     paths.cursorDir,
-    paths.antigravityWorkspaceMcp,
     paths.antigravityDir,
     paths.windsurfDir,
     paths.opencodeDir,
-    paths.opencodeConfig,
-    legacyAgentDir,
-    paths.vscodeMcp,
-    paths.copilotCliMcp,
     paths.junieMcpDir,
+    // One config file per integration and one bridge per integration, from the tables
+    // the sync itself reads, so a new tool is covered without a third list.
+    ...INTEGRATIONS.flatMap((integration) => (integration.config ? [paths[integration.config.pathKey]] : [])),
     ...SKILL_BRIDGES.map((bridge) => paths[bridge.pathKey])
   ]
   for (const candidate of candidates) {

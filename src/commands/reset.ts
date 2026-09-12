@@ -7,6 +7,7 @@ import { getProjectPaths } from '../core/paths.js'
 import type { ProjectPaths } from '../core/paths.js'
 import { loadAgentsConfig } from '../core/config.js'
 import { loadResolvedRegistry } from '../core/mcp.js'
+import { INTEGRATIONS } from '../integrations/registry.js'
 import { toProjectScopedName } from '../core/globalScope.js'
 import { readProjectMcpManagedNames } from '../core/projectMcp.js'
 import {
@@ -107,27 +108,27 @@ export async function runReset(options: ResetOptions): Promise<void> {
     removed,
     warnings
   })
-  await cleanupKeyedJsonConfig({
-    projectRoot,
-    configPath: paths.ampSettings,
-    generatedPath: paths.generatedAmp,
-    removed,
-    warnings
-  }, 'Amp', 'amp.mcpServers')
-  await cleanupKeyedJsonConfig({
-    projectRoot,
-    configPath: paths.zedSettings,
-    generatedPath: paths.generatedZed,
-    removed,
-    warnings
-  }, 'Zed', 'context_servers', { jsonc: true })
-  await cleanupKeyedJsonConfig({
-    projectRoot,
-    configPath: paths.kiloConfig,
-    generatedPath: paths.generatedKilo,
-    removed,
-    warnings
-  }, 'Kilo', 'mcp', { jsonc: true })
+  // Every integration whose managed servers live under one key of a JSON or JSONC
+  // document is cleaned from the registry, so a new one of that shape needs no entry
+  // here. The formats with a managed block or their own document keep their routines.
+  for (const integration of INTEGRATIONS) {
+    const descriptor = integration.config
+    const managed = descriptor?.managedEntries
+    if (!descriptor || !managed) continue
+    await cleanupKeyedJsonConfig(
+      {
+        projectRoot,
+        configPath: paths[descriptor.pathKey],
+        generatedPath: paths[managed.generatedPathKey],
+        removed,
+        warnings
+      },
+      managed.shortLabel,
+      managed.key,
+      descriptor.format === 'jsonc' ? { jsonc: true } : undefined,
+    )
+  }
+
   await cleanupGooseConfig({
     projectRoot,
     configPath: paths.gooseConfig,
@@ -142,20 +143,6 @@ export async function runReset(options: ResetOptions): Promise<void> {
     removed,
     warnings
   })
-  await cleanupKeyedJsonConfig({
-    projectRoot,
-    configPath: paths.droidMcp,
-    generatedPath: paths.generatedDroid,
-    removed,
-    warnings
-  }, 'Droid', 'mcpServers')
-  await cleanupKeyedJsonConfig({
-    projectRoot,
-    configPath: paths.devinMcp,
-    generatedPath: paths.generatedDevin,
-    removed,
-    warnings
-  }, 'Devin', 'mcpServers')
   await cleanupProjectMcpFiles({
     projectRoot,
     paths,

@@ -90,6 +90,16 @@ export interface ProjectPaths {
   kiloSkillsBridge: string
 }
 
+/**
+ * Keys of ProjectPaths that hold a path.
+ *
+ * Tables that point at a file (skill bridges, managed configs) name it through this
+ * type, so an entry cannot point at `isHome` or at a key that no longer exists.
+ */
+export type ProjectPathKey = {
+  [K in keyof ProjectPaths]: ProjectPaths[K] extends string ? K : never
+}[keyof ProjectPaths]
+
 /** Resolve the effective user home directory, honoring AGENTS_HOME_DIR in test/override environments. */
 export function getHomeDir(): string {
   const override = process.env.AGENTS_HOME_DIR

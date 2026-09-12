@@ -2,17 +2,12 @@ import path from 'node:path'
 import { createHash, randomUUID } from 'node:crypto'
 import { lstat, readdir, readFile, readlink, realpath, rename, stat, symlink } from 'node:fs/promises'
 import { copyDir, ensureDir, pathExists, removeIfExists, resolveDirectoryPath, writeTextAtomic } from './fs.js'
-import { getProjectPaths, type ProjectPaths } from './paths.js'
+import { getProjectPaths, type ProjectPathKey } from './paths.js'
 import { discoverSkills, type DiscoveredSkill, type SkillDiscoveryResult } from './skillsDiscovery.js'
 import type { IntegrationName } from '../types.js'
 
 /** Marker used to identify physical skill bridges managed by agents. */
 export const BRIDGE_MARKER_FILENAME = '.agents_bridge'
-
-/** Keys of ProjectPaths that hold a path, so a bridge definition cannot point at `isHome`. */
-type ProjectPathKey = {
-  [K in keyof ProjectPaths]: ProjectPaths[K] extends string ? K : never
-}[keyof ProjectPaths]
 
 /**
  * A tool that reads skills from its own directory rather than from `.agents/skills`.

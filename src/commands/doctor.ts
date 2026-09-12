@@ -27,7 +27,8 @@ import {
 import { SKILL_BRIDGES, inspectAntigravitySkillsBridge } from '../core/skills.js'
 import { validateSkillsDirectory } from '../core/skillsValidation.js'
 import { validateVscodeSettingsParse } from '../core/vscodeSettings.js'
-import { INTEGRATIONS } from '../integrations/registry.js'
+import { INTEGRATIONS, listManagedConfigs, type ManagedConfigFormat } from '../integrations/registry.js'
+import { INTEGRATION_SYNC_HOOKS } from '../integrations/syncHooks.js'
 import { listMcpEntries, loadMcpState } from '../core/mcpCrud.js'
 import { isPlaceholderValue, isSecretLikeKey } from '../core/mcpSecrets.js'
 import { validateEnvKey, validateHeaderKey } from '../core/mcpValidation.js'
@@ -683,49 +684,31 @@ async function validateManagedConfigSyntax(
   issues: Issue[],
   options: { copilotCliPath: CopilotCliPath },
 ): Promise<void> {
-  await validateTomlIfExists(paths.generatedCodex, '.agents/generated/codex.config.toml', issues)
-  await validateJsonIfExists(paths.generatedGemini, '.agents/generated/gemini.settings.json', issues)
-  await validateJsonIfExists(paths.generatedCopilot, '.agents/generated/copilot.vscode.mcp.json', issues)
-  await validateJsonIfExists(paths.generatedCopilotCli, '.agents/generated/copilot.cli.mcp.json', issues)
-  await validateJsonIfExists(paths.generatedCursor, '.agents/generated/cursor.mcp.json', issues)
-  await validateJsonIfExists(paths.generatedAntigravity, '.agents/generated/antigravity.mcp_config.json', issues)
-  await validateJsonIfExists(paths.generatedWindsurf, '.agents/generated/windsurf.mcp.json', issues)
-  await validateJsonIfExists(paths.generatedOpencode, '.agents/generated/opencode.json', issues)
-  await validateJsonIfExists(paths.generatedClaude, '.agents/generated/claude.mcp.json', issues)
+  // The generated previews come from the sync hooks, so a new integration brings its
+  // preview into the check with it. The parser follows the file extension.
+  for (const hook of INTEGRATION_SYNC_HOOKS) {
+    const generatedPath = hook.generatedPath(paths)
+    await validateManagedConfigFile(
+      generatedPath,
+      `.agents/generated/${path.basename(generatedPath)}`,
+      formatFromExtension(generatedPath),
+      issues,
+    )
+  }
+  // Claude Desktop is materialized outside the hook table.
   await validateJsonIfExists(paths.generatedClaudeDesktop, '.agents/generated/claude-desktop.mcp.json', issues)
-  await validateJsonIfExists(paths.generatedJunie, '.agents/generated/junie.mcp.json', issues)
-  await validateTomlIfExists(paths.generatedGrok, '.agents/generated/grok.config.toml', issues)
-  await validateJsonIfExists(paths.generatedAmp, '.agents/generated/amp.settings.json', issues)
-  await validateJsonIfExists(paths.generatedDroid, '.agents/generated/droid.mcp.json', issues)
-  await validateJsoncIfExists(paths.generatedKilo, '.agents/generated/kilo.jsonc', issues)
-  await validateJsonIfExists(paths.generatedDevin, '.agents/generated/devin.mcp_config.json', issues)
-  await validateJsonIfExists(paths.generatedZed, '.agents/generated/zed.settings.json', issues)
-  await validateJsonIfExists(paths.generatedGoose, '.agents/generated/goose.extensions.json', issues)
 
-  if (enabledIntegrations.includes('codex')) {
-    await validateTomlIfExists(paths.codexConfig, '.codex/config.toml', issues)
+  // Every integration whose configuration is one known file is validated from the
+  // registry, so a tool added to the registry cannot be forgotten here.
+  for (const managed of listManagedConfigs(paths, enabledIntegrations)) {
+    await validateManagedConfigFile(managed.filePath, managed.label, managed.descriptor.format, issues)
   }
-  if (enabledIntegrations.includes('gemini')) {
-    await validateJsonIfExists(paths.geminiSettings, '.gemini/settings.json', issues)
-  }
-  if (enabledIntegrations.includes('copilot_vscode')) {
-    await validateJsonIfExists(paths.vscodeMcp, '.vscode/mcp.json', issues)
-  }
+
   if (enabledIntegrations.includes('copilot_cli')) {
     const copilotCliMcpPath = options.copilotCliPath === '.github/mcp.json'
       ? paths.copilotCliGithubMcp
       : paths.copilotCliMcp
     await validateJsonIfExists(copilotCliMcpPath, options.copilotCliPath, issues)
-  }
-  if (enabledIntegrations.includes('cursor')) {
-    await validateJsonIfExists(paths.cursorMcp, '.cursor/mcp.json', issues)
-  }
-  if (enabledIntegrations.includes('antigravity')) {
-    await validateJsonIfExists(
-      paths.antigravityWorkspaceMcp,
-      '.agents/mcp_config.json',
-      issues,
-    )
   }
   if (enabledIntegrations.includes('claude_desktop') && claudeDesktopConfigPath) {
     await validateJsonIfExists(
@@ -753,29 +736,32 @@ async function validateManagedConfigSyntax(
   if (enabledIntegrations.includes('claude') && !enabledIntegrations.includes('copilot_cli')) {
     await validateJsonIfExists(paths.copilotCliMcp, '.mcp.json', issues)
   }
-  if (enabledIntegrations.includes('grok')) {
-    await validateTomlIfExists(paths.grokConfig, toHomeRelativePath(paths.grokConfig), issues)
-  }
-  if (enabledIntegrations.includes('amp')) {
-    await validateJsonIfExists(paths.ampSettings, toHomeRelativePath(paths.ampSettings), issues)
-  }
-  if (enabledIntegrations.includes('droid')) {
-    await validateJsonIfExists(paths.droidMcp, toHomeRelativePath(paths.droidMcp), issues)
-  }
-  if (enabledIntegrations.includes('kilo')) {
-    await validateJsoncIfExists(paths.kiloConfig, toHomeRelativePath(paths.kiloConfig), issues)
-  }
-  if (enabledIntegrations.includes('devin')) {
-    await validateJsonIfExists(paths.devinMcp, toHomeRelativePath(paths.devinMcp), issues)
-  }
-  if (enabledIntegrations.includes('zed')) {
-    await validateJsoncIfExists(paths.zedSettings, toHomeRelativePath(paths.zedSettings), issues)
-  }
-  if (enabledIntegrations.includes('goose')) {
-    await validateYamlIfExists(paths.gooseConfig, toHomeRelativePath(paths.gooseConfig), issues)
-  }
 }
 
+
+
+
+/** Format of a generated preview, taken from its extension. */
+function formatFromExtension(filePath: string): ManagedConfigFormat {
+  const extension = path.extname(filePath).toLowerCase()
+  if (extension === '.toml') return 'toml'
+  if (extension === '.jsonc') return 'jsonc'
+  if (extension === '.yaml' || extension === '.yml') return 'yaml'
+  return 'json'
+}
+
+/** Validate one managed file with the parser its format needs. */
+async function validateManagedConfigFile(
+  filePath: string,
+  label: string,
+  format: ManagedConfigFormat,
+  issues: Issue[],
+): Promise<void> {
+  if (format === 'toml') return validateTomlIfExists(filePath, label, issues)
+  if (format === 'jsonc') return validateJsoncIfExists(filePath, label, issues)
+  if (format === 'yaml') return validateYamlIfExists(filePath, label, issues)
+  return validateJsonIfExists(filePath, label, issues)
+}
 
 /** Zed and Kilo keep their settings as JSONC, so comments are not a syntax error. */
 async function validateJsoncIfExists(filePath: string, label: string, issues: Issue[]): Promise<void> {

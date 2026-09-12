@@ -178,10 +178,17 @@ Integrations verified that way are marked in the README table; the rest say so.
 1. Create `src/integrations/your-tool.ts`
 2. Implement integration interface (id, name, paths)
 3. Add renderer in `src/core/renderers.ts`
-4. Register in `src/integrations/registry.ts`
-5. Add sync logic in `src/core/sync.ts`
-6. Add tests
-7. Update README supported tools table
+4. Add the paths it needs in `src/core/paths.ts`
+5. Register in `src/integrations/registry.ts`, including the `config` descriptor: the
+   path key, the format and the label. `status`, `doctor`, `reset` and `start` read the
+   descriptor, so this is the only place that list lives. A tool whose file depends on an
+   option or the platform has no descriptor and is handled where that choice is made —
+   add it to `WITHOUT_DESCRIPTOR` in `tests/integration-registry.test.ts` with the reason.
+6. Add a sync hook in `src/integrations/syncHooks.ts`
+7. Add the skills bridge to `SKILL_BRIDGES` in `src/core/skills.ts`, or set `nativeSkills`
+   when the tool reads `.agents/skills` itself
+8. Add tests
+9. Update README supported tools table
 
 ### Fixing a Bug
 
