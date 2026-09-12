@@ -1,7 +1,7 @@
-import os from 'node:os'
 import path from 'node:path'
 import TOML from '@iarna/toml'
 import { ensureDir, pathExists, readTextOrEmpty, writeTextAtomic } from './fs.js'
+import { getHomeDir } from './paths.js'
 
 type CodexConfig = {
   projects?: Record<string, { trust_level?: string } & Record<string, unknown>>
@@ -14,7 +14,7 @@ export function getCodexConfigPath(): string {
   if (override && override.trim().length > 0) {
     return path.resolve(override)
   }
-  return path.join(os.homedir(), '.codex', 'config.toml')
+  return path.join(getHomeDir(), '.codex', 'config.toml')
 }
 
 /** Escape a value for a TOML basic string, used for the project path in a header. */
@@ -170,4 +170,147 @@ export async function inspectCodexGlobalConfig(): Promise<{ ok: boolean; path: s
       error: error instanceof Error ? error.message.split('\n')[0] : String(error)
     }
   }
+}
+
+
+type GrokTrustedFolders = {
+  folders?: Record<string, { trusted?: boolean } & Record<string, unknown>>
+} & Record<string, unknown>
+
+export type GrokTrustState = CodexTrustState
+
+/**
+ * Grok keeps folder trust in a file of its own, not in `config.toml`.
+ *
+ * Until a folder is trusted, Grok ignores the project's MCP servers and the skills it
+ * would otherwise read from `.agents/skills`, without reporting anything: `grok inspect`
+ * simply lists none of them.
+ */
+export function getGrokTrustedFoldersPath(): string {
+  const override = process.env.AGENTS_GROK_TRUSTED_FOLDERS_PATH
+  if (override && override.trim().length > 0) {
+    return path.resolve(override)
+  }
+  return path.join(getHomeDir(), '.grok', 'trusted_folders.toml')
+}
+
+/** Header line Grok uses for a folder entry, e.g. `[folders."/path/to/repo"]`. */
+function grokFolderHeader(folderKey: string): string {
+  return `[folders."${escapeTomlBasicString(folderKey)}"]`
+}
+
+/** Read whether Grok trusts this project. */
+export async function getGrokTrustState(projectRoot: string): Promise<GrokTrustState> {
+  const trustPath = getGrokTrustedFoldersPath()
+  if (!(await pathExists(trustPath))) return 'untrusted'
+
+  const raw = await readTextOrEmpty(trustPath)
+  if (raw.trim().length === 0) return 'untrusted'
+
+  const folderKey = path.resolve(projectRoot)
+
+  try {
+    const parsed = TOML.parse(raw) as GrokTrustedFolders
+    return parsed.folders?.[folderKey]?.trusted === true ? 'trusted' : 'untrusted'
+  } catch {
+    return 'unreadable'
+  }
+}
+
+/**
+ * Mark a project as trusted for Grok.
+ *
+ * Edited in place for the same reason as the Codex config: the file records when each
+ * decision was made and this tool owns only the entry it adds.
+ */
+export async function ensureGrokProjectTrusted(projectRoot: string): Promise<{ changed: boolean; path: string }> {
+  const trustPath = getGrokTrustedFoldersPath()
+  const folderKey = path.resolve(projectRoot)
+  const raw = await readTextOrEmpty(trustPath)
+
+  if (raw.trim().length > 0) {
+    // The duplicate check runs before parsing: TOML.parse rejects a repeated section as
+    // a redefined key, which is true but says nothing about which folder to look at.
+    const duplicateHeader = grokFolderHeader(folderKey)
+    const duplicateCount = raw.split(/\r?\n/).filter((line) => line.trim() === duplicateHeader).length
+    if (duplicateCount > 1) {
+      throw new Error(
+        `${trustPath} declares ${String(duplicateCount)} sections for this folder; fix the duplicate before setting trust.`,
+      )
+    }
+
+    let parsed: GrokTrustedFolders
+    try {
+      parsed = TOML.parse(raw) as GrokTrustedFolders
+    } catch (error) {
+      const message = error instanceof Error ? error.message.split('\n')[0] : String(error)
+      throw new Error(`${trustPath} is not valid TOML (${message}); fix it before setting trust.`)
+    }
+
+    // A `folders` value that is not a table of tables (an inline table, an array of
+    // tables, a scalar) cannot take an appended `[folders."..."]` section: TOML would
+    // see a redefined key and Grok would stop reading the file entirely.
+    if (parsed.folders !== undefined && (typeof parsed.folders !== 'object' || Array.isArray(parsed.folders))) {
+      throw new Error(
+        `${trustPath} records folders in a form this tool does not edit; set trusted = true for ${folderKey} manually.`,
+      )
+    }
+
+    if (parsed.folders?.[folderKey]?.trusted === true) {
+      return { changed: false, path: trustPath }
+    }
+
+    const header = grokFolderHeader(folderKey)
+    const headerIndices = raw
+      .split(/\r?\n/)
+      .map((line, index) => (line.trim() === header ? index : -1))
+      .filter((index) => index !== -1)
+
+    const inlineFolders = /^\s*folders\s*=/m.test(raw)
+    if (inlineFolders) {
+      throw new Error(
+        `${trustPath} defines folders as an inline value; set trusted = true for ${folderKey} manually.`,
+      )
+    }
+
+    if (parsed.folders?.[folderKey] !== undefined && headerIndices.length === 0) {
+      throw new Error(
+        `${trustPath} already records this folder in a form this tool does not edit; set trusted = true for ${folderKey} manually.`,
+      )
+    }
+
+    const headerIndex = headerIndices[0]
+    if (headerIndex !== undefined) {
+      const lineEnding = raw.includes('\r\n') ? '\r\n' : '\n'
+      const next = raw.split(/\r?\n/)
+      let replaced = false
+      for (let index = headerIndex + 1; index < next.length; index += 1) {
+        const line = next[index] ?? ''
+        if (line.trim().startsWith('[')) break
+        if (/^\s*trusted\s*=/.test(line)) {
+          next[index] = line.replace(/^(\s*trusted\s*=\s*)(\S+)/, '$1true')
+          replaced = true
+          break
+        }
+      }
+      if (!replaced) {
+        next.splice(headerIndex + 1, 0, 'trusted = true')
+      }
+      await ensureDir(path.dirname(trustPath))
+      await writeTextAtomic(trustPath, next.join(lineEnding))
+      return { changed: true, path: trustPath }
+    }
+  }
+
+  const lineEnding = raw.includes('\r\n') ? '\r\n' : '\n'
+  const prefix = raw.length === 0 || raw.endsWith(lineEnding) ? raw : `${raw}${lineEnding}`
+  const separator = prefix.trim().length > 0 ? lineEnding : ''
+  const decidedAt = Math.floor(Date.now() / 1000)
+  const block =
+    `${separator}${grokFolderHeader(folderKey)}${lineEnding}`
+    + `trusted = true${lineEnding}`
+    + `decided_at = ${String(decidedAt)}${lineEnding}`
+  await ensureDir(path.dirname(trustPath))
+  await writeTextAtomic(trustPath, `${prefix}${block}`)
+  return { changed: true, path: trustPath }
 }

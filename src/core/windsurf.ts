@@ -1,6 +1,6 @@
-import os from 'node:os'
 import path from 'node:path'
 import { ensureDir, pathExists, readJson, writeJsonAtomic } from './fs.js'
+import { getHomeDir } from './paths.js'
 
 export interface WindsurfMcpPayload {
   mcpServers?: Record<string, unknown>
@@ -13,7 +13,9 @@ export function getWindsurfGlobalMcpPath(): string {
     return path.resolve(override)
   }
 
-  return path.join(os.homedir(), '.codeium', 'windsurf', 'mcp_config.json')
+  // getHomeDir, not os.homedir: AGENTS_HOME_DIR has to reach this path too, or a
+  // sandboxed run writes into the real home directory.
+  return path.join(getHomeDir(), '.codeium', 'windsurf', 'mcp_config.json')
 }
 
 export async function readWindsurfMcp(pathToRead: string): Promise<WindsurfMcpPayload | undefined> {

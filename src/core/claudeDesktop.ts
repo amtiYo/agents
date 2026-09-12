@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
-import os from 'node:os'
 import path from 'node:path'
 import { pathExists, readJson, writeJsonAtomic } from './fs.js'
+import { getHomeDir } from './paths.js'
 import { acquireSyncLock } from './syncLock.js'
 import { MANAGED_CLAUDE_NAME_PREFIX } from '../integrations/claude.js'
 
@@ -18,13 +18,13 @@ export function getClaudeDesktopConfigPath(): string | undefined {
   }
 
   if (process.platform === 'darwin') {
-    return path.join(os.homedir(), 'Library', 'Application Support', 'Claude', 'claude_desktop_config.json')
+    return path.join(getHomeDir(), 'Library', 'Application Support', 'Claude', 'claude_desktop_config.json')
   }
 
   if (process.platform === 'win32') {
     const appData = process.env.APPDATA && process.env.APPDATA.trim().length > 0
       ? process.env.APPDATA
-      : path.join(os.homedir(), 'AppData', 'Roaming')
+      : path.join(getHomeDir(), 'AppData', 'Roaming')
     return path.join(appData, 'Claude', 'claude_desktop_config.json')
   }
 

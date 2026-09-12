@@ -1,6 +1,6 @@
-import os from 'node:os'
 import path from 'node:path'
 import { ensureDir, pathExists, readJson, writeJsonAtomic } from './fs.js'
+import { getHomeDir } from './paths.js'
 
 export interface AntigravityMcpPayload {
   mcpServers?: Record<string, unknown>
@@ -23,19 +23,19 @@ export function getLegacyAntigravityGlobalMcpPath(): string {
   }
 
   if (process.platform === 'darwin') {
-    return path.join(os.homedir(), 'Library', 'Application Support', 'Antigravity', 'User', 'mcp.json')
+    return path.join(getHomeDir(), 'Library', 'Application Support', 'Antigravity', 'User', 'mcp.json')
   }
 
   if (process.platform === 'win32') {
     const appData = process.env.APPDATA && process.env.APPDATA.trim().length > 0
       ? process.env.APPDATA
-      : path.join(os.homedir(), 'AppData', 'Roaming')
+      : path.join(getHomeDir(), 'AppData', 'Roaming')
     return path.join(appData, 'Antigravity', 'User', 'mcp.json')
   }
 
   const xdgConfigHome = process.env.XDG_CONFIG_HOME && process.env.XDG_CONFIG_HOME.trim().length > 0
     ? process.env.XDG_CONFIG_HOME
-    : path.join(os.homedir(), '.config')
+    : path.join(getHomeDir(), '.config')
   return path.join(xdgConfigHome, 'Antigravity', 'User', 'mcp.json')
 }
 
