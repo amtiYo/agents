@@ -104,6 +104,78 @@ describe('entries in a config shared by every project', () => {
     expect(doc.extensions[secondName]?.cmd).toBe('second-server')
   }, 25000)
 
+  it('replaces the bare entry a previous version wrote even without a state file', async () => {
+    const globalDir = await mkdtemp(path.join(os.tmpdir(), 'agents-global-ws-'))
+    tempDirs.push(globalDir)
+    const windsurfPath = path.join(globalDir, 'mcp_config.json')
+    process.env.AGENTS_WINDSURF_MCP_PATH = windsurfPath
+
+    const projectRoot = await projectWithServer('windsurf', 'first-server')
+    await performSync({ projectRoot, check: false, verbose: false })
+
+    // What a fresh clone or `git clean -xfd` leaves: the entry written under the bare
+    // name, and no record of who wrote it.
+    const config = JSON.parse(await readFile(windsurfPath, 'utf8')) as { mcpServers: Record<string, unknown> }
+    const ours = config.mcpServers[toProjectScopedName(projectRoot, 'fetch')]
+    await writeFile(
+      windsurfPath,
+      `${JSON.stringify({ mcpServers: { fetch: ours, mine: { command: 'manual' } } }, null, 2)}\n`,
+      'utf8',
+    )
+    await rm(path.join(projectRoot, '.agents', 'generated'), { recursive: true, force: true })
+
+    await performSync({ projectRoot, check: false, verbose: false })
+
+    const after = JSON.parse(await readFile(windsurfPath, 'utf8')) as { mcpServers: Record<string, unknown> }
+    expect(after.mcpServers.fetch).toBeUndefined()
+    expect(after.mcpServers[toProjectScopedName(projectRoot, 'fetch')]).toBeDefined()
+    expect(after.mcpServers.mine).toBeDefined()
+  }, 25000)
+
+  it('leaves a bare entry alone when its content is not this project\'s', async () => {
+    const globalDir = await mkdtemp(path.join(os.tmpdir(), 'agents-global-ws-'))
+    tempDirs.push(globalDir)
+    const windsurfPath = path.join(globalDir, 'mcp_config.json')
+    process.env.AGENTS_WINDSURF_MCP_PATH = windsurfPath
+    await writeFile(
+      windsurfPath,
+      `${JSON.stringify({ mcpServers: { fetch: { command: 'users-own-fetch' } } }, null, 2)}\n`,
+      'utf8',
+    )
+
+    const projectRoot = await projectWithServer('windsurf', 'first-server')
+    const result = await performSync({ projectRoot, check: false, verbose: false })
+
+    const after = JSON.parse(await readFile(windsurfPath, 'utf8')) as {
+      mcpServers: Record<string, { command?: string }>
+    }
+    expect(after.mcpServers.fetch?.command).toBe('users-own-fetch')
+    expect(result.warnings.join(' ')).toContain('not written by this project and was left alone')
+  }, 25000)
+
+  it('does not delete a bare entry on reset without a state file', async () => {
+    const globalDir = await mkdtemp(path.join(os.tmpdir(), 'agents-global-ws-'))
+    tempDirs.push(globalDir)
+    const windsurfPath = path.join(globalDir, 'mcp_config.json')
+    process.env.AGENTS_WINDSURF_MCP_PATH = windsurfPath
+
+    const projectRoot = await projectWithServer('windsurf', 'first-server')
+    await performSync({ projectRoot, check: false, verbose: false })
+
+    const config = JSON.parse(await readFile(windsurfPath, 'utf8')) as { mcpServers: Record<string, unknown> }
+    config.mcpServers.fetch = { command: 'users-own-fetch' }
+    await writeFile(windsurfPath, `${JSON.stringify(config, null, 2)}\n`, 'utf8')
+    await rm(path.join(projectRoot, '.agents', 'generated'), { recursive: true, force: true })
+
+    await runReset({ projectRoot, localOnly: true })
+
+    const after = JSON.parse(await readFile(windsurfPath, 'utf8')) as {
+      mcpServers: Record<string, { command?: string }>
+    }
+    expect(after.mcpServers[toProjectScopedName(projectRoot, 'fetch')]).toBeUndefined()
+    expect(after.mcpServers.fetch?.command).toBe('users-own-fetch')
+  }, 25000)
+
   it('replaces the bare entry a previous version wrote', async () => {
     const globalDir = await mkdtemp(path.join(os.tmpdir(), 'agents-global-ws-'))
     tempDirs.push(globalDir)

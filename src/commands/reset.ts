@@ -579,10 +579,9 @@ async function cleanupWindsurfGlobalConfig(args: {
   if (managedNames.length === 0) {
     try {
       const resolved = await loadResolvedRegistry(args.projectRoot)
-      managedNames = resolved.serversByTarget.windsurf.flatMap((server) => [
+      managedNames = resolved.serversByTarget.windsurf.map((server) =>
         toProjectScopedName(args.projectRoot, server.name),
-        server.name
-      ])
+      )
     } catch {
       managedNames = []
     }
@@ -647,12 +646,11 @@ async function cleanupGooseConfig(args: {
   if (managedNames.length === 0) {
     try {
       const resolved = await loadResolvedRegistry(args.projectRoot)
-      // Both spellings: the scoped name written now, and the bare name written by
-      // versions before entries carried the project they came from.
-      managedNames = resolved.serversByTarget.goose.flatMap((server) => [
+      // Only the scoped names. A bare entry under the same name is not this project's
+      // by definition, and deleting it here would take the user's own extension with it.
+      managedNames = resolved.serversByTarget.goose.map((server) =>
         toProjectScopedName(args.projectRoot, server.name),
-        server.name
-      ])
+      )
     } catch {
       managedNames = []
     }

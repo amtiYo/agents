@@ -6,7 +6,7 @@ import { getLegacyAntigravityGlobalMcpPath, normalizeAntigravityMcpPayload, read
 import { getWindsurfGlobalMcpPath, normalizeWindsurfMcpPayload, readWindsurfMcp } from '../core/windsurf.js'
 import { normalizeOpencodeConfig } from '../core/opencode.js'
 import { renderVscodeMcp } from '../core/renderers.js'
-import { scopeManagedEntries } from '../core/globalScope.js'
+import { findLegacyManagedNames, formatForeignLegacyWarnings, scopeManagedEntries } from '../core/globalScope.js'
 import { acquireSyncLock } from '../core/syncLock.js'
 import { buildAntigravityPayload } from './antigravity.js'
 import { buildCodexConfig } from './codex.js'
@@ -695,12 +695,22 @@ async function syncManagedWindsurfGlobal(args: {
       ? normalizeWindsurfMcpPayload(parseJsonObject(args.rawGenerated, 'generated Windsurf config'))
       : normalizeWindsurfMcpPayload({})
     // The Windsurf config is shared by every project on the machine, so entries carry the
-    // project they came from. Entries written before this became the rule are listed in
-    // the state file under their old names and are removed by the merge below.
-    const managedServers = scopeManagedEntries(args.projectRoot, recordFrom(generated.mcpServers))
+    // project they came from. Entries written before that rule are recognized by content
+    // rather than by the state file, which a fresh clone does not have.
+    const unscopedServers = recordFrom(generated.mcpServers)
     const existingServers = recordFrom(existing.mcpServers)
+    const legacy = findLegacyManagedNames(existingServers, unscopedServers)
+    args.warnings.push(
+      ...formatForeignLegacyWarnings(toChangedEntry(args.projectRoot, args.globalPath), legacy.foreign),
+    )
+    const managedServers = scopeManagedEntries(args.projectRoot, unscopedServers)
     const takenOver: string[] = []
-    const nextServers = mergeManagedServers(existingServers, previousNames, managedServers, takenOver)
+    const nextServers = mergeManagedServers(
+      existingServers,
+      [...previousNames, ...legacy.migrated],
+      managedServers,
+      takenOver,
+    )
     args.warnings.push(...formatTakenOverWarnings(toChangedEntry(args.projectRoot, args.globalPath), takenOver))
     const nextPayload = normalizeWindsurfMcpPayload({
       ...existing,
@@ -1009,14 +1019,25 @@ async function syncManagedGooseGlobal(context: HookContext): Promise<void> {
       : {}
     // Goose repeats the extension name inside the entry, so both sides are scoped to the
     // project. Without it, two projects with a server called `fetch` overwrite each other.
+    const unscopedExtensions = recordFrom(generated.extensions)
+    const existingExtensions = readGooseExtensions(doc)
+    const legacy = findLegacyManagedNames(existingExtensions, unscopedExtensions)
+    context.warnings.push(
+      ...formatForeignLegacyWarnings(toChangedEntry(context.projectRoot, configPath), legacy.foreign),
+    )
     const managedExtensions = scopeManagedEntries(
       context.projectRoot,
-      recordFrom(generated.extensions),
+      unscopedExtensions,
       (value, scopedName) =>
         (typeof value === 'object' && value !== null ? { ...value, name: scopedName } : value) as typeof value,
     )
     const takenOver: string[] = []
-    const nextExtensions = mergeManagedServers(readGooseExtensions(doc), previousNames, managedExtensions, takenOver)
+    const nextExtensions = mergeManagedServers(
+      existingExtensions,
+      [...previousNames, ...legacy.migrated],
+      managedExtensions,
+      takenOver,
+    )
     context.warnings.push(...formatTakenOverWarnings(toChangedEntry(context.projectRoot, configPath), takenOver))
     const content = setGooseExtensions(doc, nextExtensions)
 

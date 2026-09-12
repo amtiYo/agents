@@ -250,9 +250,16 @@ does not remove the other's.
 Project-local files keep the plain server name: nothing else writes them, and the name is
 what the tool shows to the model.
 
-Upgrading rewrites the bare entries a previous version wrote, taking the names from the
-project's state file in `.agents/generated`. A project whose state file was deleted keeps
-its old entries until they are removed by hand.
+Upgrading rewrites the bare entries a previous version of this project wrote. They are
+recognised by content: an entry under the bare name holding exactly what this project is
+about to write is its own leftover and is replaced. An entry of the same name holding
+something else belongs to the user or to another project, so it stays and the sync says so.
+The state file in `.agents/generated` is not needed for this, which matters because it is
+gitignored and a fresh clone does not have it.
+
+For the same reason `agents reset` removes only entries carrying this project's name. A
+bare entry is never this project's under the current scheme, and deleting it would take
+someone else's configuration with it.
 
 ## Context Budget
 

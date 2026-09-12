@@ -50,3 +50,40 @@ export function scopeManagedEntries<T>(
     }),
   )
 }
+
+/**
+ * Bare-named entries in a shared config that this project wrote before names carried the
+ * project.
+ *
+ * The state file is the usual record of what to remove, but it lives in
+ * `.agents/generated`, which is gitignored: a fresh clone or `git clean` leaves the old
+ * entries with nobody claiming them, and they would sit next to the new ones forever.
+ * Content settles it. An entry under the bare name whose value matches what this project
+ * is about to write is this project's own leftover. Anything else stays, because it
+ * belongs to the user or to another project.
+ */
+export function findLegacyManagedNames(
+  existingEntries: Record<string, unknown>,
+  generatedEntries: Record<string, unknown>,
+): { migrated: string[]; foreign: string[] } {
+  const migrated: string[] = []
+  const foreign: string[] = []
+
+  for (const [name, generated] of Object.entries(generatedEntries)) {
+    if (!(name in existingEntries)) continue
+    if (JSON.stringify(existingEntries[name]) === JSON.stringify(generated)) migrated.push(name)
+    else foreign.push(name)
+  }
+
+  return { migrated: migrated.sort(), foreign: foreign.sort() }
+}
+
+/** One warning per bare entry left alone because its content is not this project's. */
+export function formatForeignLegacyWarnings(label: string, names: string[]): string[] {
+  return names.map(
+    (name) =>
+      `${label}: an entry named "${name}" is not written by this project and was left alone. `
+        + 'Entries this CLI writes now carry the project they came from; remove that one by hand '
+        + 'if an older version of this project left it behind.',
+  )
+}
