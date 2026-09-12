@@ -63,7 +63,7 @@ Eighteen tools. "Verified" means the tool's own CLI was run against the file thi
 
 | Integration | `--llm` id | MCP config it writes | Skills | Verified |
 |:--|:--|:--|:--:|:--:|
-| Codex | `codex` | `.codex/config.toml` (managed block, project trust handled) | bridge | ✅ |
+| Codex | `codex` | `.codex/config.toml` (managed block, project trust handled) | native | ✅ |
 | Claude Code | `claude` | `.mcp.json` project scope, plus root `CLAUDE.md` wrapper | bridge | ✅ |
 | Claude Desktop | `claude_desktop` | global `claude_desktop_config.json`, stdio servers only | — | ✅ |
 | Gemini CLI | `gemini` | `.gemini/settings.json` | bridge | ✅ |
@@ -72,7 +72,7 @@ Eighteen tools. "Verified" means the tool's own CLI was run against the file thi
 | Copilot CLI | `copilot_cli` | `.mcp.json`, or `.github/mcp.json` | native | ✅ |
 | Antigravity | `antigravity` | `.agents/mcp_config.json` | flat copy | ✅ |
 | Devin Desktop (Windsurf) | `windsurf`, `devin_desktop` | global `~/.codeium/windsurf/mcp_config.json` | bridge | ✅ |
-| OpenCode | `opencode` | `opencode.json` (`mcp`) | bridge | ✅ |
+| OpenCode | `opencode` | `opencode.json` (`mcp`) | native | ✅ |
 | Junie | `junie` | `.junie/mcp/mcp.json` | bridge | ✅ |
 | Grok Build | `grok` | `.grok/config.toml` (managed block, folder trust handled) | native | ✅ |
 | Amp | `amp` | `.amp/settings.json` (`amp.mcpServers`) | native | ✅ |

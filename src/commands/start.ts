@@ -460,7 +460,7 @@ function renderPreflight(items: Array<{ label: string; ok: boolean; detail: stri
  * @param projectRoot - Path to the project root to inspect
  * @returns `true` if any known generated or integration-specific artifact exists in the project, `false` otherwise
  */
-async function shouldOfferCleanup(projectRoot: string): Promise<boolean> {
+export async function shouldOfferCleanup(projectRoot: string): Promise<boolean> {
   const paths = getProjectPaths(projectRoot)
   const legacyAgentDir = path.join(projectRoot, '.agent')
   const candidates = [
@@ -477,14 +477,27 @@ async function shouldOfferCleanup(projectRoot: string): Promise<boolean> {
     paths.opencodeDir,
     paths.junieMcpDir,
     // One config file per integration and one bridge per integration, from the tables
-    // the sync itself reads, so a new tool is covered without a third list.
-    ...INTEGRATIONS.flatMap((integration) => (integration.config ? [paths[integration.config.pathKey]] : [])),
+    // the sync itself reads, so a new tool is covered without a third list. A file
+    // outside the project belongs to every project on the machine: Goose's config is
+    // always in the home directory, and its presence says nothing about this project.
+    ...INTEGRATIONS.flatMap((integration) =>
+      integration.config && isInsideProject(projectRoot, paths[integration.config.pathKey])
+        ? [paths[integration.config.pathKey]]
+        : [],
+    ),
     ...SKILL_BRIDGES.map((bridge) => paths[bridge.pathKey])
   ]
   for (const candidate of candidates) {
     if (await pathExists(candidate)) return true
   }
   return false
+}
+
+
+/** Whether a path this CLI writes lives inside the project being set up. */
+function isInsideProject(projectRoot: string, candidate: string): boolean {
+  const relative = path.relative(path.resolve(projectRoot), candidate)
+  return relative !== '' && !relative.startsWith('..') && !path.isAbsolute(relative)
 }
 
 function getDefaults(): {

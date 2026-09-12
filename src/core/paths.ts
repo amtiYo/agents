@@ -310,7 +310,9 @@ export function getProjectPaths(projectRoot: string): ProjectPaths {
     generatedKilo: path.join(generatedDir, 'kilo.jsonc'),
     generatedDevin: path.join(generatedDir, 'devin.mcp_config.json'),
     generatedZed: path.join(generatedDir, 'zed.settings.json'),
-    generatedGoose: path.join(generatedDir, 'goose.config.yaml'),
+    // JSON, despite what Goose itself reads: the materializer parses this preview
+    // before turning it into YAML, and the extension has to say so.
+    generatedGoose: path.join(generatedDir, 'goose.extensions.json'),
     generatedGooseState: path.join(generatedDir, 'goose.state.json'),
     generatedAmpState: path.join(generatedDir, 'amp.state.json'),
     generatedDroidState: path.join(generatedDir, 'droid.state.json'),

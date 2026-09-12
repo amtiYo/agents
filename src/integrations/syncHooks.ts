@@ -979,6 +979,13 @@ async function mergeJsoncKey(args: {
  * entries it created and leaves everything else (providers, models) alone.
  */
 async function syncManagedGooseGlobal(context: HookContext): Promise<void> {
+  // The preview used to be called goose.config.yaml although it holds JSON. Removing the
+  // old name keeps a file that is neither read nor regenerated out of .agents/generated.
+  const legacyGoosePreview = path.join(path.dirname(context.paths.generatedGoose), 'goose.config.yaml')
+  if (!context.check && (await pathExists(legacyGoosePreview))) {
+    await removeIfExists(legacyGoosePreview)
+  }
+
   const statePath = context.paths.generatedGooseState
   const previousNames = await readManagedGlobalNames(statePath)
   if (!context.enabled && previousNames.length === 0) return

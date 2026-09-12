@@ -119,7 +119,9 @@ and `agents sync` reports that per-tool `targets` cannot isolate servers inside 
 
 ## VS Code Integration
 
-**Managed in `.vscode/settings.json`:**
+**Managed in `.vscode/settings.json`.** The same list is written to `files.exclude` and to
+`search.exclude`, and it does not depend on which integrations the project enables:
+
 ```json
 {
   "files.exclude": {
@@ -132,10 +134,18 @@ and `agents sync` reports that per-tool `targets` cannot isolate servers inside 
     "**/.windsurf": true,
     "**/.opencode": true,
     "**/.junie": true,
+    "**/.grok": true,
+    "**/.amp": true,
+    "**/.factory": true,
+    "**/.kilo": true,
+    "**/kilo.jsonc": true,
+    "**/.devin": true,
+    "**/.zed": true,
     "**/.mcp.json": true,
     "**/opencode.json": true,
     "**/.agents/generated": true
-  }
+  },
+  "search.exclude": { "…": "the same entries" }
 }
 ```
 

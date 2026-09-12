@@ -724,13 +724,6 @@ async function validateManagedConfigSyntax(
       issues,
     )
   }
-  if (enabledIntegrations.includes('opencode')) {
-    const opencodeLabel = paths.isHome ? toHomeRelativePath(paths.opencodeConfig) : 'opencode.json'
-    await validateJsonIfExists(paths.opencodeConfig, opencodeLabel, issues)
-  }
-  if (enabledIntegrations.includes('junie')) {
-    await validateJsonIfExists(paths.junieMcp, '.junie/mcp/mcp.json', issues)
-  }
   // Claude Code on project scope writes .mcp.json too, so the file has to be checked
   // even in a project that does not use Copilot CLI.
   if (enabledIntegrations.includes('claude') && !enabledIntegrations.includes('copilot_cli')) {

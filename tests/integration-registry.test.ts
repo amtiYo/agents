@@ -46,6 +46,18 @@ describe('integration registry', () => {
     expect(listManagedConfigs(paths, enabled).map((entry) => entry.id)).toEqual(['codex', 'zed'])
   })
 
+  it('names a generated preview after the format it holds', () => {
+    const paths = getProjectPaths(path.join(os.tmpdir(), 'agents-registry-probe'))
+
+    // doctor picks the parser from the extension, so a preview written as JSON must not
+    // be called .yaml: the check would pass anything JSON-shaped through a YAML parser.
+    for (const hook of INTEGRATION_SYNC_HOOKS) {
+      const extension = path.extname(hook.generatedPath(paths))
+      expect(['.json', '.jsonc', '.toml', '.yaml'], hook.id).toContain(extension)
+    }
+    expect(path.extname(paths.generatedGoose)).toBe('.json')
+  })
+
   it('keeps a generated preview for every integration that syncs one', () => {
     const paths = getProjectPaths(path.join(os.tmpdir(), 'agents-registry-probe'))
 

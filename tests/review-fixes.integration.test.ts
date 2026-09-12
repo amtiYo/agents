@@ -109,6 +109,30 @@ async function captureStdout(fn: () => Promise<void>): Promise<string> {
   return chunks.join('')
 }
 
+describe('what the setup wizard counts as leftovers', () => {
+  it('ignores a config that lives outside the project', { timeout: 25000 }, async () => {
+    const fakeHome = await mkdtemp(path.join(os.tmpdir(), 'agents-review-home-'))
+    tempDirs.push(fakeHome)
+    process.env.AGENTS_HOME_DIR = fakeHome
+
+    // Goose keeps its config in the home directory, so it is there for every project and
+    // says nothing about this one. A fresh project must not be offered a cleanup.
+    const gooseConfig = path.join(fakeHome, '.config', 'goose', 'config.yaml')
+    await mkdir(path.dirname(gooseConfig), { recursive: true })
+    await writeFile(gooseConfig, 'extensions: {}\n', 'utf8')
+
+    const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-review-fresh-'))
+    tempDirs.push(projectRoot)
+
+    const { shouldOfferCleanup } = await import('../src/commands/start.js')
+    expect(await shouldOfferCleanup(projectRoot)).toBe(false)
+
+    await mkdir(path.join(projectRoot, '.codex'), { recursive: true })
+    await writeFile(path.join(projectRoot, '.codex', 'config.toml'), '\n', 'utf8')
+    expect(await shouldOfferCleanup(projectRoot)).toBe(true)
+  })
+})
+
 describe('one broken integration does not stop the others', () => {
   it('names the integration and keeps writing the rest', { timeout: 25000 }, async () => {
     const projectRoot = await project(['cursor', 'junie'])

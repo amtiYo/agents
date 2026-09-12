@@ -17,8 +17,6 @@ export interface ManagedConfigDescriptor {
   format: ManagedConfigFormat
   /** Label for a project file. Without one the label is built from the path. */
   label?: string
-  /** The file lives outside the project, so it is shared with every other project. */
-  global?: boolean
   /**
    * In global mode the file moves under the home directory and the static label stops
    * describing it. Only OpenCode does this: the others keep the same relative path.
@@ -52,6 +50,7 @@ export const INTEGRATIONS: IntegrationDefinition[] = [
     id: 'codex',
     label: 'Codex',
     requiredBinary: 'codex',
+    nativeSkills: true,
     config: { pathKey: 'codexConfig', format: 'toml', label: '.codex/config.toml' }
   },
   { id: 'claude', label: 'Claude Code', requiredBinary: 'claude' },
@@ -87,6 +86,7 @@ export const INTEGRATIONS: IntegrationDefinition[] = [
     id: 'opencode',
     label: 'OpenCode',
     requiredBinary: 'opencode',
+    nativeSkills: true,
     config: { pathKey: 'opencodeConfig', format: 'json', label: 'opencode.json', homeLabel: true }
   },
   {
@@ -100,7 +100,7 @@ export const INTEGRATIONS: IntegrationDefinition[] = [
     label: 'Grok Build',
     requiredBinary: 'grok',
     nativeSkills: true,
-    config: { pathKey: 'grokConfig', format: 'toml', global: true }
+    config: { pathKey: 'grokConfig', format: 'toml' }
   },
   {
     id: 'amp',
@@ -110,7 +110,6 @@ export const INTEGRATIONS: IntegrationDefinition[] = [
     config: {
       pathKey: 'ampSettings',
       format: 'json',
-      global: true,
       managedEntries: { key: 'amp.mcpServers', generatedPathKey: 'generatedAmp', shortLabel: 'Amp' }
     }
   },
@@ -122,7 +121,6 @@ export const INTEGRATIONS: IntegrationDefinition[] = [
     config: {
       pathKey: 'droidMcp',
       format: 'json',
-      global: true,
       managedEntries: { key: 'mcpServers', generatedPathKey: 'generatedDroid', shortLabel: 'Droid' }
     }
   },
@@ -133,7 +131,6 @@ export const INTEGRATIONS: IntegrationDefinition[] = [
     config: {
       pathKey: 'kiloConfig',
       format: 'jsonc',
-      global: true,
       managedEntries: { key: 'mcp', generatedPathKey: 'generatedKilo', shortLabel: 'Kilo' }
     }
   },
@@ -145,7 +142,6 @@ export const INTEGRATIONS: IntegrationDefinition[] = [
     config: {
       pathKey: 'devinMcp',
       format: 'json',
-      global: true,
       managedEntries: { key: 'mcpServers', generatedPathKey: 'generatedDevin', shortLabel: 'Devin' }
     }
   },
@@ -157,7 +153,6 @@ export const INTEGRATIONS: IntegrationDefinition[] = [
     config: {
       pathKey: 'zedSettings',
       format: 'jsonc',
-      global: true,
       managedEntries: { key: 'context_servers', generatedPathKey: 'generatedZed', shortLabel: 'Zed' }
     }
   },
@@ -166,7 +161,7 @@ export const INTEGRATIONS: IntegrationDefinition[] = [
     label: 'Goose',
     requiredBinary: 'goose',
     nativeSkills: true,
-    config: { pathKey: 'gooseConfig', format: 'yaml', global: true }
+    config: { pathKey: 'gooseConfig', format: 'yaml' }
   }
 ]
 
