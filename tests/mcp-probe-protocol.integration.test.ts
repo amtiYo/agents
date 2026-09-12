@@ -189,6 +189,88 @@ describe('stdio probe across protocol eras', () => {
     expect(result.ok).toBe(false)
     expect(result.error).toContain('Unsupported protocol version')
   })
+
+  it('stays on the modern path when the server starts after the fallback timer', async () => {
+    // npx pulling a package is slower than the era probe, so the handshake goes out
+    // first; the answer to server/discover has to bring the probe back.
+    const command = await writeStdioServer(`
+      const answer = (message) => {
+        if (message.method === 'server/discover') {
+          send({ jsonrpc: '2.0', id: message.id, result: { resultType: 'complete', supportedVersions: ['2026-07-28'] } })
+          return
+        }
+        if (message.method === 'initialize') {
+          send({ jsonrpc: '2.0', id: message.id, error: { code: -32601, message: 'Method not found: initialize' } })
+          return
+        }
+        if (message.method === 'tools/list') {
+          send({ jsonrpc: '2.0', id: message.id, result: { resultType: 'complete', tools: ${JSON.stringify(TOOLS)} } })
+        }
+      }
+      setTimeout(() => { answer(message) }, 2600)
+    `)
+
+    const result = await probeServerTools({ name: 'slow', transport: 'stdio', command: 'node', args: [command] }, 9000)
+
+    expect(result.error).toBeUndefined()
+    expect(result.ok).toBe(true)
+    expect(result.tools).toHaveLength(1)
+  }, 20000)
+
+  it('follows every page of the tool list', async () => {
+    const command = await writeStdioServer(`
+      if (message.method === 'server/discover') {
+        send({ jsonrpc: '2.0', id: message.id, result: { resultType: 'complete', supportedVersions: ['2026-07-28'] } })
+        continue
+      }
+      if (message.method === 'tools/list') {
+        if (message.params?.cursor === 'page-2') {
+          send({ jsonrpc: '2.0', id: message.id, result: { resultType: 'complete', tools: [{ name: 'second', description: 'Second' }] } })
+          continue
+        }
+        send({ jsonrpc: '2.0', id: message.id, result: {
+          resultType: 'complete',
+          tools: ${JSON.stringify(TOOLS)},
+          nextCursor: 'page-2'
+        } })
+      }
+    `)
+
+    const result = await probeServerTools({ name: 'paged', transport: 'stdio', command: 'node', args: [command] }, 9000)
+
+    expect(result.ok).toBe(true)
+    expect(result.tools.map((tool) => tool.name)).toEqual(['search', 'second'])
+  })
+
+  it('reports a result type it does not recognize instead of counting it', async () => {
+    const command = await writeStdioServer(`
+      if (message.method === 'server/discover') {
+        send({ jsonrpc: '2.0', id: message.id, result: { resultType: 'complete', supportedVersions: ['2026-07-28'] } })
+        continue
+      }
+      if (message.method === 'tools/list') {
+        send({ jsonrpc: '2.0', id: message.id, result: { resultType: 'com.example/partial', tools: ${JSON.stringify(TOOLS)} } })
+      }
+    `)
+
+    const result = await probeServerTools({ name: 'odd', transport: 'stdio', command: 'node', args: [command] }, 8000)
+
+    expect(result.ok).toBe(false)
+    expect(result.error).toContain('unrecognized resultType')
+  })
+
+  it('says which versions a discovering server offered when none of them fits', async () => {
+    const command = await writeStdioServer(`
+      if (message.method === 'server/discover') {
+        send({ jsonrpc: '2.0', id: message.id, result: { resultType: 'complete', supportedVersions: ['2099-01-01'] } })
+      }
+    `)
+
+    const result = await probeServerTools({ name: 'future', transport: 'stdio', command: 'node', args: [command] }, 8000)
+
+    expect(result.ok).toBe(false)
+    expect(result.error).toContain('2099-01-01')
+  })
 })
 
 describe('http probe across protocol eras', () => {
@@ -291,5 +373,114 @@ describe('http probe across protocol eras', () => {
     expect(versionsSeen[0]).toBe('2026-07-28')
     expect(initializeVersion).toBe('2025-11-25')
     expect(result.ok).toBe(true)
+  })
+  it('does not fall back when a modern server asks for a capability', async () => {
+    const methods: string[] = []
+    const url = await listenOn(async (request, response) => {
+      const body = await readBody(request)
+      methods.push(String(body.method))
+      response.writeHead(400, { 'content-type': 'application/json' })
+      response.end(JSON.stringify({
+        jsonrpc: '2.0',
+        id: body.id,
+        error: { code: -32021, message: 'Missing required client capability: roots' }
+      }))
+    })
+
+    const result = await probeServerTools({ name: 'needs-capability', transport: 'http', url }, 8000)
+
+    expect(result.ok).toBe(false)
+    expect(result.error).toContain('Missing required client capability')
+    // A reserved code identifies a modern server, so the handshake is never attempted.
+    expect(methods).toEqual(['tools/list'])
+  })
+
+  it('does not fall back on a 404 whose body names the missing method', async () => {
+    const methods: string[] = []
+    const url = await listenOn(async (request, response) => {
+      const body = await readBody(request)
+      methods.push(String(body.method))
+      response.writeHead(404, { 'content-type': 'application/json' })
+      response.end(JSON.stringify({
+        jsonrpc: '2.0',
+        id: body.id,
+        error: { code: -32601, message: 'Method not found: tools/list' }
+      }))
+    })
+
+    const result = await probeServerTools({ name: 'no-tools', transport: 'http', url }, 8000)
+
+    expect(result.ok).toBe(false)
+    expect(result.error).toContain('Method not found')
+    expect(methods).toEqual(['tools/list'])
+  })
+
+  it('sends the negotiated version header on the handshake path', async () => {
+    const listHeaders: Array<string | undefined> = []
+    const url = await listenOn(async (request, response) => {
+      const body = await readBody(request)
+      if (body.method === 'tools/list' && request.headers['mcp-protocol-version'] === '2026-07-28') {
+        response.writeHead(400, { 'content-type': 'text/plain' })
+        response.end('Bad Request')
+        return
+      }
+      if (body.method === 'initialize') {
+        response.writeHead(200, { 'content-type': 'application/json' })
+        response.end(JSON.stringify({ jsonrpc: '2.0', id: body.id, result: { protocolVersion: '2025-11-25' } }))
+        return
+      }
+      if (body.method === 'tools/list') {
+        listHeaders.push(request.headers['mcp-protocol-version'] as string | undefined)
+        response.writeHead(200, { 'content-type': 'application/json' })
+        response.end(JSON.stringify({ jsonrpc: '2.0', id: body.id, result: { tools: TOOLS } }))
+        return
+      }
+      response.writeHead(202)
+      response.end()
+    })
+
+    const result = await probeServerTools({ name: 'legacy-header', transport: 'http', url }, 8000)
+
+    expect(result.ok).toBe(true)
+    // The revisions that use a handshake require the header on every later request, with
+    // the version the server settled on.
+    expect(listHeaders).toEqual(['2025-11-25'])
+  })
+
+  it('keeps the Accept header the transport requires', async () => {
+    let accept: string | undefined
+    const url = await listenOn(async (request, response) => {
+      const body = await readBody(request)
+      accept = request.headers.accept
+      response.writeHead(200, { 'content-type': 'application/json' })
+      response.end(JSON.stringify({ jsonrpc: '2.0', id: body.id, result: { resultType: 'complete', tools: TOOLS } }))
+    })
+
+    const result = await probeServerTools(
+      { name: 'header-clash', transport: 'http', url, headers: { accept: 'application/json' } },
+      8000,
+    )
+
+    expect(result.ok).toBe(true)
+    expect(accept).toContain('text/event-stream')
+  })
+
+  it('follows every page over HTTP', async () => {
+    const url = await listenOn(async (request, response) => {
+      const body = await readBody(request)
+      const cursor = (body.params as { cursor?: string } | undefined)?.cursor
+      response.writeHead(200, { 'content-type': 'application/json' })
+      response.end(JSON.stringify({
+        jsonrpc: '2.0',
+        id: body.id,
+        result: cursor === 'page-2'
+          ? { resultType: 'complete', tools: [{ name: 'second', description: 'Second' }] }
+          : { resultType: 'complete', tools: TOOLS, nextCursor: 'page-2' }
+      }))
+    })
+
+    const result = await probeServerTools({ name: 'paged-http', transport: 'http', url }, 8000)
+
+    expect(result.tools.map((tool) => tool.name)).toEqual(['search', 'second'])
   })
 })

@@ -261,10 +261,14 @@ probe follows the detection the specification defines for a client that supports
 | stdio | `server/discover` | the answer is an error that is not a reserved MCP code, or nothing arrives |
 | Streamable HTTP | `tools/list` with the modern headers | the status is `400`, `404` or `405` and the body is not a recognized MCP error |
 
-A reserved code identifies a modern server: `UnsupportedProtocolVersionError` (`-32022`)
-lists the revisions it does support, and the probe continues with one of those rather than
-falling back. When the only revisions offered are older than `2026-07-28`, the handshake is
-used with the newest of them.
+A reserved code identifies a modern server: `UnsupportedProtocolVersionError` (`-32022`),
+`MissingRequiredClientCapabilityError` (`-32021`) and `HeaderMismatchError` (`-32020`), as
+does a `404` whose body names the missing method. On `-32022` the probe continues with a
+revision the server advertises; when the only ones offered are older than `2026-07-28`, the
+handshake is used with the newest of them, and the version the server settles on travels in
+the `MCP-Protocol-Version` header of every later request.
+
+The tool list is read to the end: a `nextCursor` is followed until the pages run out.
 
 Servers whose configuration still contains an unresolved `${VAR}` are skipped rather
 than started, and every probe has a timeout.
