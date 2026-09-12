@@ -1,7 +1,7 @@
 import path from 'node:path'
 import { readFile } from 'node:fs/promises'
 import { ensureDir, pathExists, readJson, writeJsonAtomic } from './fs.js'
-import { loadAgentsConfig, saveAgentsConfig } from './config.js'
+import { loadAgentsConfigDetailed, persistMigratedConfig, saveAgentsConfig } from './config.js'
 import { loadResolvedRegistry } from './mcp.js'
 import { writeManagedFile } from './managedFiles.js'
 import { getProjectPaths } from './paths.js'
@@ -27,8 +27,10 @@ import { listClaudeManagedServerNames } from './claudeCli.js'
 import { renderClaudeDesktopMcp } from './renderers.js'
 import { validateEnvKey, validateEnvValueForShell, validateHeaderKey, validateServerName } from './mcpValidation.js'
 import { acquireSyncLock } from './syncLock.js'
+import { planProjectMcp, syncProjectMcpFile } from './projectMcp.js'
+import { collectUnsupportedFieldWarnings } from './fieldSupport.js'
 import * as ui from './ui.js'
-import type { IntegrationName, ResolvedMcpServer, SyncOptions, SyncResult } from '../types.js'
+import type { AgentsConfig, IntegrationName, ResolvedMcpServer, SyncOptions, SyncResult } from '../types.js'
 
 interface ClaudeState {
   managedNames: string[]
@@ -42,22 +44,46 @@ interface ClaudeDesktopState {
   managedNames: string[]
 }
 
+/**
+ * Materialize every enabled integration from `.agents`.
+ *
+ * Holds the sync lock, migrates the schema when needed, applies the active profile,
+ * renders each tool's format and writes atomically. With `check: true` nothing is
+ * written and the result lists what a real run would change, which is what
+ * `agents sync --check` reports as drift.
+ */
 export async function performSync(options: SyncOptions): Promise<SyncResult> {
-  const { projectRoot, check, verbose } = options
+  const { projectRoot, check, verbose, profile } = options
   const paths = getProjectPaths(projectRoot)
   const releaseLock = check ? null : await acquireSyncLock(paths.generatedSyncLock)
   try {
-    const config = await loadAgentsConfig(projectRoot)
+    const { config, migratedFrom } = await loadAgentsConfigDetailed(projectRoot)
     const sourceFingerprint = await computeSharedSourceFingerprint(projectRoot, config)
+    const changed: string[] = []
 
-    const resolved = await loadResolvedRegistry(projectRoot)
-    const warnings = [...resolved.warnings]
+    const migrationWarnings: string[] = []
+    if (migratedFrom !== null) {
+      // The file is under version control, so a check run has to report that a later
+      // sync will rewrite it.
+      changed.push('.agents/agents.json')
+      if (check) {
+        migrationWarnings.push(
+          `.agents/agents.json is schema ${String(migratedFrom)}; running sync migrates it to ${String(config.schemaVersion)} and keeps a .bak copy.`,
+        )
+      } else {
+        const backupPath = await persistMigratedConfig(projectRoot, config, migratedFrom)
+        migrationWarnings.push(
+          `Migrated .agents/agents.json from schema ${String(migratedFrom)} to ${String(config.schemaVersion)}; previous file kept at ${path.basename(backupPath)}.`,
+        )
+      }
+    }
+
+    const resolved = await loadResolvedRegistry(projectRoot, profile === undefined ? undefined : { profile })
+    const warnings = [...migrationWarnings, ...resolved.warnings]
     if (resolved.missingRequiredEnv.length > 0) {
       warnings.push(`Skipped servers because required env vars are missing: ${resolved.missingRequiredEnv.join('; ')}`)
     }
     validateResolvedServers(resolved.serversByTarget)
-
-    const changed: string[] = []
 
     if (!check) {
       const gitignoreChanged = await ensureProjectGitignore(projectRoot, config.syncMode)
@@ -70,10 +96,17 @@ export async function performSync(options: SyncOptions): Promise<SyncResult> {
       await ensureDir(paths.generatedDir)
     }
 
+    const enabled = new Set(config.integrations.enabled)
+    warnings.push(...collectUnsupportedFieldWarnings(resolved.serversByTarget, config.integrations.enabled))
+
     const generatedByIntegration: Partial<Record<IntegrationName, string>> = {}
     for (const hook of INTEGRATION_SYNC_HOOKS) {
       const generated = hook.buildGenerated(resolved.serversByTarget[hook.id])
-      warnings.push(...generated.warnings)
+      // Generated previews are written for every integration, but only the enabled
+      // ones may warn: nobody needs Goose advice in a project without Goose.
+      if (enabled.has(hook.id)) {
+        warnings.push(...generated.warnings)
+      }
       generatedByIntegration[hook.id] = generated.content
       await writeManagedFile({
         absolutePath: hook.generatedPath(paths),
@@ -85,7 +118,9 @@ export async function performSync(options: SyncOptions): Promise<SyncResult> {
     }
 
     const claudeDesktopGenerated = renderClaudeDesktopMcp(resolved.serversByTarget.claude_desktop, projectRoot)
-    warnings.push(...claudeDesktopGenerated.warnings)
+    if (enabled.has('claude_desktop')) {
+      warnings.push(...claudeDesktopGenerated.warnings)
+    }
     generatedByIntegration.claude_desktop = `${JSON.stringify({ mcpServers: claudeDesktopGenerated.mcpServers }, null, 2)}\n`
     await writeManagedFile({
       absolutePath: paths.generatedClaudeDesktop,
@@ -95,7 +130,6 @@ export async function performSync(options: SyncOptions): Promise<SyncResult> {
       changed
     })
 
-    const enabled = new Set(config.integrations.enabled)
     for (const hook of INTEGRATION_SYNC_HOOKS) {
       if (!hook.materialize) continue
       const hookEnabled = enabled.has(hook.id)
@@ -113,8 +147,32 @@ export async function performSync(options: SyncOptions): Promise<SyncResult> {
       })
     }
 
+    const claudeScope = config.integrations.options.claudeScope
+    const projectMcpPlan = planProjectMcp({
+      config,
+      claudeEnabled: enabled.has('claude'),
+      copilotCliEnabled: enabled.has('copilot_cli'),
+      claudeServers: resolved.serversByTarget.claude,
+      copilotServers: resolved.serversByTarget.copilot_cli,
+      paths
+    })
+
+    await syncProjectMcpFile({
+      plan: projectMcpPlan,
+      statePath: paths.generatedProjectMcpState,
+      generatedPath: paths.generatedClaudeProjectMcp,
+      projectRoot,
+      check,
+      changed,
+      warnings,
+      knownServerNames: Object.keys(config.mcp.servers)
+    })
+
     await syncClaude({
-      enabled: enabled.has('claude'),
+      // Project scope is a file, so the CLI path only runs when the user opted into local scope.
+      // When switching from local to project, this still runs once with `enabled: false` to
+      // remove the servers previously registered in ~/.claude.json.
+      enabled: enabled.has('claude') && claudeScope === 'local',
       check,
       projectRoot,
       servers: resolved.serversByTarget.claude,
@@ -171,19 +229,41 @@ export async function performSync(options: SyncOptions): Promise<SyncResult> {
       projectRoot
     })
 
-    const previousSourceHash = config.lastSyncSourceHash ?? null
+    // Sync bookkeeping lives in .agents/generated (gitignored). Keeping it in the
+    // committed config meant every teammate's sync produced a diff.
+    const syncState = await readSyncState(paths.generatedSyncState, config)
+    const previousSourceHash = syncState.lastSyncSourceHash
     const sourceStateChanged = sourceFingerprint !== previousSourceHash
     if (sourceStateChanged) {
-      changed.push('.agents/agents.json')
+      changed.push('.agents/generated/sync.state.json')
     }
     if (!check && sourceStateChanged) {
-      if (previousSourceHash === null && config.lastSync !== null) {
-        config.lastSyncSourceHash = sourceFingerprint
-      } else {
-        config.lastSync = new Date().toISOString()
-        config.lastSyncSourceHash = sourceFingerprint
+      // A config from before the hash existed keeps its timestamp: nothing changed,
+      // the hash is simply being recorded for the first time.
+      const adoptHashOnly = previousSourceHash === null && syncState.lastSync !== null
+      await writeJsonAtomic(paths.generatedSyncState, {
+        lastSync: adoptHashOnly ? syncState.lastSync : new Date().toISOString(),
+        lastSyncSourceHash: sourceFingerprint
+      })
+    }
+
+    // Older configs carried the same fields; move them to the state file once, so the
+    // committed config settles and a later run does not report drift again.
+    if (config.lastSync !== null || config.lastSyncSourceHash !== null) {
+      if (!changed.includes('.agents/agents.json')) {
+        changed.push('.agents/agents.json')
       }
-      await saveAgentsConfig(projectRoot, config)
+      if (!check) {
+        if (!sourceStateChanged && !(await pathExists(paths.generatedSyncState))) {
+          await writeJsonAtomic(paths.generatedSyncState, {
+            lastSync: config.lastSync,
+            lastSyncSourceHash: config.lastSyncSourceHash
+          })
+        }
+        config.lastSync = null
+        config.lastSyncSourceHash = null
+        await saveAgentsConfig(projectRoot, config)
+      }
     }
 
     const sortedChanged = uniqueSorted(changed)
@@ -591,6 +671,7 @@ function isCursorAlreadyEnabledError(stderr: string): boolean {
   return lowered.includes('already enabled') || lowered.includes('already approved')
 }
 
+/** Reject server names, env keys and header names that a tool config must not carry. */
 function validateResolvedServers(resolvedByTarget: Record<IntegrationName, ResolvedMcpServer[]>): void {
   for (const [target, servers] of Object.entries(resolvedByTarget)) {
     for (const server of servers) {
@@ -619,6 +700,32 @@ function validateResolvedServers(resolvedByTarget: Record<IntegrationName, Resol
   }
 }
 
+/** Deduplicate and sort a list for stable output. */
 function uniqueSorted(values: string[]): string[] {
   return [...new Set(values)].sort((a, b) => a.localeCompare(b))
+}
+
+interface SyncState {
+  lastSync: string | null
+  lastSyncSourceHash: string | null
+}
+
+/** Read the sync state, falling back to the fields older configs stored inline. */
+async function readSyncState(statePath: string, config: AgentsConfig): Promise<SyncState> {
+  if (await pathExists(statePath)) {
+    try {
+      const parsed = await readJson<Partial<SyncState>>(statePath)
+      return {
+        lastSync: typeof parsed.lastSync === 'string' ? parsed.lastSync : null,
+        lastSyncSourceHash: typeof parsed.lastSyncSourceHash === 'string' ? parsed.lastSyncSourceHash : null
+      }
+    } catch {
+      return { lastSync: null, lastSyncSourceHash: null }
+    }
+  }
+
+  return {
+    lastSync: config.lastSync ?? null,
+    lastSyncSourceHash: config.lastSyncSourceHash ?? null
+  }
 }

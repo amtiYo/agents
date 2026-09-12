@@ -3,9 +3,13 @@ import path from 'node:path'
 import { readFile } from 'node:fs/promises'
 import { parse, type ParseError } from 'jsonc-parser'
 import { loadAgentsConfig } from '../core/config.js'
-import { listDirNames, pathExists, readJson } from '../core/fs.js'
+import { listDirNames, pathExists, readJson, readTextOrEmpty } from '../core/fs.js'
 import { loadResolvedRegistry } from '../core/mcp.js'
+import TOML from '@iarna/toml'
+import { parse as parseJsonc } from 'jsonc-parser'
 import { getProjectPaths, toHomeRelativePath } from '../core/paths.js'
+import { readGooseDocument, readGooseExtensions } from '../core/goose.js'
+import { hasNativeSkillsDiscovery } from '../integrations/registry.js'
 import {
   getClaudeDesktopConfigPath,
   getClaudeDesktopConfigUnavailableDetail,
@@ -101,7 +105,15 @@ export async function runStatus(options: StatusOptions): Promise<void> {
   if (enabled.has('copilot_vscode')) {
     files['.vscode/mcp.json'] = await pathExists(paths.vscodeMcp)
   }
+  const copilotCliMcpPath = config.integrations.options.copilotCliPath === '.github/mcp.json'
+    ? paths.copilotCliGithubMcp
+    : paths.copilotCliMcp
+  const copilotCliMcpLabel = path.relative(paths.root, copilotCliMcpPath) || copilotCliMcpPath
+  const claudeUsesProjectScope = config.integrations.options.claudeScope === 'project'
   if (enabled.has('copilot_cli')) {
+    files[copilotCliMcpLabel] = await pathExists(copilotCliMcpPath)
+  }
+  if (enabled.has('claude') && claudeUsesProjectScope) {
     files['.mcp.json'] = await pathExists(paths.copilotCliMcp)
   }
   if (enabled.has('cursor')) {
@@ -126,6 +138,27 @@ export async function runStatus(options: StatusOptions): Promise<void> {
     files['.junie/mcp/mcp.json'] = await pathExists(paths.junieMcp)
     files['.junie/skills'] = await pathExists(paths.junieSkillsBridge)
   }
+  if (enabled.has('grok')) {
+    files[toHomeRelativePath(paths.grokConfig)] = await pathExists(paths.grokConfig)
+  }
+  if (enabled.has('amp')) {
+    files[toHomeRelativePath(paths.ampSettings)] = await pathExists(paths.ampSettings)
+  }
+  if (enabled.has('droid')) {
+    files[toHomeRelativePath(paths.droidMcp)] = await pathExists(paths.droidMcp)
+  }
+  if (enabled.has('kilo')) {
+    files[toHomeRelativePath(paths.kiloConfig)] = await pathExists(paths.kiloConfig)
+  }
+  if (enabled.has('devin')) {
+    files[toHomeRelativePath(paths.devinMcp)] = await pathExists(paths.devinMcp)
+  }
+  if (enabled.has('zed')) {
+    files[toHomeRelativePath(paths.zedSettings)] = await pathExists(paths.zedSettings)
+  }
+  if (enabled.has('goose')) {
+    files[toHomeRelativePath(paths.gooseConfig)] = await pathExists(paths.gooseConfig)
+  }
   if (enabled.has('claude')) {
     files['CLAUDE.md'] = await pathExists(paths.rootClaudeMd)
     files['.claude/skills'] = await pathExists(paths.claudeSkillsBridge)
@@ -144,7 +177,9 @@ export async function runStatus(options: StatusOptions): Promise<void> {
   if (!options.fast) {
     if (enabled.has('codex')) probes.codex = probeCodex(options.projectRoot, expectedCodexServers)
     if (enabled.has('codex')) probes.codex_trust = await probeCodexTrust(options.projectRoot)
-    if (enabled.has('claude')) probes.claude = probeClaude(options.projectRoot)
+    if (enabled.has('claude')) {
+      probes.claude = probeClaude(options.projectRoot, resolved.serversByTarget.claude.map((server) => server.name))
+    }
     if (enabled.has('claude_desktop')) {
       probes.claude_desktop = claudeDesktopConfigPath && claudeDesktopConfigLabel
         ? await probeClaudeDesktop(
@@ -157,7 +192,14 @@ export async function runStatus(options: StatusOptions): Promise<void> {
     }
     if (enabled.has('gemini')) probes.gemini = probeGemini(options.projectRoot)
     if (enabled.has('copilot_vscode')) probes.copilot_vscode = await probeCopilot(paths.vscodeMcp)
-    if (enabled.has('copilot_cli')) probes.copilot_cli = await probeMcpServersFile(paths.copilotCliMcp, '.mcp.json', 'mcpServers', expectedCopilotCliServers)
+    if (enabled.has('copilot_cli')) {
+      probes.copilot_cli = await probeMcpServersFile(
+        copilotCliMcpPath,
+        copilotCliMcpLabel,
+        'mcpServers',
+        expectedCopilotCliServers,
+      )
+    }
     if (enabled.has('cursor')) probes.cursor = probeCursor(options.projectRoot, expectedCursorServers)
     if (enabled.has('antigravity') && antigravityMcpSyncEnabled) {
       probes.antigravity = await probeAntigravity(paths.antigravityWorkspaceMcp, '.agents/mcp_config.json', expectedAntigravityServers)
@@ -176,7 +218,68 @@ export async function runStatus(options: StatusOptions): Promise<void> {
     if (enabled.has('junie')) {
       probes.junie = await probeMcpServersFile(paths.junieMcp, '.junie/mcp/mcp.json', 'mcpServers', expectedJunieServers)
     }
+    if (enabled.has('droid')) {
+      probes.droid = await probeMcpServersFile(
+        paths.droidMcp,
+        toHomeRelativePath(paths.droidMcp),
+        'mcpServers',
+        resolved.serversByTarget.droid.map((server) => server.name),
+      )
+    }
+    if (enabled.has('devin')) {
+      probes.devin = await probeMcpServersFile(
+        paths.devinMcp,
+        toHomeRelativePath(paths.devinMcp),
+        'mcpServers',
+        resolved.serversByTarget.devin.map((server) => server.name),
+      )
+    }
+    if (enabled.has('amp')) {
+      probes.amp = await probeMcpServersFile(
+        paths.ampSettings,
+        toHomeRelativePath(paths.ampSettings),
+        'amp.mcpServers',
+        resolved.serversByTarget.amp.map((server) => server.name),
+      )
+    }
+    if (enabled.has('zed')) {
+      // Zed ships settings.json with comments.
+      probes.zed = await probeMcpServersFile(
+        paths.zedSettings,
+        toHomeRelativePath(paths.zedSettings),
+        'context_servers',
+        resolved.serversByTarget.zed.map((server) => server.name),
+        { jsonc: true },
+      )
+    }
+    if (enabled.has('kilo')) {
+      probes.kilo = await probeMcpServersFile(
+        paths.kiloConfig,
+        toHomeRelativePath(paths.kiloConfig),
+        'mcp',
+        resolved.serversByTarget.kilo.map((server) => server.name),
+        { jsonc: true },
+      )
+    }
+    if (enabled.has('grok')) {
+      probes.grok = await probeTomlMcpFile(
+        paths.grokConfig,
+        toHomeRelativePath(paths.grokConfig),
+        resolved.serversByTarget.grok.map((server) => server.name),
+      )
+    }
+    if (enabled.has('goose')) {
+      probes.goose = await probeGooseFile(
+        paths.gooseConfig,
+        toHomeRelativePath(paths.gooseConfig),
+        resolved.serversByTarget.goose.map((server) => server.name),
+      )
+    }
     probes.skills = await probeSkills(paths.agentsSkillsDir)
+    const nativeSkillReaders = config.integrations.enabled.filter((id) => hasNativeSkillsDiscovery(id))
+    if (nativeSkillReaders.length > 0) {
+      probes.skills_native = `${nativeSkillReaders.join(', ')} read .agents/skills directly`
+    }
     probes.vscode_hidden = await probeVscodeHidden(paths.vscodeSettings)
   }
 
@@ -218,7 +321,11 @@ export async function runStatus(options: StatusOptions): Promise<void> {
     ui.keyValue('MCP', `${output.mcp.configured} configured, ${output.mcp.localOverrides} local override(s)`)
     ui.keyValue('Selected MCP', ui.formatList(output.selectedMcpServers))
 
-    const compactProbeOrder = ['codex', 'claude', 'claude_desktop', 'gemini', 'copilot_vscode', 'copilot_cli', 'cursor', 'antigravity', 'antigravity_skills', 'windsurf', 'opencode', 'junie']
+    const compactProbeOrder = [
+      'codex', 'claude', 'claude_desktop', 'gemini', 'copilot_vscode', 'copilot_cli', 'cursor',
+      'antigravity', 'antigravity_skills', 'windsurf', 'opencode', 'junie',
+      'grok', 'amp', 'droid', 'kilo', 'devin', 'zed', 'goose', 'skills_native'
+    ]
     const compactProbes = compactProbeOrder
       .filter((name) => Boolean(output.probes[name]))
       .map((name) => `${name}: ${output.probes[name]}`)
@@ -284,20 +391,47 @@ function probeCodex(projectRoot: string, expectedServerNames: string[]): string 
   }
 }
 
-function probeClaude(projectRoot: string): string {
+/**
+ * Count the MCP servers Claude Code sees for this project.
+ *
+ * Project scope registers servers under their plain names, local scope under the
+ * `agents__` prefix, so both spellings are counted.
+ */
+function probeClaude(projectRoot: string, expectedServerNames: string[]): string {
   if (!commandExists('claude')) return 'claude CLI not found'
   const result = runCommand('claude', ['mcp', 'list'], projectRoot)
   if (!result.ok) return `failed (${compact(result.stderr)})`
   const lines = sanitizeTerminalOutput(result.stdout)
     .split('\n')
     .map((line) => line.trim())
-  const managedLines = lines.filter((line) => line.startsWith('agents__'))
-  const managed = managedLines.length
-  const unhealthy = managedLines.filter((line) => line.includes('\u2717') || line.toLowerCase().includes('failed')).length
-  if (unhealthy > 0) {
-    return `${managed} managed MCP server(s), ${unhealthy} unhealthy`
+
+  // One line per expected server: a project-scope entry and its local-scope twin are
+  // the same server, not two.
+  const linesByName = new Map<string, string>()
+  for (const line of lines) {
+    const name = line.match(/^([a-zA-Z0-9._:-]+):/)?.[1]
+    if (name !== undefined && !linesByName.has(name)) linesByName.set(name, line)
   }
-  return `${managed} managed MCP server(s) detected`
+  const managedLines = expectedServerNames
+    .map((name) => linesByName.get(name) ?? linesByName.get(`agents__${name}`))
+    .filter((line): line is string => line !== undefined)
+
+  const managed = managedLines.length
+  const total = String(expectedServerNames.length)
+  const unhealthy = managedLines.filter((line) => line.includes('\u2717') || line.toLowerCase().includes('failed')).length
+  const pending = managedLines.filter((line) => line.toLowerCase().includes('pending approval')).length
+  const needsAuth = managedLines.filter((line) => line.toLowerCase().includes('needs authentication')).length
+
+  if (unhealthy > 0) {
+    return `${String(managed)}/${total} MCP server(s), ${String(unhealthy)} unhealthy`
+  }
+  if (needsAuth > 0) {
+    return `${String(managed)}/${total} MCP server(s), ${String(needsAuth)} need authentication`
+  }
+  if (pending > 0) {
+    return `${String(managed)}/${total} MCP server(s), ${String(pending)} waiting for approval`
+  }
+  return `${String(managed)}/${total} MCP server(s) detected`
 }
 
 function probeGemini(projectRoot: string): string {
@@ -317,6 +451,7 @@ function probeGemini(projectRoot: string): string {
   return 'gemini mcp list succeeded'
 }
 
+/** Report whether the VS Code MCP file lists the servers this project expects. */
 async function probeCopilot(vscodeMcpPath: string): Promise<string> {
   if (!(await pathExists(vscodeMcpPath))) return 'missing .vscode/mcp.json'
   try {
@@ -328,15 +463,23 @@ async function probeCopilot(vscodeMcpPath: string): Promise<string> {
   }
 }
 
+/**
+ * Compare a JSON (or JSONC) config against the servers this project expects.
+ *
+ * @param key - Top-level key holding the server map, which differs per tool.
+ */
 async function probeMcpServersFile(
   filePath: string,
   label: string,
-  key: 'mcpServers' | 'servers',
+  key: string,
   expectedServerNames: string[],
+  options?: { jsonc?: boolean },
 ): Promise<string> {
   if (!(await pathExists(filePath))) return `missing ${label}`
   try {
-    const parsed = await readJson<Record<string, Record<string, unknown> | undefined>>(filePath)
+    const parsed = options?.jsonc
+      ? await readJsoncObject(filePath)
+      : await readJson<Record<string, Record<string, unknown> | undefined>>(filePath)
     const names = Object.keys(parsed[key] ?? {})
     const missing = expectedServerNames.filter((name) => !names.includes(name))
     if (missing.length > 0) {
@@ -473,6 +616,7 @@ async function probeAntigravitySkills(sourcePath: string, bridgePath: string): P
   return `${health.expectedSkillNames.length} skill(s) in flat copy bridge`
 }
 
+/** Report whether the VS Code workspace hides the directories the sync generates. */
 async function probeVscodeHidden(settingsPath: string): Promise<string> {
   if (!(await pathExists(settingsPath))) return 'settings file missing'
   try {
@@ -495,15 +639,18 @@ async function probeVscodeHidden(settingsPath: string): Promise<string> {
   }
 }
 
+/** Reduce a multi-line CLI error to its last line, for one-line status output. */
 function compact(input: string): string {
   return input.trim().split('\n').at(-1) ?? 'unknown'
 }
 
 async function probeCodexTrust(projectRoot: string): Promise<string> {
   const state = await getCodexTrustState(projectRoot)
+  if (state === 'unreadable') return 'global config unreadable'
   return state === 'trusted' ? 'trusted' : 'untrusted'
 }
 
+/** Pull server names out of `codex mcp list --json`, whose field name has varied. */
 function extractCodexServerNames(entries: Array<Record<string, unknown>>): string[] {
   const names: string[] = []
   for (const entry of entries) {
@@ -514,4 +661,54 @@ function extractCodexServerNames(entries: Array<Record<string, unknown>>): strin
     }
   }
   return [...new Set(names)].sort((a, b) => a.localeCompare(b))
+}
+
+/** Read a JSONC settings file, tolerating comments and trailing commas. */
+async function readJsoncObject(filePath: string): Promise<Record<string, Record<string, unknown> | undefined>> {
+  const raw = await readTextOrEmpty(filePath)
+  const errors: { error: number; offset: number; length: number }[] = []
+  const parsed = parseJsonc(raw, errors, { allowTrailingComma: true }) as unknown
+  if (errors.length > 0) {
+    throw new Error('invalid JSONC')
+  }
+  return (typeof parsed === 'object' && parsed !== null ? parsed : {}) as Record<
+    string,
+    Record<string, unknown> | undefined
+  >
+}
+
+/** Count agents-managed servers in a TOML config that uses `[mcp_servers.*]` tables. */
+async function probeTomlMcpFile(filePath: string, label: string, expectedServerNames: string[]): Promise<string> {
+  if (!(await pathExists(filePath))) return `missing ${label}`
+  const raw = await readTextOrEmpty(filePath)
+
+  // Parse first: a duplicate table in invalid TOML would otherwise count as a server
+  // while the tool itself refuses to read the file.
+  let parsed: { mcp_servers?: unknown }
+  try {
+    parsed = TOML.parse(raw) as { mcp_servers?: unknown }
+  } catch (error) {
+    return `invalid ${label} (${error instanceof Error ? error.message.split('\n')[0] : String(error)})`
+  }
+
+  const servers = typeof parsed.mcp_servers === 'object' && parsed.mcp_servers !== null && !Array.isArray(parsed.mcp_servers)
+    ? (parsed.mcp_servers as Record<string, unknown>)
+    : {}
+  const missing = expectedServerNames.filter((name) => !(name in servers))
+  if (missing.length > 0) return `missing servers in ${label}: ${missing.join(', ')}`
+  return `${String(Object.keys(servers).length)} server(s) configured`
+}
+
+/** Count agents-managed extensions in the Goose YAML config. */
+async function probeGooseFile(filePath: string, label: string, expectedServerNames: string[]): Promise<string> {
+  if (!(await pathExists(filePath))) return `missing ${label}`
+  try {
+    const doc = await readGooseDocument(filePath)
+    const extensions = readGooseExtensions(doc)
+    const missing = expectedServerNames.filter((name) => !(name in extensions))
+    if (missing.length > 0) return `missing extensions in ${label}: ${missing.join(', ')}`
+    return `${String(Object.keys(extensions).length)} extension(s) configured`
+  } catch (error) {
+    return `invalid ${label} (${error instanceof Error ? error.message : String(error)})`
+  }
 }

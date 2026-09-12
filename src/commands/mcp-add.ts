@@ -40,6 +40,12 @@ export interface McpAddOptions {
   nonInteractive: boolean
 }
 
+/**
+ * Add an MCP server to `.agents/agents.json`, interactively or from flags.
+ *
+ * A name that is a URL goes through the import flow instead. Secret-looking values are
+ * split into `.agents/local.json` and replaced with placeholders in the committed file.
+ */
 export async function runMcpAdd(options: McpAddOptions): Promise<void> {
   const nameInput = options.name?.trim()
   if (nameInput && isHttpUrl(nameInput)) {
@@ -64,6 +70,12 @@ export async function runMcpAdd(options: McpAddOptions): Promise<void> {
   let url = options.url?.trim()
   let args = [...(options.args ?? [])]
 
+  // --url and --command already say which transport is meant; asking again is noise.
+  if (!transport) {
+    if (url) transport = 'http'
+    else if (command) transport = 'stdio'
+  }
+
   if (!options.nonInteractive) {
     if (!name) {
       name = await promptText('MCP server name', 'context7')
@@ -85,7 +97,7 @@ export async function runMcpAdd(options: McpAddOptions): Promise<void> {
       const selected = await promptSelect<McpTransportType>('Transport', [
         { label: 'stdio', value: 'stdio' },
         { label: 'http', value: 'http' },
-        { label: 'sse', value: 'sse' }
+        { label: 'sse (deprecated by MCP 2026-07-28, prefer http)', value: 'sse' }
       ])
       transport = selected
     }
@@ -112,6 +124,10 @@ export async function runMcpAdd(options: McpAddOptions): Promise<void> {
   }
   if ((finalTransport === 'http' || finalTransport === 'sse') && !url) {
     throw new Error('Missing --url for http/sse transport.')
+  }
+
+  if (finalTransport === 'sse') {
+    ui.warning('The sse transport is deprecated by the MCP 2026-07-28 specification. Use http (streamable HTTP) where the server offers it.')
   }
 
   const parsedTargets = parseTargetOptions(options.targets)

@@ -50,7 +50,7 @@ interface RuntimeProbe<T> {
   data?: T
 }
 
-type ClaudeRuntimeStatus = 'ok' | 'error' | 'unknown'
+type ClaudeRuntimeStatus = 'ok' | 'error' | 'pending' | 'auth' | 'unknown'
 type GeminiRuntimeStatus = 'ok' | 'error' | 'unknown'
 
 export async function runMcpTest(options: McpTestOptions): Promise<void> {
@@ -214,6 +214,12 @@ function testServer(name: string, server: McpServerDefinition): ServerTestResult
   }
 }
 
+/**
+ * Ask each tool's own CLI what it sees, one probe per tool rather than per server.
+ *
+ * Only Claude Code, Gemini CLI and Cursor expose their MCP state; everything else is
+ * reported as unsupported so the output stays honest.
+ */
 function runRuntimeChecks(entries: McpServerEntry[], projectRoot: string, timeoutMs: number): RuntimeCheckResult {
   const claudeProbe = probeClaude(projectRoot, timeoutMs)
   const geminiProbe = probeGemini(projectRoot, timeoutMs)
@@ -232,16 +238,9 @@ function runRuntimeChecks(entries: McpServerEntry[], projectRoot: string, timeou
     const runtimeByIntegration: Partial<Record<IntegrationName, RuntimeIntegrationResult>> = {}
 
     for (const integration of targets) {
-      if (
-        integration === 'codex'
-        || integration === 'copilot_vscode'
-        || integration === 'copilot_cli'
-        || integration === 'claude_desktop'
-        || integration === 'antigravity'
-        || integration === 'windsurf'
-        || integration === 'opencode'
-        || integration === 'junie'
-      ) {
+      // Only these three expose a runtime view of their MCP servers; everything else
+      // is reported as unsupported rather than quietly left out of the output.
+      if (integration !== 'claude' && integration !== 'gemini' && integration !== 'cursor') {
         runtimeByIntegration[integration] = {
           status: 'unsupported',
           message: 'Runtime health introspection is not supported for this integration.'
@@ -277,6 +276,7 @@ function runRuntimeChecks(entries: McpServerEntry[], projectRoot: string, timeou
   }
 }
 
+/** Map one server to what `claude mcp list` says about it, in either scope. */
 function checkClaudeServer(name: string, probe: RuntimeProbe<Record<string, ClaudeRuntimeStatus>>): RuntimeIntegrationResult {
   if (!probe.available || !probe.data) {
     return {
@@ -284,8 +284,8 @@ function checkClaudeServer(name: string, probe: RuntimeProbe<Record<string, Clau
       message: probe.detail
     }
   }
-  const managed = toManagedClaudeName(name)
-  const status = probe.data[managed]
+  // Project scope registers the plain name; local scope keeps the agents__ prefix.
+  const status = probe.data[name] ?? probe.data[toManagedClaudeName(name)]
   if (status === 'ok') {
     return {
       status: 'ok',
@@ -298,6 +298,18 @@ function checkClaudeServer(name: string, probe: RuntimeProbe<Record<string, Clau
       message: 'Failed/Disconnected'
     }
   }
+  if (status === 'pending') {
+    return {
+      status: 'unknown',
+      message: 'Registered, waiting for approval in Claude Code'
+    }
+  }
+  if (status === 'auth') {
+    return {
+      status: 'unknown',
+      message: 'Registered, needs authentication in Claude Code'
+    }
+  }
   if (status === 'unknown') {
     return {
       status: 'unknown',
@@ -306,7 +318,7 @@ function checkClaudeServer(name: string, probe: RuntimeProbe<Record<string, Clau
   }
   return {
     status: 'error',
-    message: `Missing from claude mcp list as ${managed}`
+    message: `Missing from claude mcp list as ${name} or ${toManagedClaudeName(name)}`
   }
 }
 
@@ -449,6 +461,7 @@ function probeCursor(projectRoot: string, timeoutMs: number): RuntimeProbe<Recor
   }
 }
 
+/** Turn `claude mcp list` output into a per-server status, including pending states. */
 function parseClaudeRuntimeStatuses(output: string): Record<string, ClaudeRuntimeStatus> {
   const statuses: Record<string, ClaudeRuntimeStatus> = {}
   const lines = output
@@ -467,6 +480,15 @@ function parseClaudeRuntimeStatuses(output: string): Record<string, ClaudeRuntim
     }
     if (detail.includes('\u2713') || detail.includes('connected')) {
       statuses[name] = 'ok'
+      continue
+    }
+    // Project-scope servers wait for approval the first time Claude Code sees them.
+    if (detail.includes('pending approval')) {
+      statuses[name] = 'pending'
+      continue
+    }
+    if (detail.includes('needs authentication')) {
+      statuses[name] = 'auth'
       continue
     }
     statuses[name] = 'unknown'

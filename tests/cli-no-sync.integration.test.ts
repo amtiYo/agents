@@ -67,7 +67,7 @@ describe('cli --no-sync wiring', () => {
     expect(removeNoSync.status).toBe(0)
 
     const agentsAfterNoSync = await readAgentsConfig(projectRoot)
-    expect(agentsAfterNoSync.lastSync).toBeNull()
+    expect((await readSyncState(projectRoot)).lastSync).toBeNull()
     await expect(stat(path.join(projectRoot, '.agents', 'generated', 'codex.config.toml'))).rejects.toThrow()
 
     const addWithSync = runCli(
@@ -88,8 +88,7 @@ describe('cli --no-sync wiring', () => {
     )
     expect(addWithSync.status).toBe(0)
 
-    const agentsAfterSync = await readAgentsConfig(projectRoot)
-    expect(typeof agentsAfterSync.lastSync).toBe('string')
+    expect(typeof (await readSyncState(projectRoot)).lastSync).toBe('string')
     await expect(stat(path.join(projectRoot, '.agents', 'generated', 'codex.config.toml'))).resolves.toBeTruthy()
   }, 30_000)
 })
@@ -108,6 +107,17 @@ function runCli(args: string[]): { status: number | null; stdout: string; stderr
     status: result.status,
     stdout: result.stdout ?? '',
     stderr: result.stderr ?? ''
+  }
+}
+
+async function readSyncState(projectRoot: string): Promise<{ lastSync: string | null }> {
+  const statePath = path.join(projectRoot, '.agents', 'generated', 'sync.state.json')
+  try {
+    return JSON.parse(await readFile(statePath, 'utf8')) as { lastSync: string | null }
+  } catch (error: unknown) {
+    // Only "not written yet" is an expected outcome; a corrupt file must fail the test.
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return { lastSync: null }
+    throw error
   }
 }
 

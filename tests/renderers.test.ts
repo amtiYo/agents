@@ -5,6 +5,7 @@ import {
   renderClaudeDesktopMcp,
   renderCodexToml,
   renderCopilotCliMcp,
+  renderCursorMcp,
   renderGeminiServers,
   renderJunieMcp,
   renderOpencodeMcp,
@@ -53,7 +54,7 @@ describe('renderers', () => {
     expect(rendered.content).toContain('[mcp_servers."http-tools".http_headers]')
     expect(rendered.content).toContain('"Authorization" = "Bearer token"')
     expect(rendered.content).toContain('[mcp_servers."sse-tools"]')
-    expect(rendered.warnings.join(' ')).toContain('legacy sse transport')
+    expect(rendered.warnings.join(' ')).toContain('deprecated sse transport')
     expect(() => TOML.parse(rendered.content)).not.toThrow()
   })
 
@@ -517,5 +518,19 @@ describe('renderers', () => {
       expect(rendered.mcpServers[toManagedClaudeDesktopName(projectRoot, 'sse-tools')]).toBeUndefined()
       expect(rendered.warnings.join(' ')).toContain('custom connectors')
     })
+  })
+})
+
+describe('cursor renderer', () => {
+  it('passes envFile through, which VS Code does not get', () => {
+    const servers: ResolvedMcpServer[] = [
+      { name: 'local', transport: 'stdio', command: 'server', envFile: '.env.local' }
+    ]
+
+    const cursor = renderCursorMcp(servers)
+    const vscode = renderVscodeMcp(servers)
+
+    expect((cursor.servers.local as Record<string, unknown>).envFile).toBe('.env.local')
+    expect((vscode.servers.local as Record<string, unknown>).envFile).toBeUndefined()
   })
 })

@@ -6,8 +6,16 @@ export interface SyncCommandOptions {
   projectRoot: string
   check: boolean
   verbose: boolean
+  /** Restrict this run to one profile; omit to use the active profile from config. */
+  profile?: string | null
 }
 
+/**
+ * Run a sync and print what changed.
+ *
+ * With `check`, nothing is written and the command exits with code 2 when a tool config
+ * has drifted, which is what makes it usable as a CI gate.
+ */
 export async function runSync(options: SyncCommandOptions): Promise<void> {
   const spin = ui.spinner()
   spin.start(options.check ? 'Checking for changes...' : 'Syncing configurations...')
@@ -15,7 +23,8 @@ export async function runSync(options: SyncCommandOptions): Promise<void> {
   const result = await performSync({
     projectRoot: options.projectRoot,
     check: options.check,
-    verbose: options.verbose
+    verbose: options.verbose,
+    ...(options.profile === undefined ? {} : { profile: options.profile })
   })
 
   spin.stop(options.check ? 'Check complete' : 'Sync complete')

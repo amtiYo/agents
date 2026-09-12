@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: [20, 22, 24]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The job only reads the tree; keeping the token out of .git/config stops
+          # dependency lifecycle scripts from reaching it.
+          persist-credentials: false
+          # Full history so the whitespace check can diff against the base commit.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build
+
+      - name: Test
+        run: npm test
+
+      - name: Check for whitespace errors
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          # A clean checkout has no working-tree diff, so the range has to be explicit.
+          if [ -n "$BASE_SHA" ]; then
+            git diff --check "$BASE_SHA...HEAD"
+          else
+            git diff --check HEAD~1 HEAD
+          fi

@@ -9,6 +9,66 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - No changes yet.
 
+## [0.9.0] - 2026-09-12
+
+### Added
+
+- Seven integrations: Grok Build (`.grok/config.toml`), Amp (`.amp/settings.json`), Factory Droid (`.factory/mcp.json`), Kilo (`.kilo/kilo.jsonc`), Devin CLI (`.devin/mcp_config.json`), Zed (`.zed/settings.json`) and Goose (`~/.config/goose/config.yaml`). The CLI now covers 18 tools.
+- Integration name aliases: `devin_desktop`, `factory`, `grok_build` and `kilocode` resolve to their canonical ids.
+- Agent Plugins 1.0.0 support: `agents plugin export`, `agents plugin validate` and `agents plugin import`. Export builds `plugin.json`, `mcp.json` and `skills/` from `.agents`, reading only the committed config so secrets from `local.json` cannot ship in a package.
+- Profiles: `agents profile set|use|list|remove` and `agents sync --profile <name>` apply a named subset of MCP servers.
+- `agents mcp budget` connects to each server over MCP, lists its tools and reports how much context they occupy, largest first.
+- Schema version 4 for `.agents/agents.json` with `timeout`, `connectTimeout`, `tools`, `disabledTools`, `oauth`, `headersHelper`, `bearerTokenEnvVar` and `envFile` on MCP servers, plus `profiles` and `activeProfile`. Version 3 files migrate automatically and a `.bak` copy of the previous file is kept.
+- `${VAR:-default}` expansion in server definitions.
+- The sync reports fields a target integration does not support, instead of dropping them silently.
+- Copilot CLI can be pointed at `.github/mcp.json` through `integrations.options.copilotCliPath`; Copilot CLI has auto-loaded that file since 1.0.61.
+- CI workflow running lint, build and tests on push and pull request across Node 20, 22 and 24.
+
+### Changed
+
+- **Breaking:** Claude Code now writes MCP servers to `.mcp.json` in the repository root, the project scope Anthropic documents for teams, instead of registering them in the machine-local `~/.claude.json` through the `claude` CLI. Whether that file is committed follows `syncMode`: `source-only` gitignores it and each clone regenerates it, `commit-generated` keeps it in review. Projects migrating from schema 3 keep the previous behaviour; new projects can opt back in with `integrations.options.claudeScope = "local"`.
+- `.mcp.json` is written once for both Claude Code and Copilot CLI, since both read it. Two consequences are now reported instead of being silent: per-tool targets cannot isolate servers inside that file, and Claude Code on local scope alongside Copilot CLI registers every server twice.
+- Codex trust is set by editing the project section of `~/.codex/config.toml` in place. The previous implementation reparsed and reserialized the whole file, discarding comments and ordering.
+- Codex output no longer contains `autoApprove`, which is not a documented Codex key, and now emits `startup_timeout_sec`, `tool_timeout_sec` and `bearer_token_env_var`.
+- Windsurf is labelled Devin Desktop after the June 2026 rename. Its id and config path are unchanged.
+- Skill descriptions may be up to 1024 characters, as the Agent Skills specification allows, instead of 300. Names with consecutive hyphens are rejected, and `license`, `compatibility`, `metadata` and `allowed-tools` are recognised.
+- `agents sync` only reports warnings from integrations that are enabled.
+- `agents status` shows which integrations read `.agents/skills` directly instead of through a bridge.
+- Dependencies updated, including @clack/prompts 1.8, tsx and the typescript-eslint packages. `commander` stays on 14: version 15 requires Node 22.12, and this package supports Node 20.12. `engines` moves to the 20.12 floor `@clack/prompts` already requires.
+- Vitest updated to 4.1.11, closing GHSA-82fw-gwwq-j7x9 (path traversal via `@vitest/mocker`) reported by Dependabot.
+
+### Fixed
+
+- Disabling an integration now removes its servers. `agents disconnect --llm codex` left the managed block in `.codex/config.toml`, so the tool kept starting the servers; the same held for every config written through a managed block or key. Files that held nothing but managed entries are deleted, files with user settings keep them.
+- `agents reset` removes managed entries from `.mcp.json`, `.github/mcp.json`, `.factory/mcp.json` and `.devin/mcp_config.json` instead of deleting the files, which could contain servers added by hand.
+- Sync bookkeeping (`lastSync`, `lastSyncSourceHash`) moved from the committed `.agents/agents.json` to `.agents/generated/sync.state.json`. Every teammate's sync used to produce a diff in a file under version control (issue #6). Existing values are moved on the first sync.
+- Configs shared with a tool's own settings (Amp, Zed, Kilo, Droid, Devin) keep entries added by hand: the sync owns only the servers it wrote, tracked per file.
+- Zed `settings.json` is parsed as JSONC, so a settings file with comments no longer skips the integration.
+- Project MCP files keep their other top-level keys, such as Copilot's `inputs`.
+- `agents reset` cleans Kilo files that contain comments and removes Goose extensions it created.
+- `agents sync --profile` with an unknown name fails instead of silently syncing every server.
+- `agents mcp budget` rejects a non-numeric or non-positive `--timeout`.
+- `agents mcp add --url` and `--command` no longer prompt for a transport that the flag already implies.
+- Servers whose schema 3 target list named all eleven integrations of that release now reach the integrations added since.
+- `agents doctor --fix` no longer runs `git rm --cached` on `.zed/settings.json`, `.amp/settings.json`, `.kilo/kilo.jsonc` or `.github/mcp.json`: those files belong to the tool or the team, and this CLI never adds them to `.gitignore`.
+- `agents reset` removes its servers from `.mcp.json` in projects synced by 0.8.x, which have no state file, and deletes a project MCP file that holds nothing.
+- `agents status` reads Zed and Kilo settings as JSONC, and reports Grok, Kilo and Goose, which were listed in the probe order but never filled in.
+- A profile whose `servers` is not a list is kept in the config instead of being dropped by the next save.
+- `agents plugin import` writes `${PROJECT_ROOT}` rather than an absolute path, so an imported server works for everyone who clones the repository.
+- `agents profile remove` re-syncs when the profile it removed was the active one.
+- `envFile` reaches Cursor's config; it was accepted by the schema and then dropped by every renderer.
+- `agents status` counts Claude Code servers under both project-scope and local-scope names, and reports servers waiting for approval.
+- `agents status` and `agents doctor` follow `copilotCliPath` instead of always looking at `.mcp.json`.
+- A project upgrading from 0.8.x loses servers it disabled after the upgrade, instead of keeping them in `.mcp.json` forever.
+- `agents reset` reads and writes Zed and Kilo files as JSONC, so cleanup works and comments survive.
+- Settings files that belong to a tool (`.zed/settings.json`, `.amp/settings.json`, `.kilo/kilo.jsonc`, `.github/mcp.json`) are no longer added to `.gitignore`.
+- The MCP probe sends `notifications/initialized` before `tools/list` over HTTP, as the specification requires.
+- `agents doctor` reports when `~/.codex/config.toml` cannot be parsed, with the parse error, instead of failing silently. Codex ignores every project while that file is broken.
+- Setting Codex trust no longer throws on a config with a syntax error elsewhere; the file is left untouched and the reason is reported.
+- The `sse` transport is marked deprecated in `agents mcp add` and flagged by `agents doctor`, following the MCP 2026-07-28 specification.
+- `agents reset` removes managed entries from Grok, Amp, Zed and Kilo configs while preserving user settings in those files.
+- Security advisories in development dependencies (js-yaml, @vitest/mocker) resolved.
+
 ## [0.8.11] - 2026-09-04
 
 ### Added

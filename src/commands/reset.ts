@@ -1,7 +1,13 @@
 import path from 'node:path'
 import { lstat, readlink, readdir, rmdir } from 'node:fs/promises'
+import { applyEdits as applyJsoncEdits, modify as modifyJsonc, parse as parseJsonc } from 'jsonc-parser'
 import { cleanupManagedGitignore } from '../core/gitignore.js'
+import { readGooseDocument, readGooseExtensions, setGooseExtensions, writeGooseConfig } from '../core/goose.js'
 import { getProjectPaths } from '../core/paths.js'
+import type { ProjectPaths } from '../core/paths.js'
+import { loadAgentsConfig } from '../core/config.js'
+import { loadResolvedRegistry } from '../core/mcp.js'
+import { readProjectMcpManagedNames } from '../core/projectMcp.js'
 import { pathExists, readJson, readTextOrEmpty, removeIfExists, writeJsonAtomic, writeTextAtomic } from '../core/fs.js'
 import {
   isLegacyGeneratedCodexConfig,
@@ -87,6 +93,61 @@ export async function runReset(options: ResetOptions): Promise<void> {
     removed,
     warnings
   })
+  await cleanupGrokConfig({
+    projectRoot,
+    configPath: paths.grokConfig,
+    generatedPath: paths.generatedGrok,
+    removed,
+    warnings
+  })
+  await cleanupKeyedJsonConfig({
+    projectRoot,
+    configPath: paths.ampSettings,
+    generatedPath: paths.generatedAmp,
+    removed,
+    warnings
+  }, 'Amp', 'amp.mcpServers')
+  await cleanupKeyedJsonConfig({
+    projectRoot,
+    configPath: paths.zedSettings,
+    generatedPath: paths.generatedZed,
+    removed,
+    warnings
+  }, 'Zed', 'context_servers', { jsonc: true })
+  await cleanupKeyedJsonConfig({
+    projectRoot,
+    configPath: paths.kiloConfig,
+    generatedPath: paths.generatedKilo,
+    removed,
+    warnings
+  }, 'Kilo', 'mcp', { jsonc: true })
+  await cleanupGooseConfig({
+    projectRoot,
+    configPath: paths.gooseConfig,
+    statePath: paths.generatedGooseState,
+    removed,
+    warnings
+  })
+  await cleanupKeyedJsonConfig({
+    projectRoot,
+    configPath: paths.droidMcp,
+    generatedPath: paths.generatedDroid,
+    removed,
+    warnings
+  }, 'Droid', 'mcpServers')
+  await cleanupKeyedJsonConfig({
+    projectRoot,
+    configPath: paths.devinMcp,
+    generatedPath: paths.generatedDevin,
+    removed,
+    warnings
+  }, 'Devin', 'mcpServers')
+  await cleanupProjectMcpFiles({
+    projectRoot,
+    paths,
+    removed,
+    warnings
+  })
 
   const bridges = [
     { bridgePath: paths.claudeSkillsBridge, sourcePath: paths.agentsSkillsDir },
@@ -106,7 +167,6 @@ export async function runReset(options: ResetOptions): Promise<void> {
     paths.antigravityWorkspaceMcp,
     paths.antigravityProjectMcp,
     paths.vscodeMcp,
-    paths.copilotCliMcp,
     paths.junieMcp
   ]
   if (!options.localOnly) {
@@ -379,4 +439,236 @@ async function isManagedSkillBridge(bridgePath: string, sourcePath: string): Pro
   }
 
   return info.isDirectory() && await pathExists(path.join(bridgePath, BRIDGE_MARKER_FILENAME))
+}
+
+/** Strip the agents-managed MCP block from a Grok project config, keeping user sections. */
+async function cleanupGrokConfig(args: {
+  projectRoot: string
+  configPath: string
+  generatedPath: string
+  removed: string[]
+  warnings: string[]
+}): Promise<void> {
+  if (!(await pathExists(args.configPath))) return
+
+  const existing = await readTextOrEmpty(args.configPath)
+  let cleaned: string
+  try {
+    cleaned = removeCodexManagedBlock(existing)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    args.warnings.push(`Failed to clean Grok config at ${args.configPath}: ${message}`)
+    return
+  }
+
+  // Nothing of ours in the file means nothing to clean, even if the file is blank.
+  if (cleaned === existing) return
+
+  if (cleaned.trim().length === 0) {
+    await removeResetTarget(args.configPath, args.projectRoot, args.removed)
+    return
+  }
+
+  await writeTextAtomic(args.configPath, cleaned)
+  args.removed.push(path.relative(args.projectRoot, args.configPath) || args.configPath)
+}
+
+/**
+ * Remove the agents-managed entries from one top-level key of a shared JSON settings
+ * file (Amp, Zed, Kilo), deleting the file only when nothing else is left in it.
+ */
+async function cleanupKeyedJsonConfig(
+  args: JsonConfigCleanupArgs,
+  label: string,
+  key: string,
+  options?: { jsonc?: boolean },
+): Promise<void> {
+  const existing = options?.jsonc
+    ? await readJsoncObjectForCleanup(args.configPath, label, args.warnings)
+    : await readConfigObjectForCleanup(args.configPath, label, args.warnings)
+  if (existing === null) return
+  if (Object.keys(existing).length === 0) {
+    await removeResetTarget(args.configPath, args.projectRoot, args.removed)
+    return
+  }
+
+  const generated = await readGeneratedObjectForCleanup(args.generatedPath, label, args.warnings)
+  if (generated === null) return
+
+  const cleaned = { ...existing }
+  removeManagedMapEntries(cleaned, generated, key)
+
+  if (options?.jsonc) {
+    await persistCleanedJsoncConfig(args, existing, cleaned, key)
+    return
+  }
+  await persistCleanedJsonConfig(args, existing, cleaned)
+}
+
+/** Rewrite one key of a JSONC file, so the user's comments and formatting survive. */
+async function persistCleanedJsoncConfig(
+  args: JsonConfigCleanupArgs,
+  existing: Record<string, unknown>,
+  cleaned: Record<string, unknown>,
+  key: string,
+): Promise<void> {
+  if (JSON.stringify(cleaned) === JSON.stringify(existing)) return
+  if (Object.keys(cleaned).length === 0) {
+    await removeResetTarget(args.configPath, args.projectRoot, args.removed)
+    return
+  }
+
+  const raw = await readTextOrEmpty(args.configPath)
+  const edits = modifyJsonc(raw, [key], cleaned[key], {
+    formattingOptions: { insertSpaces: true, tabSize: 2 }
+  })
+  const applied = applyJsoncEdits(raw, edits)
+  await writeTextAtomic(args.configPath, applied.endsWith('\n') ? applied : `${applied}\n`)
+  args.removed.push(path.relative(args.projectRoot, args.configPath) || args.configPath)
+}
+
+/** Read a JSONC settings file for cleanup, tolerating comments and trailing commas. */
+async function readJsoncObjectForCleanup(
+  configPath: string,
+  label: string,
+  warnings: string[],
+): Promise<Record<string, unknown> | null> {
+  if (!(await pathExists(configPath))) return null
+
+  const raw = await readTextOrEmpty(configPath)
+  if (raw.trim().length === 0) return {}
+
+  const errors: { error: number; offset: number; length: number }[] = []
+  const parsed = parseJsonc(raw, errors, { allowTrailingComma: true }) as unknown
+  if (errors.length > 0 || (parsed !== undefined && !isRecord(parsed))) {
+    warnings.push(`Existing ${label} config at ${configPath} is not valid JSONC; preserved the file.`)
+    return null
+  }
+  return isRecord(parsed) ? parsed : {}
+}
+
+/** Remove the extensions agents added to the global Goose config, keeping the rest. */
+async function cleanupGooseConfig(args: {
+  projectRoot: string
+  configPath: string
+  statePath: string
+  removed: string[]
+  warnings: string[]
+}): Promise<void> {
+  if (!(await pathExists(args.configPath))) return
+
+  let managedNames: string[] = []
+  if (await pathExists(args.statePath)) {
+    try {
+      const state = await readJson<{ managedNames?: unknown }>(args.statePath)
+      managedNames = Array.isArray(state.managedNames)
+        ? state.managedNames.filter((name): name is string => typeof name === 'string')
+        : []
+    } catch {
+      managedNames = []
+    }
+  }
+
+  // .agents/generated is gitignored, so a clone has no state. Fall back to the servers
+  // that would have been written for Goose, resolved exactly as the sync resolves them:
+  // taking every configured server could delete a user's own extension of the same name.
+  if (managedNames.length === 0) {
+    try {
+      const resolved = await loadResolvedRegistry(args.projectRoot)
+      managedNames = resolved.serversByTarget.goose.map((server) => server.name)
+    } catch {
+      managedNames = []
+    }
+  }
+  if (managedNames.length === 0) return
+
+  let doc
+  try {
+    doc = await readGooseDocument(args.configPath)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    args.warnings.push(`Failed to read Goose config at ${args.configPath}: ${message}`)
+    return
+  }
+
+  const extensions = { ...readGooseExtensions(doc) }
+  let changed = false
+  for (const name of managedNames) {
+    if (name in extensions) {
+      delete extensions[name]
+      changed = true
+    }
+  }
+  if (!changed) return
+
+  const content = setGooseExtensions(doc, extensions)
+  if (content.trim().length === 0) {
+    await removeResetTarget(args.configPath, args.projectRoot, args.removed)
+    return
+  }
+
+  await writeGooseConfig(args.configPath, content)
+  args.removed.push(args.configPath)
+}
+
+/**
+ * Clean `.mcp.json` and `.github/mcp.json`.
+ *
+ * The managed names come from the sync state; a project synced by 0.8.x has none, and
+ * that release rewrote the file wholesale, so the servers named in agents.json are used
+ * instead. Servers added by hand are always kept.
+ */
+async function cleanupProjectMcpFiles(args: {
+  projectRoot: string
+  paths: ProjectPaths
+  removed: string[]
+  warnings: string[]
+}): Promise<void> {
+  const { projectRoot, paths, removed, warnings } = args
+
+  const managedByFile = await readProjectMcpManagedNames(paths.generatedProjectMcpState)
+  let fallbackNames: string[] = []
+  try {
+    const config = await loadAgentsConfig(projectRoot)
+    fallbackNames = Object.keys(config.mcp.servers)
+  } catch {
+    fallbackNames = []
+  }
+
+  for (const targetPath of [paths.copilotCliMcp, paths.copilotCliGithubMcp]) {
+    if (!(await pathExists(targetPath))) continue
+
+    const managedNames = managedByFile[targetPath] ?? fallbackNames
+
+    let parsed: unknown
+    try {
+      parsed = await readJson<unknown>(targetPath)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      warnings.push(`Failed to read ${targetPath}; preserved the file. ${message}`)
+      continue
+    }
+    if (!isRecord(parsed)) continue
+
+    const servers = isRecord(parsed.mcpServers) ? { ...parsed.mcpServers } : {}
+    let changed = false
+    for (const name of managedNames) {
+      if (name in servers) {
+        delete servers[name]
+        changed = true
+      }
+    }
+
+    const otherKeys = Object.keys(parsed).filter((key) => key !== 'mcpServers')
+    // A file with nothing left in it is removed even when no managed name matched:
+    // it holds no configuration for anyone.
+    if (!changed && !(Object.keys(servers).length === 0 && otherKeys.length === 0)) continue
+    if (Object.keys(servers).length === 0 && otherKeys.length === 0) {
+      await removeResetTarget(targetPath, projectRoot, removed)
+      continue
+    }
+
+    await writeJsonAtomic(targetPath, { ...parsed, mcpServers: servers })
+    removed.push(path.relative(projectRoot, targetPath) || targetPath)
+  }
 }

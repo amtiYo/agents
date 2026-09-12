@@ -14,7 +14,15 @@ import { INTEGRATIONS } from '../integrations/registry.js'
 import { getProjectPaths, toHomeRelativePath } from '../core/paths.js'
 import { runReset } from './reset.js'
 import { ensureCodexProjectTrusted, getCodexTrustState } from '../core/trust.js'
+import type { CodexTrustState } from '../core/trust.js'
 import { formatWarnings, normalizeWarnings } from '../core/warnings.js'
+
+const DEFAULT_INTEGRATION_OPTIONS: AgentsConfig['integrations']['options'] = {
+  cursorAutoApprove: true,
+  antigravityGlobalSync: true,
+  claudeScope: 'project',
+  copilotCliPath: '.mcp.json'
+}
 
 export interface StartOptions {
   projectRoot: string
@@ -24,6 +32,10 @@ export interface StartOptions {
   injectDocs?: boolean
 }
 
+/**
+ * Guided setup: pick integrations, confirm the access each one needs, scaffold
+ * `.agents/`, then run the first sync.
+ */
 export async function runStart(options: StartOptions): Promise<void> {
   const projectRoot = path.resolve(options.projectRoot)
   if (!(await pathExists(projectRoot))) {
@@ -105,8 +117,8 @@ export async function runStart(options: StartOptions): Promise<void> {
     interactive,
     autoApprove: options.yes || options.nonInteractive,
     integrationOptions: preserveExistingConfig
-      ? (existingConfig?.integrations.options ?? { cursorAutoApprove: true, antigravityGlobalSync: true })
-      : { cursorAutoApprove: true, antigravityGlobalSync: true },
+      ? (existingConfig?.integrations.options ?? DEFAULT_INTEGRATION_OPTIONS)
+      : DEFAULT_INTEGRATION_OPTIONS,
     allowOptionPrompts: !preserveExistingConfig
   })
 
@@ -239,7 +251,7 @@ async function resolveIntegrationAccess(args: {
   integrationOptions: AgentsConfig['integrations']['options']
   allowOptionPrompts: boolean
 }): Promise<{
-  integrationOptions: { cursorAutoApprove: boolean; antigravityGlobalSync: boolean }
+  integrationOptions: AgentsConfig['integrations']['options']
   summaries: Record<string, string>
   warnings: string[]
 }> {
@@ -249,20 +261,29 @@ async function resolveIntegrationAccess(args: {
   const summaries: Record<string, string> = {}
   const warnings: string[] = []
 
-  const integrationOptions = {
+  const integrationOptions: AgentsConfig['integrations']['options'] = {
     cursorAutoApprove: baseOptions.cursorAutoApprove,
-    antigravityGlobalSync: baseOptions.antigravityGlobalSync
+    antigravityGlobalSync: baseOptions.antigravityGlobalSync,
+    claudeScope: baseOptions.claudeScope ?? 'project',
+    copilotCliPath: baseOptions.copilotCliPath ?? '.mcp.json'
   }
 
   if (selectedIntegrations.includes('codex')) {
-    let state: 'trusted' | 'untrusted' = 'untrusted'
+    let state: CodexTrustState = 'untrusted'
     try {
       state = await getCodexTrustState(projectRoot)
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       warnings.push(`Failed reading Codex trust state: ${message}`)
     }
-    if (state === 'trusted') {
+    if (state === 'unreadable') {
+      // Codex ignores every project while its global config cannot be parsed, so
+      // trusting this one would change nothing.
+      summaries.codex = 'global config unreadable (run agents doctor)'
+      warnings.push(
+        'Codex global config cannot be parsed, so Codex ignores project settings. Run "agents doctor" for the parse error.',
+      )
+    } else if (state === 'trusted') {
       summaries.codex = 'already trusted'
     } else {
       let approve = autoApprove

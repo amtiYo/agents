@@ -10,10 +10,11 @@ import { pathExists, readJson, readTextOrEmpty } from '../core/fs.js'
 import { loadResolvedRegistry } from '../core/mcp.js'
 import { getProjectPaths, toHomeRelativePath } from '../core/paths.js'
 import type { ProjectPaths } from '../core/paths.js'
+import type { CopilotCliPath } from '../types.js'
 import { getWindsurfGlobalMcpPath } from '../core/windsurf.js'
 import { commandExists, runCommand } from '../core/shell.js'
 import { performSync } from '../core/sync.js'
-import { ensureCodexProjectTrusted, getCodexTrustState } from '../core/trust.js'
+import { ensureCodexProjectTrusted, getCodexTrustState, inspectCodexGlobalConfig } from '../core/trust.js'
 import { inspectAntigravitySkillsBridge } from '../core/skills.js'
 import { validateSkillsDirectory } from '../core/skillsValidation.js'
 import { validateVscodeSettingsParse } from '../core/vscodeSettings.js'
@@ -122,6 +123,12 @@ export async function runDoctor(options: DoctorOptions): Promise<void> {
       for (const message of collectInvalidKeyIssues(entry.name, entry.server, entry.localOverride)) {
         issues.push({ level: 'error', message })
       }
+      if (entry.server.transport === 'sse') {
+        issues.push({
+          level: 'warning',
+          message: `MCP server "${entry.name}" uses the sse transport, deprecated by the MCP 2026-07-28 specification. Switch it to http when the server supports streamable HTTP.`
+        })
+      }
     }
   } catch (error) {
     issues.push({
@@ -136,6 +143,7 @@ export async function runDoctor(options: DoctorOptions): Promise<void> {
     claudeDesktopConfigPath,
     windsurfGlobalMcpPath,
     issues,
+    { copilotCliPath: config.integrations.options.copilotCliPath },
   )
 
   const skillWarnings = await validateSkillsDirectory(paths.agentsSkillsDir)
@@ -167,8 +175,16 @@ export async function runDoctor(options: DoctorOptions): Promise<void> {
   const codexEnabled = config.integrations.enabled.includes('codex')
   let codexTrustNeedsFix = false
   if (codexEnabled) {
+    const codexGlobal = await inspectCodexGlobalConfig()
+    if (!codexGlobal.ok) {
+      issues.push({
+        level: 'error',
+        message: `Codex global config at ${codexGlobal.path} cannot be parsed (${codexGlobal.error ?? 'unknown error'}). Codex ignores every project until this is fixed.`
+      })
+    }
     const codexTrust = await getCodexTrustState(options.projectRoot)
-    codexTrustNeedsFix = codexTrust !== 'trusted'
+    // An unreadable config is reported above; trying to set trust in it would fail.
+    codexTrustNeedsFix = codexTrust === 'untrusted'
     if (codexTrustNeedsFix && !applyFixes && !previewFixes) {
       issues.push({
         level: 'warning',
@@ -209,7 +225,16 @@ export async function runDoctor(options: DoctorOptions): Promise<void> {
         ...(enabled.has('codex') ? ['.codex/config.toml'] : []),
         ...(enabled.has('gemini') ? ['.gemini/settings.json'] : []),
         ...(enabled.has('copilot_vscode') ? ['.vscode/mcp.json'] : []),
-        ...(enabled.has('copilot_cli') ? ['.mcp.json'] : []),
+        // Only files this CLI adds to .gitignore belong here. Settings files that hold
+        // the tool's own configuration (.amp, .kilo, .zed) and .github/mcp.json are
+        // deliberately left to the user, so they must never be untracked by --fix.
+        ...(enabled.has('copilot_cli') && config.integrations.options.copilotCliPath === '.mcp.json'
+          ? ['.mcp.json']
+          : []),
+        ...(enabled.has('claude') && config.integrations.options.claudeScope === 'project' ? ['.mcp.json'] : []),
+        ...(enabled.has('grok') ? ['.grok/config.toml'] : []),
+        ...(enabled.has('droid') ? ['.factory/mcp.json'] : []),
+        ...(enabled.has('devin') ? ['.devin/mcp_config.json'] : []),
         ...(enabled.has('cursor') ? ['.cursor/mcp.json'] : []),
         ...(enabled.has('claude') ? ['.claude/skills'] : []),
         ...(enabled.has('cursor') ? ['.cursor/skills'] : []),
@@ -224,7 +249,7 @@ export async function runDoctor(options: DoctorOptions): Promise<void> {
     : []
   trackedChecks.push('.agents/generated', '.agents/local.json')
   const trackedByGit: string[] = []
-  for (const candidate of trackedChecks) {
+  for (const candidate of [...new Set(trackedChecks)]) {
     if (!isGitTracked(options.projectRoot, candidate)) continue
     trackedByGit.push(candidate)
     if (!applyFixes && !previewFixes) {
@@ -607,6 +632,7 @@ async function validateManagedConfigSyntax(
   claudeDesktopConfigPath: string | undefined,
   windsurfGlobalMcpPath: string,
   issues: Issue[],
+  options: { copilotCliPath: CopilotCliPath },
 ): Promise<void> {
   await validateTomlIfExists(paths.generatedCodex, '.agents/generated/codex.config.toml', issues)
   await validateJsonIfExists(paths.generatedGemini, '.agents/generated/gemini.settings.json', issues)
@@ -630,7 +656,10 @@ async function validateManagedConfigSyntax(
     await validateJsonIfExists(paths.vscodeMcp, '.vscode/mcp.json', issues)
   }
   if (enabledIntegrations.includes('copilot_cli')) {
-    await validateJsonIfExists(paths.copilotCliMcp, '.mcp.json', issues)
+    const copilotCliMcpPath = options.copilotCliPath === '.github/mcp.json'
+      ? paths.copilotCliGithubMcp
+      : paths.copilotCliMcp
+    await validateJsonIfExists(copilotCliMcpPath, options.copilotCliPath, issues)
   }
   if (enabledIntegrations.includes('cursor')) {
     await validateJsonIfExists(paths.cursorMcp, '.cursor/mcp.json', issues)

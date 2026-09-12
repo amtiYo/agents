@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises'
 import type { SyncMode } from '../types.js'
 import { pathExists, removeIfExists, writeTextAtomic } from './fs.js'
 
-const BASE_MANAGED_ENTRIES = ['.agents/local.json', '.agents/generated/']
+const BASE_MANAGED_ENTRIES = ['.agents/local.json', '.agents/generated/', '.agents/agents.json.*.bak']
 const SOURCE_ONLY_ENTRIES = [
   'CLAUDE.md',
   '.agents/mcp_config.json',
@@ -18,8 +18,14 @@ const SOURCE_ONLY_ENTRIES = [
   '.opencode/',
   'opencode.json',
   '.junie/mcp/',
-  '.junie/skills'
+  '.junie/skills',
+  '.grok/config.toml',
+  '.factory/mcp.json',
+  '.devin/mcp_config.json'
 ]
+
+// Amp, Kilo and Zed keep the tool's own settings in the same file, and .github/mcp.json
+// is a file teams usually want in review, so none of them is added to .gitignore.
 
 export async function ensureProjectGitignore(projectRoot: string, syncMode: SyncMode): Promise<boolean> {
   const gitignorePath = path.join(projectRoot, '.gitignore')
