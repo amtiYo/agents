@@ -147,31 +147,54 @@ interface ProjectMcpStateFile {
  *
  * @returns A map of absolute file path to the server names agents owns in it.
  */
-export async function readProjectMcpManagedNames(statePath: string): Promise<Record<string, string[]>> {
-  return readStateFiles(statePath)
+export async function readProjectMcpManagedNames(
+  statePath: string,
+  projectRoot: string,
+): Promise<Record<string, string[]>> {
+  return readStateFiles(statePath, projectRoot)
 }
 
-/** Read the per-file ownership record, upgrading the pre-0.9.0 single-file shape. */
-async function readStateFiles(statePath: string): Promise<Record<string, string[]>> {
+/**
+ * Read the per-file ownership record, upgrading the pre-0.9.0 single-file shape.
+ *
+ * Paths outside the project are dropped. The state file sits in `.agents/generated`,
+ * which is gitignored but can still arrive in a clone through `git add -f`, and the
+ * paths in it decide which files the sync rewrites and deletes.
+ */
+async function readStateFiles(statePath: string, projectRoot: string): Promise<Record<string, string[]>> {
   if (!(await pathExists(statePath))) return {}
   try {
     const parsed = await readJson<ProjectMcpStateFile & ProjectMcpState>(statePath)
     if (parsed.files && typeof parsed.files === 'object' && !Array.isArray(parsed.files)) {
       return Object.fromEntries(
-        Object.entries(parsed.files).map(([file, names]) => [
-          file,
-          Array.isArray(names) ? names.filter((name): name is string => typeof name === 'string') : []
-        ]),
+        Object.entries(parsed.files)
+          .filter(([file]) => isInsideProject(projectRoot, file))
+          .map(([file, names]) => [
+            file,
+            Array.isArray(names) ? names.filter((name): name is string => typeof name === 'string') : []
+          ]),
       )
     }
     // Older state files tracked a single path.
-    if (typeof parsed.targetPath === 'string' && Array.isArray(parsed.managedNames)) {
+    if (
+      typeof parsed.targetPath === 'string'
+      && Array.isArray(parsed.managedNames)
+      && isInsideProject(projectRoot, parsed.targetPath)
+    ) {
       return { [parsed.targetPath]: parsed.managedNames.filter((name): name is string => typeof name === 'string') }
     }
     return {}
   } catch {
     return {}
   }
+}
+
+
+/** Whether a recorded path still belongs to this project. */
+function isInsideProject(projectRoot: string, candidate: string): boolean {
+  if (!path.isAbsolute(candidate)) return false
+  const relative = path.relative(path.resolve(projectRoot), candidate)
+  return relative !== '' && !relative.startsWith('..') && !path.isAbsolute(relative)
 }
 
 /** Persist which servers agents owns in each project MCP file. */
@@ -208,7 +231,7 @@ export async function syncProjectMcpFile(args: {
 }): Promise<void> {
   const { plan, statePath, generatedPath, projectRoot, check, changed, warnings, knownServerNames } = args
   const hasState = await pathExists(statePath)
-  const previousFiles = await readStateFiles(statePath)
+  const previousFiles = await readStateFiles(statePath, args.projectRoot)
   warnings.push(...plan.warnings)
 
   const nextFiles: Record<string, string[]> = {}

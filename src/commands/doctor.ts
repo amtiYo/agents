@@ -1,5 +1,7 @@
 import path from 'node:path'
 import TOML from '@iarna/toml'
+import { parse as parseJsonc, printParseErrorCode, type ParseError } from 'jsonc-parser'
+import YAML from 'yaml'
 import { loadAgentsConfig } from '../core/config.js'
 import { getClaudeInstructionsHealth } from '../core/claudeInstructions.js'
 import {
@@ -14,8 +16,15 @@ import type { CopilotCliPath } from '../types.js'
 import { getWindsurfGlobalMcpPath } from '../core/windsurf.js'
 import { commandExists, runCommand } from '../core/shell.js'
 import { performSync } from '../core/sync.js'
-import { ensureCodexProjectTrusted, getCodexTrustState, inspectCodexGlobalConfig } from '../core/trust.js'
-import { inspectAntigravitySkillsBridge } from '../core/skills.js'
+import {
+  ensureCodexProjectTrusted,
+  ensureGrokProjectTrusted,
+  getCodexTrustState,
+  getGrokTrustState,
+  getGrokTrustedFoldersPath,
+  inspectCodexGlobalConfig
+} from '../core/trust.js'
+import { SKILL_BRIDGES, inspectAntigravitySkillsBridge } from '../core/skills.js'
 import { validateSkillsDirectory } from '../core/skillsValidation.js'
 import { validateVscodeSettingsParse } from '../core/vscodeSettings.js'
 import { INTEGRATIONS } from '../integrations/registry.js'
@@ -174,6 +183,7 @@ export async function runDoctor(options: DoctorOptions): Promise<void> {
 
   const codexEnabled = config.integrations.enabled.includes('codex')
   let codexTrustNeedsFix = false
+  let grokTrustNeedsFix = false
   if (codexEnabled) {
     const codexGlobal = await inspectCodexGlobalConfig()
     if (!codexGlobal.ok) {
@@ -189,6 +199,24 @@ export async function runDoctor(options: DoctorOptions): Promise<void> {
       issues.push({
         level: 'warning',
         message: 'Codex project trust is not set; project .codex/config.toml may be ignored.'
+      })
+    }
+  }
+
+  if (config.integrations.enabled.includes('grok')) {
+    const grokTrust = await getGrokTrustState(options.projectRoot)
+    if (grokTrust === 'unreadable') {
+      issues.push({
+        level: 'error',
+        message: `Grok trust file at ${getGrokTrustedFoldersPath()} cannot be parsed. Grok treats every folder as untrusted until this is fixed.`
+      })
+    }
+    grokTrustNeedsFix = grokTrust === 'untrusted'
+    if (grokTrustNeedsFix && !applyFixes && !previewFixes) {
+      issues.push({
+        level: 'warning',
+        message:
+          'Grok folder trust is not set; Grok ignores this project\'s MCP servers and skills until the folder is trusted.'
       })
     }
   }
@@ -236,11 +264,15 @@ export async function runDoctor(options: DoctorOptions): Promise<void> {
         ...(enabled.has('droid') ? ['.factory/mcp.json'] : []),
         ...(enabled.has('devin') ? ['.devin/mcp_config.json'] : []),
         ...(enabled.has('cursor') ? ['.cursor/mcp.json'] : []),
-        ...(enabled.has('claude') ? ['.claude/skills'] : []),
         ...(enabled.has('cursor') ? ['.cursor/skills'] : []),
         ...(enabled.has('windsurf') ? ['.windsurf/skills'] : []),
         ...(enabled.has('gemini') ? ['.gemini/skills'] : []),
-        ...(enabled.has('junie') ? ['.junie/mcp/mcp.json', '.junie/skills'] : []),
+        ...(enabled.has('junie') ? ['.junie/mcp/mcp.json'] : []),
+        // Bridges this CLI adds to .gitignore, taken from the same table the sync uses
+        // so the two lists cannot drift apart.
+        ...SKILL_BRIDGES.filter((bridge) => bridge.gitignoreEntry && enabled.has(bridge.integration)).map(
+          (bridge) => bridge.gitignoreEntry as string,
+        ),
         ...(enabled.has('antigravity') ? ['.agents/mcp_config.json'] : []),
         ...(enabled.has('opencode') && !path.relative(options.projectRoot, paths.opencodeConfig).startsWith('..') && !path.isAbsolute(path.relative(options.projectRoot, paths.opencodeConfig))
           ? [path.relative(options.projectRoot, paths.opencodeConfig)]
@@ -269,6 +301,9 @@ export async function runDoctor(options: DoctorOptions): Promise<void> {
     if (codexEnabled && codexTrustNeedsFix) {
       actions.push('Would set Codex project trust for this repo.')
     }
+    if (grokTrustNeedsFix) {
+      actions.push('Would set Grok folder trust for this repo.')
+    }
     actions.push('Would run agents sync after fixes.')
   }
 
@@ -293,9 +328,23 @@ export async function runDoctor(options: DoctorOptions): Promise<void> {
         issues.push({ level: 'warning', message: `Failed to set Codex trust automatically: ${message}` })
       }
     }
+    if (grokTrustNeedsFix) {
+      try {
+        await ensureGrokProjectTrusted(options.projectRoot)
+        actions.push('Set Grok folder trust.')
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        issues.push({ level: 'warning', message: `Failed to set Grok trust automatically: ${message}` })
+      }
+    }
     try {
-      await performSync({ projectRoot: options.projectRoot, check: false, verbose: false })
+      const syncResult = await performSync({ projectRoot: options.projectRoot, check: false, verbose: false })
       actions.push('Ran agents sync.')
+      // The sync knows things doctor does not check for itself, such as a config it had
+      // to skip. Dropping its warnings here is how a broken integration stayed invisible.
+      for (const warning of syncResult.warnings) {
+        issues.push({ level: 'warning', message: warning })
+      }
       fixSpin.stop('Fixes applied')
     } catch (error) {
       fixSpin.stop('Fixes failed')
@@ -645,6 +694,13 @@ async function validateManagedConfigSyntax(
   await validateJsonIfExists(paths.generatedClaude, '.agents/generated/claude.mcp.json', issues)
   await validateJsonIfExists(paths.generatedClaudeDesktop, '.agents/generated/claude-desktop.mcp.json', issues)
   await validateJsonIfExists(paths.generatedJunie, '.agents/generated/junie.mcp.json', issues)
+  await validateTomlIfExists(paths.generatedGrok, '.agents/generated/grok.config.toml', issues)
+  await validateJsonIfExists(paths.generatedAmp, '.agents/generated/amp.settings.json', issues)
+  await validateJsonIfExists(paths.generatedDroid, '.agents/generated/droid.mcp.json', issues)
+  await validateJsoncIfExists(paths.generatedKilo, '.agents/generated/kilo.jsonc', issues)
+  await validateJsonIfExists(paths.generatedDevin, '.agents/generated/devin.mcp_config.json', issues)
+  await validateJsonIfExists(paths.generatedZed, '.agents/generated/zed.settings.json', issues)
+  await validateJsonIfExists(paths.generatedGoose, '.agents/generated/goose.extensions.json', issues)
 
   if (enabledIntegrations.includes('codex')) {
     await validateTomlIfExists(paths.codexConfig, '.codex/config.toml', issues)
@@ -691,6 +747,63 @@ async function validateManagedConfigSyntax(
   }
   if (enabledIntegrations.includes('junie')) {
     await validateJsonIfExists(paths.junieMcp, '.junie/mcp/mcp.json', issues)
+  }
+  // Claude Code on project scope writes .mcp.json too, so the file has to be checked
+  // even in a project that does not use Copilot CLI.
+  if (enabledIntegrations.includes('claude') && !enabledIntegrations.includes('copilot_cli')) {
+    await validateJsonIfExists(paths.copilotCliMcp, '.mcp.json', issues)
+  }
+  if (enabledIntegrations.includes('grok')) {
+    await validateTomlIfExists(paths.grokConfig, toHomeRelativePath(paths.grokConfig), issues)
+  }
+  if (enabledIntegrations.includes('amp')) {
+    await validateJsonIfExists(paths.ampSettings, toHomeRelativePath(paths.ampSettings), issues)
+  }
+  if (enabledIntegrations.includes('droid')) {
+    await validateJsonIfExists(paths.droidMcp, toHomeRelativePath(paths.droidMcp), issues)
+  }
+  if (enabledIntegrations.includes('kilo')) {
+    await validateJsoncIfExists(paths.kiloConfig, toHomeRelativePath(paths.kiloConfig), issues)
+  }
+  if (enabledIntegrations.includes('devin')) {
+    await validateJsonIfExists(paths.devinMcp, toHomeRelativePath(paths.devinMcp), issues)
+  }
+  if (enabledIntegrations.includes('zed')) {
+    await validateJsoncIfExists(paths.zedSettings, toHomeRelativePath(paths.zedSettings), issues)
+  }
+  if (enabledIntegrations.includes('goose')) {
+    await validateYamlIfExists(paths.gooseConfig, toHomeRelativePath(paths.gooseConfig), issues)
+  }
+}
+
+
+/** Zed and Kilo keep their settings as JSONC, so comments are not a syntax error. */
+async function validateJsoncIfExists(filePath: string, label: string, issues: Issue[]): Promise<void> {
+  if (!(await pathExists(filePath))) return
+  const raw = await readTextOrEmpty(filePath)
+  if (raw.trim().length === 0) return
+  const errors: ParseError[] = []
+  parseJsonc(raw, errors, { allowTrailingComma: true })
+  if (errors.length > 0) {
+    const first = errors[0]
+    issues.push({
+      level: 'error',
+      message: `Invalid JSONC in ${label}: ${printParseErrorCode(first?.error ?? 0)} at offset ${String(first?.offset ?? 0)}`
+    })
+  }
+}
+
+/** Goose keeps its configuration as YAML. */
+async function validateYamlIfExists(filePath: string, label: string, issues: Issue[]): Promise<void> {
+  if (!(await pathExists(filePath))) return
+  const raw = await readTextOrEmpty(filePath)
+  if (raw.trim().length === 0) return
+  const doc = YAML.parseDocument(raw)
+  if (doc.errors.length > 0) {
+    issues.push({
+      level: 'error',
+      message: `Invalid YAML in ${label}: ${doc.errors[0]?.message ?? 'parse error'}`
+    })
   }
 }
 

@@ -19,9 +19,9 @@ import {
 } from '../core/claudeDesktop.js'
 import { getWindsurfGlobalMcpPath } from '../core/windsurf.js'
 import { commandExists, runCommand } from '../core/shell.js'
-import { getCodexTrustState } from '../core/trust.js'
+import { getCodexTrustState, getGrokTrustState } from '../core/trust.js'
 import { listMcpEntries, loadMcpState } from '../core/mcpCrud.js'
-import { inspectAntigravitySkillsBridge } from '../core/skills.js'
+import { inspectAntigravitySkillsBridge, SKILL_BRIDGES } from '../core/skills.js'
 import { listCursorMcpStatuses, sanitizeTerminalOutput } from '../core/cursorCli.js'
 import * as ui from '../core/ui.js'
 
@@ -136,7 +136,6 @@ export async function runStatus(options: StatusOptions): Promise<void> {
   }
   if (enabled.has('junie')) {
     files['.junie/mcp/mcp.json'] = await pathExists(paths.junieMcp)
-    files['.junie/skills'] = await pathExists(paths.junieSkillsBridge)
   }
   if (enabled.has('grok')) {
     files[toHomeRelativePath(paths.grokConfig)] = await pathExists(paths.grokConfig)
@@ -161,22 +160,17 @@ export async function runStatus(options: StatusOptions): Promise<void> {
   }
   if (enabled.has('claude')) {
     files['CLAUDE.md'] = await pathExists(paths.rootClaudeMd)
-    files['.claude/skills'] = await pathExists(paths.claudeSkillsBridge)
   }
-  if (enabled.has('cursor')) {
-    files['.cursor/skills'] = await pathExists(paths.cursorSkillsBridge)
-  }
-  if (enabled.has('windsurf')) {
-    files['.windsurf/skills'] = await pathExists(paths.windsurfSkillsBridge)
-  }
-  if (enabled.has('gemini')) {
-    files['.gemini/skills'] = await pathExists(paths.geminiSkillsBridge)
+  for (const bridge of SKILL_BRIDGES) {
+    if (!enabled.has(bridge.integration)) continue
+    files[bridge.label] = await pathExists(paths[bridge.pathKey])
   }
 
   const probes: Record<string, string> = {}
   if (!options.fast) {
     if (enabled.has('codex')) probes.codex = probeCodex(options.projectRoot, expectedCodexServers)
     if (enabled.has('codex')) probes.codex_trust = await probeCodexTrust(options.projectRoot)
+    if (enabled.has('grok')) probes.grok_trust = await probeGrokTrust(options.projectRoot)
     if (enabled.has('claude')) {
       probes.claude = probeClaude(options.projectRoot, resolved.serversByTarget.claude.map((server) => server.name))
     }
@@ -647,6 +641,13 @@ function compact(input: string): string {
 async function probeCodexTrust(projectRoot: string): Promise<string> {
   const state = await getCodexTrustState(projectRoot)
   if (state === 'unreadable') return 'global config unreadable'
+  return state === 'trusted' ? 'trusted' : 'untrusted'
+}
+
+/** Grok ignores this project's MCP servers and skills until the folder is trusted. */
+async function probeGrokTrust(projectRoot: string): Promise<string> {
+  const state = await getGrokTrustState(projectRoot)
+  if (state === 'unreadable') return 'trust file unreadable'
   return state === 'trusted' ? 'trusted' : 'untrusted'
 }
 

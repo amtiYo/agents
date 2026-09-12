@@ -11,10 +11,12 @@ import { commandExists } from '../core/shell.js'
 import { syncProjectDocsSections } from '../core/projectDocs.js'
 import type { AgentsConfig, IntegrationName, SyncMode } from '../types.js'
 import { INTEGRATIONS } from '../integrations/registry.js'
+import { SKILL_BRIDGES } from '../core/skills.js'
 import { getProjectPaths, toHomeRelativePath } from '../core/paths.js'
 import { runReset } from './reset.js'
-import { ensureCodexProjectTrusted, getCodexTrustState } from '../core/trust.js'
-import type { CodexTrustState } from '../core/trust.js'
+import { ensureCodexProjectTrusted, ensureGrokProjectTrusted, getCodexTrustState, getGrokTrustState }
+  from '../core/trust.js'
+import type { CodexTrustState, GrokTrustState } from '../core/trust.js'
 import { formatWarnings, normalizeWarnings } from '../core/warnings.js'
 
 const DEFAULT_INTEGRATION_OPTIONS: AgentsConfig['integrations']['options'] = {
@@ -316,6 +318,52 @@ async function resolveIntegrationAccess(args: {
     }
   }
 
+  if (selectedIntegrations.includes('grok')) {
+    let state: GrokTrustState = 'untrusted'
+    try {
+      state = await getGrokTrustState(projectRoot)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      warnings.push(`Failed reading Grok trust state: ${message}`)
+    }
+    if (state === 'unreadable') {
+      summaries.grok = 'trust file unreadable (run agents doctor)'
+      warnings.push(
+        'Grok trust file cannot be parsed, so Grok treats every folder as untrusted. Run "agents doctor" for the error.',
+      )
+    } else if (state === 'trusted') {
+      summaries.grok = 'already trusted'
+    } else {
+      let approve = autoApprove
+      if (interactive) {
+        clack.note(
+          [
+            'Grok reads this project\'s MCP servers and skills only for trusted folders.',
+            'Without trust, grok inspect lists none of them and says nothing about why.'
+          ].join('\n'),
+          'Grok trust required',
+        )
+        approve = await confirmOrCancel({
+          message: 'Trust this folder in Grok now?',
+          initialValue: true
+        })
+      }
+
+      if (!approve) {
+        summaries.grok = 'skipped (folder may stay untrusted)'
+      } else {
+        try {
+          const result = await ensureGrokProjectTrusted(projectRoot)
+          summaries.grok = result.changed ? `trusted (updated ${result.path})` : 'already trusted'
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error)
+          summaries.grok = 'warning (trust not updated)'
+          warnings.push(`Grok trust setup skipped: ${message}`)
+        }
+      }
+    }
+  }
+
   if (selectedIntegrations.includes('cursor')) {
     let approve = integrationOptions.cursorAutoApprove
     if (allowOptionPrompts && !interactive) {
@@ -429,12 +477,8 @@ async function shouldOfferCleanup(projectRoot: string): Promise<boolean> {
     legacyAgentDir,
     paths.vscodeMcp,
     paths.copilotCliMcp,
-    paths.claudeSkillsBridge,
-    paths.cursorSkillsBridge,
-    paths.geminiSkillsBridge,
-    paths.windsurfSkillsBridge,
     paths.junieMcpDir,
-    paths.junieSkillsBridge
+    ...SKILL_BRIDGES.map((bridge) => paths[bridge.pathKey])
   ]
   for (const candidate of candidates) {
     if (await pathExists(candidate)) return true
