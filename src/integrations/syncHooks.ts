@@ -6,6 +6,7 @@ import { getLegacyAntigravityGlobalMcpPath, normalizeAntigravityMcpPayload, read
 import { getWindsurfGlobalMcpPath, normalizeWindsurfMcpPayload, readWindsurfMcp } from '../core/windsurf.js'
 import { normalizeOpencodeConfig } from '../core/opencode.js'
 import { renderVscodeMcp } from '../core/renderers.js'
+import { scopeManagedEntries } from '../core/globalScope.js'
 import { acquireSyncLock } from '../core/syncLock.js'
 import { buildAntigravityPayload } from './antigravity.js'
 import { buildCodexConfig } from './codex.js'
@@ -693,7 +694,10 @@ async function syncManagedWindsurfGlobal(args: {
     const generated = args.enabled && args.rawGenerated.trim().length > 0
       ? normalizeWindsurfMcpPayload(parseJsonObject(args.rawGenerated, 'generated Windsurf config'))
       : normalizeWindsurfMcpPayload({})
-    const managedServers = recordFrom(generated.mcpServers)
+    // The Windsurf config is shared by every project on the machine, so entries carry the
+    // project they came from. Entries written before this became the rule are listed in
+    // the state file under their old names and are removed by the merge below.
+    const managedServers = scopeManagedEntries(args.projectRoot, recordFrom(generated.mcpServers))
     const existingServers = recordFrom(existing.mcpServers)
     const takenOver: string[] = []
     const nextServers = mergeManagedServers(existingServers, previousNames, managedServers, takenOver)
@@ -996,7 +1000,14 @@ async function syncManagedGooseGlobal(context: HookContext): Promise<void> {
     const generated = context.enabled && rawGenerated.trim().length > 0
       ? parseJsonObject(rawGenerated, 'generated Goose config')
       : {}
-    const managedExtensions = recordFrom(generated.extensions)
+    // Goose repeats the extension name inside the entry, so both sides are scoped to the
+    // project. Without it, two projects with a server called `fetch` overwrite each other.
+    const managedExtensions = scopeManagedEntries(
+      context.projectRoot,
+      recordFrom(generated.extensions),
+      (value, scopedName) =>
+        (typeof value === 'object' && value !== null ? { ...value, name: scopedName } : value) as typeof value,
+    )
     const takenOver: string[] = []
     const nextExtensions = mergeManagedServers(readGooseExtensions(doc), previousNames, managedExtensions, takenOver)
     context.warnings.push(...formatTakenOverWarnings(toChangedEntry(context.projectRoot, configPath), takenOver))

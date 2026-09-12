@@ -7,6 +7,7 @@ import { getProjectPaths } from '../core/paths.js'
 import type { ProjectPaths } from '../core/paths.js'
 import { loadAgentsConfig } from '../core/config.js'
 import { loadResolvedRegistry } from '../core/mcp.js'
+import { toProjectScopedName } from '../core/globalScope.js'
 import { readProjectMcpManagedNames } from '../core/projectMcp.js'
 import {
   getWindsurfGlobalMcpPath,
@@ -591,7 +592,10 @@ async function cleanupWindsurfGlobalConfig(args: {
   if (managedNames.length === 0) {
     try {
       const resolved = await loadResolvedRegistry(args.projectRoot)
-      managedNames = resolved.serversByTarget.windsurf.map((server) => server.name)
+      managedNames = resolved.serversByTarget.windsurf.flatMap((server) => [
+        toProjectScopedName(args.projectRoot, server.name),
+        server.name
+      ])
     } catch {
       managedNames = []
     }
@@ -656,7 +660,12 @@ async function cleanupGooseConfig(args: {
   if (managedNames.length === 0) {
     try {
       const resolved = await loadResolvedRegistry(args.projectRoot)
-      managedNames = resolved.serversByTarget.goose.map((server) => server.name)
+      // Both spellings: the scoped name written now, and the bare name written by
+      // versions before entries carried the project they came from.
+      managedNames = resolved.serversByTarget.goose.flatMap((server) => [
+        toProjectScopedName(args.projectRoot, server.name),
+        server.name
+      ])
     } catch {
       managedNames = []
     }

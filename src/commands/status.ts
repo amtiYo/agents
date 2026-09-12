@@ -7,6 +7,7 @@ import { listDirNames, pathExists, readJson, readTextOrEmpty } from '../core/fs.
 import { loadResolvedRegistry } from '../core/mcp.js'
 import TOML from '@iarna/toml'
 import { parse as parseJsonc } from 'jsonc-parser'
+import { toProjectScopedName } from '../core/globalScope.js'
 import { getProjectPaths, toHomeRelativePath } from '../core/paths.js'
 import { readGooseDocument, readGooseExtensions } from '../core/goose.js'
 import { hasNativeSkillsDiscovery } from '../integrations/registry.js'
@@ -84,7 +85,10 @@ export async function runStatus(options: StatusOptions): Promise<void> {
   const expectedCopilotCliServers = resolved.serversByTarget.copilot_cli.map((server) => server.name)
   const expectedCursorServers = resolved.serversByTarget.cursor.map((server) => server.name)
   const expectedAntigravityServers = resolved.serversByTarget.antigravity.map((server) => server.name)
-  const expectedWindsurfServers = resolved.serversByTarget.windsurf.map((server) => server.name)
+  // Entries in the global Windsurf config carry the project they came from.
+  const expectedWindsurfServers = resolved.serversByTarget.windsurf.map((server) =>
+    toProjectScopedName(options.projectRoot, server.name),
+  )
   const expectedOpencodeServers = resolved.serversByTarget.opencode.map((server) => server.name)
   const expectedJunieServers = resolved.serversByTarget.junie.map((server) => server.name)
   const opencodeConfigLabel = paths.isHome ? toHomeRelativePath(paths.opencodeConfig) : 'opencode.json'
@@ -266,7 +270,7 @@ export async function runStatus(options: StatusOptions): Promise<void> {
       probes.goose = await probeGooseFile(
         paths.gooseConfig,
         toHomeRelativePath(paths.gooseConfig),
-        resolved.serversByTarget.goose.map((server) => server.name),
+        resolved.serversByTarget.goose.map((server) => toProjectScopedName(options.projectRoot, server.name)),
       )
     }
     probes.skills = await probeSkills(paths.agentsSkillsDir)

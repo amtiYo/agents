@@ -229,6 +229,21 @@ A profile names a subset of servers:
 run. A `--profile` naming something that does not exist is an error, because silently
 syncing every server is the opposite of what was asked for.
 
+## Entries in Global Configs
+
+Claude Desktop, the global Windsurf config and the Goose config live in the home
+directory and are shared by every project on the machine. Entries this CLI writes into
+them are named `agents__<hash of the project path>__<server>`, so two projects that both
+define a server called `fetch` keep their own entry and `agents reset` in one of them
+does not remove the other's.
+
+Project-local files keep the plain server name: nothing else writes them, and the name is
+what the tool shows to the model.
+
+Upgrading rewrites the bare entries a previous version wrote, taking the names from the
+project's state file in `.agents/generated`. A project whose state file was deleted keeps
+its old entries until they are removed by hand.
+
 ## Context Budget
 
 `agents mcp budget` speaks MCP directly over stdio or streamable HTTP and reports tool

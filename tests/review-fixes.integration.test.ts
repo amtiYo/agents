@@ -7,6 +7,7 @@ import { runInit } from '../src/commands/init.js'
 import { runReset } from '../src/commands/reset.js'
 import { loadAgentsConfig, saveAgentsConfig } from '../src/core/config.js'
 import { pathExists } from '../src/core/fs.js'
+import { toProjectScopedName } from '../src/core/globalScope.js'
 import { performSync } from '../src/core/sync.js'
 
 const tempDirs: string[] = []
@@ -54,14 +55,15 @@ describe('reset and the global Windsurf config', () => {
     const projectRoot = await project(['windsurf'])
     await performSync({ projectRoot, check: false, verbose: false })
 
+    const scopedFetch = toProjectScopedName(projectRoot, 'fetch')
     const afterSync = JSON.parse(await readFile(windsurfFile, 'utf8')) as { mcpServers: Record<string, unknown> }
-    expect(Object.keys(afterSync.mcpServers).sort()).toContain('fetch')
+    expect(Object.keys(afterSync.mcpServers)).toContain(scopedFetch)
     expect(afterSync.mcpServers.mine).toBeDefined()
 
     await runReset({ projectRoot, localOnly: true })
 
     const afterReset = JSON.parse(await readFile(windsurfFile, 'utf8')) as { mcpServers: Record<string, unknown> }
-    expect(afterReset.mcpServers.fetch).toBeUndefined()
+    expect(afterReset.mcpServers[scopedFetch]).toBeUndefined()
     expect(afterReset.mcpServers.mine).toBeDefined()
   })
 })
@@ -150,7 +152,7 @@ describe('server validation follows the enabled integrations', () => {
 })
 
 describe('entries the sync did not write', () => {
-  it('warns when a generated server replaces an extension of the same name', { timeout: 25000 }, async () => {
+  it('leaves an extension of the same name alone because entries carry the project', { timeout: 25000 }, async () => {
     const fakeHome = await mkdtemp(path.join(os.tmpdir(), 'agents-review-home-'))
     tempDirs.push(fakeHome)
     process.env.AGENTS_HOME_DIR = fakeHome
@@ -160,6 +162,24 @@ describe('entries the sync did not write', () => {
     await writeFile(gooseConfig, '# my goose config\nextensions:\n  fetch:\n    name: fetch\n    enabled: true\n', 'utf8')
 
     const projectRoot = await project(['goose'])
+    await performSync({ projectRoot, check: false, verbose: false })
+
+    const written = await readFile(gooseConfig, 'utf8')
+    // The user's own `fetch` survives next to this project's scoped entry.
+    expect(written).toContain('\n  fetch:')
+    expect(written).toContain(toProjectScopedName(projectRoot, 'fetch'))
+    expect(written).toContain('# my goose config')
+  })
+
+  it('warns when it replaces an entry it did not write in a project-local config', { timeout: 25000 }, async () => {
+    const projectRoot = await project(['antigravity'])
+    const workspaceMcp = path.join(projectRoot, '.agents', 'mcp_config.json')
+    await writeFile(
+      workspaceMcp,
+      `${JSON.stringify({ mcpServers: { fetch: { command: 'mine' } } }, null, 2)}\n`,
+      'utf8',
+    )
+
     const result = await performSync({ projectRoot, check: false, verbose: false })
 
     expect(result.warnings.join(' ')).toContain('was already there and not written by this CLI')

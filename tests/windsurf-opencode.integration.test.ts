@@ -4,6 +4,7 @@ import { lstat, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { runInit } from '../src/commands/init.js'
 import { loadAgentsConfig, saveAgentsConfig } from '../src/core/config.js'
+import { toProjectScopedName } from '../src/core/globalScope.js'
 import { performSync } from '../src/core/sync.js'
 
 const tempDirs: string[] = []
@@ -60,7 +61,10 @@ describe('windsurf + opencode sync', () => {
     const windsurfGlobal = JSON.parse(
       await readFile(windsurfPath, 'utf8'),
     ) as { mcpServers?: Record<string, unknown> }
-    expect(Object.keys(windsurfGlobal.mcpServers ?? {})).toContain('filesystem')
+    // The global config is shared by every project, so the entry carries this one.
+    expect(Object.keys(windsurfGlobal.mcpServers ?? {})).toContain(
+      toProjectScopedName(projectRoot, 'filesystem'),
+    )
     expect(Object.keys(windsurfGlobal.mcpServers ?? {})).toContain('manual')
 
     const opencode = JSON.parse(await readFile(path.join(projectRoot, 'opencode.json'), 'utf8')) as {
