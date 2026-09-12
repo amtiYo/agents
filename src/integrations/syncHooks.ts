@@ -567,7 +567,9 @@ async function syncManagedAntigravityWorkspace(args: {
       : normalizeAntigravityMcpPayload({})
     const managedServers = recordFrom(generated.mcpServers)
     const existingServers = recordFrom(existing.mcpServers)
-    const nextServers = mergeManagedServers(existingServers, previousNames, managedServers)
+    const takenOver: string[] = []
+    const nextServers = mergeManagedServers(existingServers, previousNames, managedServers, takenOver)
+    args.warnings.push(...formatTakenOverWarnings('.agents/mcp_config.json', takenOver))
     const nextPayload = normalizeAntigravityMcpPayload({
       ...existing,
       mcpServers: nextServers
@@ -693,7 +695,9 @@ async function syncManagedWindsurfGlobal(args: {
       : normalizeWindsurfMcpPayload({})
     const managedServers = recordFrom(generated.mcpServers)
     const existingServers = recordFrom(existing.mcpServers)
-    const nextServers = mergeManagedServers(existingServers, previousNames, managedServers)
+    const takenOver: string[] = []
+    const nextServers = mergeManagedServers(existingServers, previousNames, managedServers, takenOver)
+    args.warnings.push(...formatTakenOverWarnings(toChangedEntry(args.projectRoot, args.globalPath), takenOver))
     const nextPayload = normalizeWindsurfMcpPayload({
       ...existing,
       mcpServers: nextServers
@@ -738,15 +742,32 @@ function mergeManagedServers(
   existingServers: Record<string, unknown>,
   previousManagedNames: string[],
   nextManagedServers: Record<string, unknown>,
+  takenOver?: string[],
 ): Record<string, unknown> {
   const next = { ...existingServers }
+  const previous = new Set(previousManagedNames)
   for (const name of previousManagedNames) {
     delete next[name]
   }
   for (const [name, server] of Object.entries(nextManagedServers)) {
+    // An entry already in the file that this CLI never wrote belongs to the user, and
+    // names like `developer`, `memory` or `github` collide easily. Replacing it silently
+    // makes their own configuration disappear with no way to tell what happened.
+    if (name in next && !previous.has(name)) {
+      takenOver?.push(name)
+    }
     next[name] = server
   }
   return next
+}
+
+/** One warning per entry the sync replaced although it had not written it before. */
+function formatTakenOverWarnings(label: string, names: string[]): string[] {
+  return names.map(
+    (name) =>
+      `${label}: entry "${name}" was already there and not written by this CLI; it now holds the MCP server of the `
+        + 'same name from .agents/agents.json. Rename one of them to keep both.',
+  )
 }
 
 function recordFrom(value: unknown): Record<string, unknown> {
@@ -976,7 +997,9 @@ async function syncManagedGooseGlobal(context: HookContext): Promise<void> {
       ? parseJsonObject(rawGenerated, 'generated Goose config')
       : {}
     const managedExtensions = recordFrom(generated.extensions)
-    const nextExtensions = mergeManagedServers(readGooseExtensions(doc), previousNames, managedExtensions)
+    const takenOver: string[] = []
+    const nextExtensions = mergeManagedServers(readGooseExtensions(doc), previousNames, managedExtensions, takenOver)
+    context.warnings.push(...formatTakenOverWarnings(toChangedEntry(context.projectRoot, configPath), takenOver))
     const content = setGooseExtensions(doc, nextExtensions)
 
     const previousContent = await readTextOrEmpty(configPath)
