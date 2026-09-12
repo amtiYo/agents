@@ -74,15 +74,17 @@ Eighteen tools. "Verified" means the tool's own CLI was run against the file thi
 | Devin Desktop (Windsurf) | `windsurf`, `devin_desktop` | global `~/.codeium/windsurf/mcp_config.json` | bridge | ✅ |
 | OpenCode | `opencode` | `opencode.json` (`mcp`) | bridge | ✅ |
 | Junie | `junie` | `.junie/mcp/mcp.json` | bridge | ✅ |
-| Grok Build | `grok` | `.grok/config.toml` (managed block) | — | ✅ |
-| Amp | `amp` | `.amp/settings.json` (`amp.mcpServers`) | native | — |
-| Factory Droid | `droid`, `factory` | `.factory/mcp.json` | — | — |
-| Kilo | `kilo`, `kilocode` | `.kilo/kilo.jsonc` (`mcp`) | — | — |
-| Devin CLI | `devin` | `.devin/mcp_config.json` | — | — |
-| Zed | `zed` | `.zed/settings.json` (`context_servers`) | — | — |
-| Goose | `goose` | `~/.config/goose/config.yaml` (`extensions`) | — | — |
+| Grok Build | `grok` | `.grok/config.toml` (managed block, folder trust handled) | native | ✅ |
+| Amp | `amp` | `.amp/settings.json` (`amp.mcpServers`) | native | ✅ |
+| Factory Droid | `droid`, `factory` | `.factory/mcp.json` | native | ✅ |
+| Kilo | `kilo`, `kilocode` | `.kilo/kilo.jsonc` (`mcp`) | bridge | — |
+| Devin CLI | `devin` | `.devin/mcp_config.json` | native | ✅ |
+| Zed | `zed` | `.zed/settings.json` (`context_servers`) | native | — |
+| Goose | `goose` | `~/.config/goose/config.yaml` (`extensions`) | native | ✅ |
 
 **Skills column.** `bridge` means a symlink from the tool's directory to `.agents/skills` (a copy where symlinks are unavailable). `native` means the tool reads `.agents/skills` itself, so nothing is created. `—` means the tool's project-level skill location is not implemented here.
+
+**Grok folder trust.** Grok ignores a project's MCP servers and its skills until the folder is trusted, and says nothing about it: `grok inspect` simply lists none. Trust lives in `~/.grok/trusted_folders.toml`, separate from `config.toml`. `agents doctor` reports an untrusted folder and `agents doctor --fix` records the trust.
 
 **Shared files.** `.mcp.json` is read by both Claude Code and Copilot CLI, so `agents` writes it once for both. A server targeted at only one of them is still visible to the other; the sync says so rather than pretending targets isolate it.
 
@@ -242,7 +244,7 @@ Tools          24
 Estimated      ~3156 tokens of context
 ```
 
-The command speaks MCP directly over stdio and streamable HTTP, so the numbers come from the servers themselves. Token counts are estimated from the size of the tool definitions, not measured by a model. Add `--verbose` for a per-tool breakdown, and `--profile` to measure what one profile would cost.
+The command speaks MCP `2026-07-28` directly over stdio and streamable HTTP, so the numbers come from the servers themselves. Servers built against the handshake revisions (`2025-11-25` and earlier) are detected and handled the way the specification prescribes, so both eras work. Token counts are estimated from the size of the tool definitions, not measured by a model. Add `--verbose` for a per-tool breakdown, and `--profile` to measure what one profile would cost.
 
 Servers whose config still contains an unresolved `${VAR}` are skipped rather than started.
 
@@ -282,6 +284,8 @@ Values support `${VAR}` and `${VAR:-default}`, plus `${PROJECT_ROOT}`.
 - `agents doctor` warns about literal secrets in committed config.
 - Env keys and header names are validated before they reach a config file or a shell.
 - `agents plugin export` never reads `local.json`.
+- Values from `local.json` are written only into configs this CLI gitignores. Amp, Zed and Kilo share a file with the tool's own settings, and `.github/mcp.json` is a file teams review, so those keep the `${VAR}` placeholder from `agents.json` and the sync lists which variables to export in your shell. `commit-generated` mode holds secrets back from every generated config for the same reason.
+- A config this CLI rewrites keeps the permissions it had, so a file you restricted to `0600` stays that way.
 
 ---
 

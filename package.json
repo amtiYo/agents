@@ -1,7 +1,7 @@
 {
   "name": "@agents-dev/cli",
-  "version": "0.9.0",
-  "description": "One config to rule them all — sync MCP servers, skills and AGENTS.md across 18 AI coding tools, and package them as Agent Plugins.",
+  "version": "0.9.1",
+  "description": "One config to rule them all \u2014 sync MCP servers, skills and AGENTS.md across 18 AI coding tools, and package them as Agent Plugins.",
   "main": "dist/cli.js",
   "scripts": {
     "build": "node -e \"const fs=require('node:fs'); fs.rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.json",
@@ -24,6 +24,7 @@
     "AGENTS.md",
     "CHANGELOG.md",
     "CONTRIBUTING.md",
+    "SECURITY.md",
     "LICENSE",
     "NOTICE"
   ],
