@@ -25,7 +25,13 @@ import { syncVscodeSettings } from './vscodeSettings.js'
 import { listCursorMcpStatuses } from './cursorCli.js'
 import { listClaudeManagedServerNames } from './claudeCli.js'
 import { renderClaudeDesktopMcp } from './renderers.js'
-import { validateEnvKey, validateEnvValueForShell, validateHeaderKey, validateServerName } from './mcpValidation.js'
+import {
+  validateConfigValue,
+  validateEnvKey,
+  validateEnvValueForShell,
+  validateHeaderKey,
+  validateServerName
+} from './mcpValidation.js'
 import { acquireSyncLock } from './syncLock.js'
 import { planProjectMcp, syncProjectMcpFile } from './projectMcp.js'
 import { collectUnsupportedFieldWarnings } from './fieldSupport.js'
@@ -83,7 +89,7 @@ export async function performSync(options: SyncOptions): Promise<SyncResult> {
     if (resolved.missingRequiredEnv.length > 0) {
       warnings.push(`Skipped servers because required env vars are missing: ${resolved.missingRequiredEnv.join('; ')}`)
     }
-    validateResolvedServers(resolved.serversByTarget)
+    validateResolvedServers(resolved.serversByTarget, config.integrations.enabled)
 
     if (!check) {
       const gitignoreChanged = await ensureProjectGitignore(projectRoot, config.syncMode)
@@ -101,7 +107,12 @@ export async function performSync(options: SyncOptions): Promise<SyncResult> {
 
     const generatedByIntegration: Partial<Record<IntegrationName, string>> = {}
     for (const hook of INTEGRATION_SYNC_HOOKS) {
-      const generated = hook.buildGenerated(resolved.serversByTarget[hook.id])
+      const committed = writesCommittedConfig(hook.id, config)
+      const servers = committed ? resolved.publicServersByTarget[hook.id] : resolved.serversByTarget[hook.id]
+      if (committed && enabled.has(hook.id)) {
+        warnings.push(...collectCommittedSecretWarnings(hook.id, servers, resolved.localOnlyKeysByServer))
+      }
+      const generated = hook.buildGenerated(servers)
       // Generated previews are written for every integration, but only the enabled
       // ones may warn: nobody needs Goose advice in a project without Goose.
       if (enabled.has(hook.id)) {
@@ -135,25 +146,48 @@ export async function performSync(options: SyncOptions): Promise<SyncResult> {
       const hookEnabled = enabled.has(hook.id)
       if (!hookEnabled && !hook.materializeWhenDisabled) continue
       if (hook.shouldMaterialize && !hook.shouldMaterialize(config)) continue
-      await hook.materialize({
-        projectRoot,
-        paths,
-        check,
-        changed,
-        warnings,
-        config,
-        generatedByIntegration,
-        enabled: hookEnabled
-      })
+      try {
+        await hook.materialize({
+          projectRoot,
+          paths,
+          check,
+          changed,
+          warnings,
+          config,
+          generatedByIntegration,
+          enabled: hookEnabled
+        })
+      } catch (error) {
+        // One tool with a broken file used to abort the whole run, leaving the
+        // integrations after it unwritten and the message with no name on it.
+        const message = error instanceof Error ? error.message : String(error)
+        warnings.push(`${hook.id}: sync skipped after an error while writing its config. ${message}`)
+      }
     }
 
     const claudeScope = config.integrations.options.claudeScope
+    // `.mcp.json` follows syncMode, `.github/mcp.json` is never gitignored, so each side
+    // of the shared project file picks its own form.
+    const claudeProjectServers = writesCommittedConfig('claude', config)
+      ? resolved.publicServersByTarget.claude
+      : resolved.serversByTarget.claude
+    const copilotProjectServers = writesCommittedConfig('copilot_cli', config)
+      ? resolved.publicServersByTarget.copilot_cli
+      : resolved.serversByTarget.copilot_cli
+    if (enabled.has('claude') && claudeProjectServers !== resolved.serversByTarget.claude) {
+      warnings.push(...collectCommittedSecretWarnings('claude', claudeProjectServers, resolved.localOnlyKeysByServer))
+    }
+    if (enabled.has('copilot_cli') && copilotProjectServers !== resolved.serversByTarget.copilot_cli) {
+      warnings.push(
+        ...collectCommittedSecretWarnings('copilot_cli', copilotProjectServers, resolved.localOnlyKeysByServer),
+      )
+    }
     const projectMcpPlan = planProjectMcp({
       config,
       claudeEnabled: enabled.has('claude'),
       copilotCliEnabled: enabled.has('copilot_cli'),
-      claudeServers: resolved.serversByTarget.claude,
-      copilotServers: resolved.serversByTarget.copilot_cli,
+      claudeServers: claudeProjectServers,
+      copilotServers: copilotProjectServers,
       paths
     })
 
@@ -672,10 +706,65 @@ function isCursorAlreadyEnabledError(stderr: string): boolean {
 }
 
 /** Reject server names, env keys and header names that a tool config must not carry. */
-function validateResolvedServers(resolvedByTarget: Record<IntegrationName, ResolvedMcpServer[]>): void {
+/**
+ * Whether this integration's config ends up in version control.
+ *
+ * `commit-generated` keeps every generated file in review, and Amp, Zed and Kilo share a
+ * file with the tool's own settings that this CLI never gitignores, as does Copilot CLI
+ * when it is pointed at `.github/mcp.json`. Values from `.agents/local.json` must not be
+ * written into any of them.
+ */
+function writesCommittedConfig(id: IntegrationName, config: AgentsConfig): boolean {
+  if (config.syncMode === 'commit-generated') return true
+  if (id === 'amp' || id === 'zed' || id === 'kilo') return true
+  return id === 'copilot_cli' && config.integrations.options.copilotCliPath === '.github/mcp.json'
+}
+
+/**
+ * Tell the user which values were held back from a config that gets committed, so a
+ * server that stops working has a visible reason.
+ */
+function collectCommittedSecretWarnings(
+  id: IntegrationName,
+  servers: ResolvedMcpServer[],
+  localOnlyKeysByServer: Record<string, string[]>,
+): string[] {
+  const warnings: string[] = []
+  for (const server of servers) {
+    const keys = localOnlyKeysByServer[server.name]
+    if (!keys || keys.length === 0) continue
+    const subject = keys.length === 1 ? `${keys[0]} was` : `${keys.join(', ')} were`
+    const variables = keys.length === 1 ? 'the variable' : 'the variables'
+    warnings.push(
+      `MCP server "${server.name}": ${id} reads a config this CLI keeps out of .gitignore, so ${subject} `
+        + 'written as it appears in .agents/agents.json instead of the value from .agents/local.json. '
+        + `Export ${variables} in your shell so the tool resolves them.`,
+    )
+  }
+  return warnings
+}
+
+/**
+ * Check every value that reaches a config file of an enabled integration.
+ *
+ * Only enabled targets are checked: a server aimed at a tool the project does not use
+ * must not stop the sync for the tools it does use.
+ */
+function validateResolvedServers(
+  resolvedByTarget: Record<IntegrationName, ResolvedMcpServer[]>,
+  enabledIntegrations: IntegrationName[],
+): void {
+  const enabled = new Set(enabledIntegrations)
   for (const [target, servers] of Object.entries(resolvedByTarget)) {
+    if (!enabled.has(target as IntegrationName)) continue
     for (const server of servers) {
       validateServerName(server.name)
+      validateConfigValue(server.command, 'command', server.name)
+      validateConfigValue(server.url, 'url', server.name)
+      validateConfigValue(server.cwd, 'cwd', server.name)
+      for (const [index, arg] of (server.args ?? []).entries()) {
+        validateConfigValue(arg, `args[${String(index)}]`, server.name)
+      }
       for (const [key, value] of Object.entries(server.env ?? {})) {
         try {
           validateEnvKey(key, 'environment variable')

@@ -118,6 +118,10 @@ export function resolveFromConfigAndLocal(input: {
   const serversByTarget = Object.fromEntries(
     ALL_INTEGRATIONS.map((id) => [id, [] as ResolvedMcpServer[]]),
   ) as Record<IntegrationName, ResolvedMcpServer[]>
+  const publicServersByTarget = Object.fromEntries(
+    ALL_INTEGRATIONS.map((id) => [id, [] as ResolvedMcpServer[]]),
+  ) as Record<IntegrationName, ResolvedMcpServer[]>
+  const localOnlyKeysByServer: Record<string, string[]> = {}
 
   const selectedServerNames: string[] = []
   const localOverrides = local?.mcpServers ?? {}
@@ -142,6 +146,15 @@ export function resolveFromConfigAndLocal(input: {
     }
 
     const resolved = resolveServer(name, merged, projectRoot, warnings)
+    // The committed definition on its own, for configs that are not gitignored. The
+    // warnings it would repeat are dropped: the same server already produced them above.
+    const publicResolved = base
+      ? resolveServer(name, base, projectRoot, [])
+      : resolved
+    const localOnlyKeys = collectLocalOnlyKeys(base, override)
+    if (localOnlyKeys.length > 0) {
+      localOnlyKeysByServer[name] = localOnlyKeys
+    }
     selectedServerNames.push(name)
 
     const targets = normalizeTargets(merged.targets)
@@ -151,19 +164,60 @@ export function resolveFromConfigAndLocal(input: {
         continue
       }
       serversByTarget[target].push(resolved)
+      publicServersByTarget[target].push(publicResolved)
     }
   }
 
   for (const target of ALL_INTEGRATIONS) {
     serversByTarget[target].sort((a, b) => a.name.localeCompare(b.name))
+    publicServersByTarget[target].sort((a, b) => a.name.localeCompare(b.name))
   }
 
   return {
     serversByTarget,
+    publicServersByTarget,
+    localOnlyKeysByServer,
     warnings,
     missingRequiredEnv,
     selectedServerNames
   }
+}
+
+/**
+ * Value keys a server gets only from `.agents/local.json`.
+ *
+ * These are the values that must not reach a config kept in version control, so the
+ * sync can name them when it writes the committed definition instead.
+ */
+function collectLocalOnlyKeys(
+  base: McpServerDefinition | undefined,
+  override: Partial<McpServerDefinition> | undefined,
+): string[] {
+  if (!override) return []
+
+  const keys: string[] = []
+  for (const field of ['env', 'headers'] as const) {
+    const overrideRecord = override[field]
+    if (!overrideRecord) continue
+    const baseRecord = base?.[field] ?? {}
+    for (const key of Object.keys(overrideRecord)) {
+      if (overrideRecord[key] !== baseRecord[key]) {
+        keys.push(`${field}.${key}`)
+      }
+    }
+  }
+
+  for (const field of ['command', 'url', 'cwd', 'headersHelper'] as const) {
+    if (override[field] !== undefined && override[field] !== base?.[field]) {
+      keys.push(field)
+    }
+  }
+
+  if (override.args && JSON.stringify(override.args) !== JSON.stringify(base?.args)) {
+    keys.push('args')
+  }
+
+  return keys.sort((a, b) => a.localeCompare(b))
 }
 
 function normalizeTargets(targets: IntegrationName[] | undefined): IntegrationName[] {

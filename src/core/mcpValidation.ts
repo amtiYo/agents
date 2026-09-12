@@ -100,3 +100,17 @@ export function validateEnvValueForShell(key: string, value: string, context: st
     throw new Error(`Invalid ${context} value for "${key}": contains control characters`)
   }
 }
+
+/**
+ * Reject control characters in a value that is written into a generated config.
+ *
+ * A newline inside `command` or `cwd` turns a TOML or YAML document into something the
+ * tool cannot parse, and the integration then drops out of the sync with an error about
+ * a file the user never edited.
+ */
+export function validateConfigValue(value: string | undefined, label: string, serverName: string): void {
+  if (value === undefined) return
+  if (/[\x00-\x1F\x7F]/.test(value)) {
+    throw new Error(`Invalid ${label} in server "${serverName}": contains control characters`)
+  }
+}
