@@ -9,6 +9,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - No changes yet.
 
+## [0.9.1] - 2026-09-12
+
+### Added
+
+- Skills reach the seven integrations added in 0.9.0. Grok Build, Factory Droid, Devin CLI, Zed and Goose read `.agents/skills` themselves, so the sync writes nothing for them; Kilo gets a bridge at `.kilo/skills`.
+- Grok folder trust. Grok ignores a project's MCP servers and its skills until the folder is trusted, and reports nothing about it. `agents doctor` now says so, `agents doctor --fix` records the trust in `~/.grok/trusted_folders.toml`, and `agents status` shows it next to Codex project trust.
+- `agents sync` warns when Zed is enabled and a skill sits inside a grouping directory: Zed only discovers skills that are direct children of the skills root, so a grouped skill is silently missing.
+- `agents start` offers to set Grok folder trust during setup, next to the Codex trust step, and `agents doctor --fix-dry-run` lists it among the changes it would make.
+- `SECURITY.md`: what this CLI writes outside the project, what it refuses to do, which commands start an MCP server from the project's committed config, and how to report a vulnerability.
+
+### Changed
+
+- `agents mcp budget` speaks MCP `2026-07-28`. That revision removed the `initialize` handshake and the protocol-level session; every request now carries its version, identity and capabilities in `_meta`, and over HTTP in the `MCP-Protocol-Version` and `Mcp-Method` headers. The probe was pinned to `2025-06-18` and opened with a handshake the revision no longer defines.
+- The probe detects which revision a server implements the way the specification prescribes for a client that supports both: `server/discover` first on stdio, a modern `tools/list` first over HTTP, and a fall back to the handshake on anything that is not a recognized MCP error. A server answering `UnsupportedProtocolVersionError` is taken at its word and the probe continues with a revision it advertises. A server that answers discovery late, because `npx` was still fetching it, moves the probe back to the modern path instead of failing on the handshake it had already sent.
+- `agents mcp budget` follows every page of `tools/list`. A server that paginates its tools was counted by its first page only, which is the wrong number for a command whose whole purpose is the count.
+- Skill bridges are declared in one table that the sync, `status`, `start`, `reset` and the gitignore rules all read, instead of five hand-written lists.
+- Each integration declares the configuration file it reads in the registry: the path, the format and the label. `agents status`, `agents doctor`, `agents reset` and the setup wizard read that declaration instead of keeping a list each. Four lists of integrations are gone, and the generated previews `doctor` checks now come from the sync hooks. The four integrations whose file depends on an option or the platform (Claude Code, Claude Desktop, Copilot CLI, Windsurf) are still handled where that choice is made, and a test fails if a new integration arrives without either a declaration or a place on that list.
+- Amp, Factory Droid, Devin CLI, Goose and Grok Build are marked verified in the README: each tool's own CLI was run against the files this project generates.
+
+### Fixed
+
+- The Windsurf global MCP path honours `AGENTS_HOME_DIR` like every other global path. A run with that variable set used to write into the real home directory.
+- In global mode the Kilo skill bridge is a symlink again. Kilo keeps `kilo.jsonc` under the XDG config directory and its skills under the home directory, so the sync created the wrong parent, the symlink failed and it silently fell back to copying the whole skills tree.
+- `agents doctor` reports a `.kilo/skills` bridge that is tracked by git, and `--fix` untracks it. The tracked-path list now comes from the same table as the `.gitignore` entries.
+- Setting Grok folder trust refuses to touch a `trusted_folders.toml` where `folders` is an inline table, an array of tables or a scalar. Appending a section there produced a duplicate key, which left Grok unable to read its own file.
+- `agents reset` removes this project's servers from the global Windsurf config. It never did, and it deleted `.agents/generated` in the same run, so the record of which entries belonged to the project was gone and no later sync could remove them.
+- `agents doctor` checks the configuration of every enabled integration. Grok, Amp, Droid, Kilo, Devin, Zed and Goose were never validated, so a file the sync had to skip produced a warning during `sync` and silence plus exit code 0 from `doctor`. `.mcp.json` is now checked in a project that uses Claude Code without Copilot CLI.
+- `agents doctor --fix` reports the warnings from the sync it runs instead of discarding them.
+- Entries in a config shared by every project carry the project they came from. The global Windsurf config and the Goose config were written with the plain server name, so two projects that both define `fetch` overwrote each other, and `agents reset` in one deleted the entry belonging to the other. Names now take the `agents__<hash>__` form already used for Claude Desktop. The first sync after the upgrade replaces the bare entries this project wrote, recognising them by content rather than by the state file, which a fresh clone does not have; an entry under the same name whose content is different belongs to someone else, stays, and is reported.
+- One integration failing no longer ends the sync. A `.cursor/mcp.json` that is a directory used to abort the run with a bare `EISDIR`, leaving every integration after Cursor unwritten; the failure is now reported against the integration that caused it and the rest are written.
+- Server validation covers only enabled integrations. A server aimed at a tool the project does not use could stop the whole sync with an invalid env key.
+- Values written into a generated config are checked for control characters. A newline in `command` or `cwd` produced a TOML file the tool could not parse, and the integration dropped out of the sync with an error about a file the user never edited.
+- The sync warns when it replaces an entry in a shared config that it did not write before. Goose extension names such as `developer`, `memory` or `fetch` collide with MCP server names, and the user's own entry disappeared without a word.
+- `agents reset` keeps a comment in `~/.config/goose/config.yaml` when removing the last extension. Deleting the final key rendered the document as empty and the file was removed, comment and all.
+- An existing `.claude/skills` (or any bridge) that is a symlink to somewhere else is left alone with a warning, instead of being replaced. The flat Antigravity bridge already behaved this way.
+- `agents status` no longer lists Antigravity among the tools that read `.agents/skills` directly. It does not: it gets a flat copy at `.gemini/skills`, which is why that copy exists.
+- `agents mcp test` strips terminal escape sequences from values it prints out of `agents.json`.
+- `agents plugin import` reports a server whose command is a shell interpreter, which passes the specification's shape check and runs whatever the package put in its arguments.
+
+### Security
+
+- Secrets no longer reach configs that end up in version control, whether they come from `.agents/local.json` or from the environment. A committed config keeps `${VAR}` as it is; `${PROJECT_ROOT}` and an explicit `${VAR:-default}` still resolve, because both are already in the committed file.
+- Secrets from `.agents/local.json` no longer reach configs that end up in version control. Amp, Zed and Kilo share a file with the tool's own settings, and Copilot CLI on `.github/mcp.json` writes a file teams review, so this CLI never adds them to `.gitignore`, and it was writing resolved secrets into them, one `git add` away from a published token. Those files now carry the committed definition, placeholders and all, and the sync says which values were held back and which variables to export. In `commit-generated` mode the same rule applies to every generated config.
+- Atomic writes keep the permissions of the file they replace. Rewriting a config the user had restricted to `0600`, such as `~/.config/goose/config.yaml` with a key in it, left it world-readable, because the rename replaced the inode with a fresh `0644` file.
+- The Antigravity flat copy no longer follows a symlink that leaves the project. A skill linked from elsewhere in the repository still works; a link to a file outside it would have placed a copy of that file inside the project, and the skill is left out with a warning instead.
+- The state files in `.agents/generated` name only what this CLI writes. The directory is gitignored but can still arrive in a clone, and its contents decide which files the sync rewrites and which entries `reset` deletes: a path there is now accepted only if it is one of the two project MCP files, and a name only if it carries this project.
+- The flat skill copy follows a symlinked directory inside the project when looking for a link that leaves it. A link one level down, behind a directory link, was missed while the copy itself dereferenced both.
+- Recording project trust for Codex or folder trust for Grok takes a lock. Both files are shared by every project on the machine and are rewritten whole, so two syncs at once could drop one of the two decisions.
+- `agents status` and `agents doctor` report a trust file they cannot read instead of failing on it.
+- `AGENTS_HOME_DIR` now covers the update check, Claude Desktop and Antigravity paths, which read the real home directory through `os.homedir()`. A test run wrote its mock version into `~/.agents-dev/update-check.json`, after which the CLI announced an update that does not exist.
+
 ## [0.9.0] - 2026-09-12
 
 ### Added

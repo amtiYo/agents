@@ -1,7 +1,6 @@
-import os from 'node:os'
 import path from 'node:path'
 import { pathExists, readJson, writeJsonAtomic, writePrivateJsonAtomic } from './fs.js'
-import { getProjectPaths } from './paths.js'
+import { getHomeDir, getProjectPaths } from './paths.js'
 import type { UpdateCheckMetadata } from '../types.js'
 import * as ui from './ui.js'
 
@@ -144,7 +143,7 @@ async function loadStorageState(projectRoot: string | undefined): Promise<Storag
     }
   }
 
-  const globalPath = path.join(os.homedir(), '.agents-dev', 'update-check.json')
+  const globalPath = path.join(getHomeDir(), '.agents-dev', 'update-check.json')
   const globalDocument = await readDocument(globalPath)
   return {
     kind: 'global',

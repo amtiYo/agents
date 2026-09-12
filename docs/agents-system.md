@@ -119,7 +119,9 @@ and `agents sync` reports that per-tool `targets` cannot isolate servers inside 
 
 ## VS Code Integration
 
-**Managed in `.vscode/settings.json`:**
+**Managed in `.vscode/settings.json`.** The same list is written to `files.exclude` and to
+`search.exclude`, and it does not depend on which integrations the project enables:
+
 ```json
 {
   "files.exclude": {
@@ -132,10 +134,18 @@ and `agents sync` reports that per-tool `targets` cannot isolate servers inside 
     "**/.windsurf": true,
     "**/.opencode": true,
     "**/.junie": true,
+    "**/.grok": true,
+    "**/.amp": true,
+    "**/.factory": true,
+    "**/.kilo": true,
+    "**/kilo.jsonc": true,
+    "**/.devin": true,
+    "**/.zed": true,
     "**/.mcp.json": true,
     "**/opencode.json": true,
     "**/.agents/generated": true
-  }
+  },
+  "search.exclude": { "…": "the same entries" }
 }
 ```
 
@@ -155,8 +165,25 @@ and `agents sync` reports that per-tool `targets` cannot isolate servers inside 
 | **Copilot CLI** | Reads `.agents/skills/` directly |
 | **OpenCode** | Reads `.agents/skills/` directly |
 | **Junie** | Symlink to `.junie/skills/` |
+| **Kilo** | Symlink to `.kilo/skills/` |
+| **Grok Build** | Reads `.agents/skills/` directly, once the folder is trusted |
+| **Factory Droid** | Reads `.agents/skills/` directly |
+| **Devin CLI** | Reads `.agents/skills/` directly |
+| **Zed** | Reads `.agents/skills/` directly |
+| **Goose** | Reads `.agents/skills/` directly |
 
-**Validation:** `agents doctor` checks frontmatter (`name`, `description`)
+**Nested skills.** A grouping directory (`.agents/skills/group-a/deploy-flow/`) is discovered
+by this CLI and by most tools, but Zed only loads skills that sit directly under the skills
+root, so `agents sync` warns when Zed is enabled and a skill is nested. Antigravity does not
+read nested skills either, which is why it gets a flat copy instead of a symlink.
+
+**Grok folder trust.** Grok ignores a project's MCP servers and its skills until the folder is
+recorded in `~/.grok/trusted_folders.toml`, and reports nothing about it. `agents start` offers
+to set it, `agents doctor` reports it and `agents doctor --fix` writes it.
+
+**Validation:** `agents doctor` checks frontmatter (`name`, `description`, and the optional
+`license`, `compatibility`, `metadata` and `allowed-tools`), and requires the frontmatter `name`
+to match the skill's directory name, which Goose and Kilo need to load a skill at all.
 
 ## Reset Options
 
@@ -212,11 +239,53 @@ A profile names a subset of servers:
 run. A `--profile` naming something that does not exist is an error, because silently
 syncing every server is the opposite of what was asked for.
 
+## Entries in Global Configs
+
+Claude Desktop, the global Windsurf config and the Goose config live in the home
+directory and are shared by every project on the machine. Entries this CLI writes into
+them are named `agents__<hash of the project path>__<server>`, so two projects that both
+define a server called `fetch` keep their own entry and `agents reset` in one of them
+does not remove the other's.
+
+Project-local files keep the plain server name: nothing else writes them, and the name is
+what the tool shows to the model.
+
+Upgrading rewrites the bare entries a previous version of this project wrote. They are
+recognised by content: an entry under the bare name holding exactly what this project is
+about to write is its own leftover and is replaced. An entry of the same name holding
+something else belongs to the user or to another project, so it stays and the sync says so.
+The state file in `.agents/generated` is not needed for this, which matters because it is
+gitignored and a fresh clone does not have it.
+
+For the same reason `agents reset` removes only entries carrying this project's name. A
+bare entry is never this project's under the current scheme, and deleting it would take
+someone else's configuration with it.
+
 ## Context Budget
 
-`agents mcp budget` speaks MCP directly: JSON-RPC `initialize` then `tools/list`, over
-stdio or streamable HTTP. It reports tool counts and an estimate of the context each
-server occupies, derived from the size of the tool definitions.
+`agents mcp budget` speaks MCP directly over stdio or streamable HTTP and reports tool
+counts with an estimate of the context each server occupies, derived from the size of the
+tool definitions.
+
+**Protocol revisions.** The client speaks `2026-07-28`, which removed the `initialize`
+handshake and the protocol-level session: every request carries its version, identity and
+capabilities in `_meta`, and over HTTP in the `MCP-Protocol-Version` and `Mcp-Method`
+headers. Servers built against `2025-11-25` and earlier still expect the handshake, so the
+probe follows the detection the specification defines for a client that supports both:
+
+| Transport | First attempt | Falls back when |
+|:--|:--|:--|
+| stdio | `server/discover` | the answer is an error that is not a reserved MCP code, or nothing arrives |
+| Streamable HTTP | `tools/list` with the modern headers | the status is `400`, `404` or `405` and the body is not a recognized MCP error |
+
+A reserved code identifies a modern server: `UnsupportedProtocolVersionError` (`-32022`),
+`MissingRequiredClientCapabilityError` (`-32021`) and `HeaderMismatchError` (`-32020`), as
+does a `404` whose body names the missing method. On `-32022` the probe continues with a
+revision the server advertises; when the only ones offered are older than `2026-07-28`, the
+handshake is used with the newest of them, and the version the server settles on travels in
+the `MCP-Protocol-Version` header of every later request.
+
+The tool list is read to the end: a `nextCursor` is followed until the pages run out.
 
 Servers whose configuration still contains an unresolved `${VAR}` are skipped rather
 than started, and every probe has a timeout.

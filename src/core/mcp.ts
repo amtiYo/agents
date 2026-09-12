@@ -118,6 +118,10 @@ export function resolveFromConfigAndLocal(input: {
   const serversByTarget = Object.fromEntries(
     ALL_INTEGRATIONS.map((id) => [id, [] as ResolvedMcpServer[]]),
   ) as Record<IntegrationName, ResolvedMcpServer[]>
+  const publicServersByTarget = Object.fromEntries(
+    ALL_INTEGRATIONS.map((id) => [id, [] as ResolvedMcpServer[]]),
+  ) as Record<IntegrationName, ResolvedMcpServer[]>
+  const localOnlyKeysByServer: Record<string, string[]> = {}
 
   const selectedServerNames: string[] = []
   const localOverrides = local?.mcpServers ?? {}
@@ -142,6 +146,15 @@ export function resolveFromConfigAndLocal(input: {
     }
 
     const resolved = resolveServer(name, merged, projectRoot, warnings)
+    // The committed definition on its own, for configs that are not gitignored. The
+    // warnings it would repeat are dropped: the same server already produced them above.
+    const publicResolved = base
+      ? resolveServer(name, base, projectRoot, [], 'committed')
+      : resolved
+    const localOnlyKeys = collectLocalOnlyKeys(base, override)
+    if (localOnlyKeys.length > 0) {
+      localOnlyKeysByServer[name] = localOnlyKeys
+    }
     selectedServerNames.push(name)
 
     const targets = normalizeTargets(merged.targets)
@@ -151,19 +164,60 @@ export function resolveFromConfigAndLocal(input: {
         continue
       }
       serversByTarget[target].push(resolved)
+      publicServersByTarget[target].push(publicResolved)
     }
   }
 
   for (const target of ALL_INTEGRATIONS) {
     serversByTarget[target].sort((a, b) => a.name.localeCompare(b.name))
+    publicServersByTarget[target].sort((a, b) => a.name.localeCompare(b.name))
   }
 
   return {
     serversByTarget,
+    publicServersByTarget,
+    localOnlyKeysByServer,
     warnings,
     missingRequiredEnv,
     selectedServerNames
   }
+}
+
+/**
+ * Value keys a server gets only from `.agents/local.json`.
+ *
+ * These are the values that must not reach a config kept in version control, so the
+ * sync can name them when it writes the committed definition instead.
+ */
+function collectLocalOnlyKeys(
+  base: McpServerDefinition | undefined,
+  override: Partial<McpServerDefinition> | undefined,
+): string[] {
+  if (!override) return []
+
+  const keys: string[] = []
+  for (const field of ['env', 'headers'] as const) {
+    const overrideRecord = override[field]
+    if (!overrideRecord) continue
+    const baseRecord = base?.[field] ?? {}
+    for (const key of Object.keys(overrideRecord)) {
+      if (overrideRecord[key] !== baseRecord[key]) {
+        keys.push(`${field}.${key}`)
+      }
+    }
+  }
+
+  for (const field of ['command', 'url', 'cwd', 'headersHelper'] as const) {
+    if (override[field] !== undefined && override[field] !== base?.[field]) {
+      keys.push(field)
+    }
+  }
+
+  if (override.args && JSON.stringify(override.args) !== JSON.stringify(base?.args)) {
+    keys.push('args')
+  }
+
+  return keys.sort((a, b) => a.localeCompare(b))
 }
 
 function normalizeTargets(targets: IntegrationName[] | undefined): IntegrationName[] {
@@ -194,6 +248,15 @@ function sameSet(a: IntegrationName[], b: IntegrationName[]): boolean {
 }
 
 /**
+ * How far placeholders are expanded.
+ *
+ * `full` produces what a tool needs to start the server. `committed` produces what may be
+ * written into a file that ends up in version control: `${PROJECT_ROOT}` and an explicit
+ * `${VAR:-default}` resolve, a bare `${VAR}` stays as it is.
+ */
+type ResolutionMode = 'full' | 'committed'
+
+/**
  * Expand placeholders in one server definition and copy through the optional fields.
  *
  * `${PROJECT_ROOT}`, `${VAR}` and `${VAR:-default}` are resolved here; a plain `${VAR}`
@@ -204,12 +267,17 @@ function resolveServer(
   server: McpServerDefinition,
   projectRoot: string,
   warnings: string[],
+  mode: ResolutionMode = 'full',
 ): ResolvedMcpServer {
   const resolveValue = (value: string | undefined): string | undefined => {
     if (!value) return value
     // ${VAR} and ${VAR:-fallback}; the fallback form never warns because it always resolves.
     return value.replace(/\$\{([A-Z0-9_]+)(?::-([^}]*))?\}/g, (_full, key: string, fallback?: string) => {
       if (key === 'PROJECT_ROOT') return projectRoot
+      // A committed config must not carry a value read from the environment: the variable
+      // is where the secret lives, and this CLI tells people to export exactly those. The
+      // fallback form is safe, its value is already in the committed file.
+      if (mode === 'committed') return fallback ?? `\${${key}}`
       const envValue = process.env[key]
       if (envValue !== undefined) return envValue
       if (fallback !== undefined) return fallback

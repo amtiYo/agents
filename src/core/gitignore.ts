@@ -2,6 +2,7 @@ import path from 'node:path'
 import { readFile } from 'node:fs/promises'
 import type { SyncMode } from '../types.js'
 import { pathExists, removeIfExists, writeTextAtomic } from './fs.js'
+import { SKILL_BRIDGE_GITIGNORE_ENTRIES } from './skills.js'
 
 const BASE_MANAGED_ENTRIES = ['.agents/local.json', '.agents/generated/', '.agents/agents.json.*.bak']
 const SOURCE_ONLY_ENTRIES = [
@@ -11,21 +12,23 @@ const SOURCE_ONLY_ENTRIES = [
   '.gemini/',
   '.mcp.json',
   '.vscode/mcp.json',
-  '.claude/skills',
   '.cursor/',
   '.antigravity/',
   '.windsurf/',
   '.opencode/',
   'opencode.json',
   '.junie/mcp/',
-  '.junie/skills',
   '.grok/config.toml',
   '.factory/mcp.json',
-  '.devin/mcp_config.json'
+  '.devin/mcp_config.json',
+  // Skill bridges the sync writes into a tool's directory. Bridges under a directory
+  // already listed above (.cursor/, .gemini/, .windsurf/) carry no entry of their own.
+  ...SKILL_BRIDGE_GITIGNORE_ENTRIES
 ]
 
 // Amp, Kilo and Zed keep the tool's own settings in the same file, and .github/mcp.json
-// is a file teams usually want in review, so none of them is added to .gitignore.
+// is a file teams usually want in review, so none of those files is added to .gitignore.
+// A skill bridge is different: that directory is created by the sync and belongs to it.
 
 export async function ensureProjectGitignore(projectRoot: string, syncMode: SyncMode): Promise<boolean> {
   const gitignorePath = path.join(projectRoot, '.gitignore')

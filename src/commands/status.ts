@@ -7,9 +7,10 @@ import { listDirNames, pathExists, readJson, readTextOrEmpty } from '../core/fs.
 import { loadResolvedRegistry } from '../core/mcp.js'
 import TOML from '@iarna/toml'
 import { parse as parseJsonc } from 'jsonc-parser'
+import { toProjectScopedName } from '../core/globalScope.js'
 import { getProjectPaths, toHomeRelativePath } from '../core/paths.js'
 import { readGooseDocument, readGooseExtensions } from '../core/goose.js'
-import { hasNativeSkillsDiscovery } from '../integrations/registry.js'
+import { hasNativeSkillsDiscovery, listManagedConfigs } from '../integrations/registry.js'
 import {
   getClaudeDesktopConfigPath,
   getClaudeDesktopConfigUnavailableDetail,
@@ -19,9 +20,9 @@ import {
 } from '../core/claudeDesktop.js'
 import { getWindsurfGlobalMcpPath } from '../core/windsurf.js'
 import { commandExists, runCommand } from '../core/shell.js'
-import { getCodexTrustState } from '../core/trust.js'
+import { getCodexTrustState, getGrokTrustState } from '../core/trust.js'
 import { listMcpEntries, loadMcpState } from '../core/mcpCrud.js'
-import { inspectAntigravitySkillsBridge } from '../core/skills.js'
+import { inspectAntigravitySkillsBridge, SKILL_BRIDGES } from '../core/skills.js'
 import { listCursorMcpStatuses, sanitizeTerminalOutput } from '../core/cursorCli.js'
 import * as ui from '../core/ui.js'
 
@@ -84,7 +85,10 @@ export async function runStatus(options: StatusOptions): Promise<void> {
   const expectedCopilotCliServers = resolved.serversByTarget.copilot_cli.map((server) => server.name)
   const expectedCursorServers = resolved.serversByTarget.cursor.map((server) => server.name)
   const expectedAntigravityServers = resolved.serversByTarget.antigravity.map((server) => server.name)
-  const expectedWindsurfServers = resolved.serversByTarget.windsurf.map((server) => server.name)
+  // Entries in the global Windsurf config carry the project they came from.
+  const expectedWindsurfServers = resolved.serversByTarget.windsurf.map((server) =>
+    toProjectScopedName(options.projectRoot, server.name),
+  )
   const expectedOpencodeServers = resolved.serversByTarget.opencode.map((server) => server.name)
   const expectedJunieServers = resolved.serversByTarget.junie.map((server) => server.name)
   const opencodeConfigLabel = paths.isHome ? toHomeRelativePath(paths.opencodeConfig) : 'opencode.json'
@@ -96,31 +100,26 @@ export async function runStatus(options: StatusOptions): Promise<void> {
     'AGENTS.md': await pathExists(paths.rootAgentsMd),
     '.vscode/settings.json': await pathExists(paths.vscodeSettings)
   }
-  if (enabled.has('codex')) {
-    files['.codex/config.toml'] = await pathExists(paths.codexConfig)
-  }
-  if (enabled.has('gemini')) {
-    files['.gemini/settings.json'] = await pathExists(paths.geminiSettings)
-  }
-  if (enabled.has('copilot_vscode')) {
-    files['.vscode/mcp.json'] = await pathExists(paths.vscodeMcp)
-  }
   const copilotCliMcpPath = config.integrations.options.copilotCliPath === '.github/mcp.json'
     ? paths.copilotCliGithubMcp
     : paths.copilotCliMcp
   const copilotCliMcpLabel = path.relative(paths.root, copilotCliMcpPath) || copilotCliMcpPath
   const claudeUsesProjectScope = config.integrations.options.claudeScope === 'project'
+
+  // One file per integration, from the registry: a tool added there appears here without
+  // a second list to keep in step.
+  for (const managed of listManagedConfigs(paths, config.integrations.enabled)) {
+    // Antigravity's workspace file is written only when its MCP sync is on.
+    if (managed.id === 'antigravity' && !antigravityMcpSyncEnabled) continue
+    files[managed.label] = await pathExists(managed.filePath)
+  }
+
+  // Files that depend on an option or a platform, so the registry cannot name them.
   if (enabled.has('copilot_cli')) {
     files[copilotCliMcpLabel] = await pathExists(copilotCliMcpPath)
   }
   if (enabled.has('claude') && claudeUsesProjectScope) {
     files['.mcp.json'] = await pathExists(paths.copilotCliMcp)
-  }
-  if (enabled.has('cursor')) {
-    files['.cursor/mcp.json'] = await pathExists(paths.cursorMcp)
-  }
-  if (enabled.has('antigravity') && antigravityMcpSyncEnabled) {
-    files['.agents/mcp_config.json'] = await pathExists(paths.antigravityWorkspaceMcp)
   }
   if (enabled.has('antigravity')) {
     files['.gemini/skills'] = await pathExists(paths.geminiSkillsBridge)
@@ -131,52 +130,19 @@ export async function runStatus(options: StatusOptions): Promise<void> {
   if (enabled.has('windsurf')) {
     files[windsurfGlobalLabel] = await pathExists(windsurfGlobalPath)
   }
-  if (enabled.has('opencode')) {
-    files[opencodeConfigLabel] = await pathExists(paths.opencodeConfig)
-  }
-  if (enabled.has('junie')) {
-    files['.junie/mcp/mcp.json'] = await pathExists(paths.junieMcp)
-    files['.junie/skills'] = await pathExists(paths.junieSkillsBridge)
-  }
-  if (enabled.has('grok')) {
-    files[toHomeRelativePath(paths.grokConfig)] = await pathExists(paths.grokConfig)
-  }
-  if (enabled.has('amp')) {
-    files[toHomeRelativePath(paths.ampSettings)] = await pathExists(paths.ampSettings)
-  }
-  if (enabled.has('droid')) {
-    files[toHomeRelativePath(paths.droidMcp)] = await pathExists(paths.droidMcp)
-  }
-  if (enabled.has('kilo')) {
-    files[toHomeRelativePath(paths.kiloConfig)] = await pathExists(paths.kiloConfig)
-  }
-  if (enabled.has('devin')) {
-    files[toHomeRelativePath(paths.devinMcp)] = await pathExists(paths.devinMcp)
-  }
-  if (enabled.has('zed')) {
-    files[toHomeRelativePath(paths.zedSettings)] = await pathExists(paths.zedSettings)
-  }
-  if (enabled.has('goose')) {
-    files[toHomeRelativePath(paths.gooseConfig)] = await pathExists(paths.gooseConfig)
-  }
   if (enabled.has('claude')) {
     files['CLAUDE.md'] = await pathExists(paths.rootClaudeMd)
-    files['.claude/skills'] = await pathExists(paths.claudeSkillsBridge)
   }
-  if (enabled.has('cursor')) {
-    files['.cursor/skills'] = await pathExists(paths.cursorSkillsBridge)
-  }
-  if (enabled.has('windsurf')) {
-    files['.windsurf/skills'] = await pathExists(paths.windsurfSkillsBridge)
-  }
-  if (enabled.has('gemini')) {
-    files['.gemini/skills'] = await pathExists(paths.geminiSkillsBridge)
+  for (const bridge of SKILL_BRIDGES) {
+    if (!enabled.has(bridge.integration)) continue
+    files[bridge.label] = await pathExists(paths[bridge.pathKey])
   }
 
   const probes: Record<string, string> = {}
   if (!options.fast) {
     if (enabled.has('codex')) probes.codex = probeCodex(options.projectRoot, expectedCodexServers)
     if (enabled.has('codex')) probes.codex_trust = await probeCodexTrust(options.projectRoot)
+    if (enabled.has('grok')) probes.grok_trust = await probeGrokTrust(options.projectRoot)
     if (enabled.has('claude')) {
       probes.claude = probeClaude(options.projectRoot, resolved.serversByTarget.claude.map((server) => server.name))
     }
@@ -272,7 +238,7 @@ export async function runStatus(options: StatusOptions): Promise<void> {
       probes.goose = await probeGooseFile(
         paths.gooseConfig,
         toHomeRelativePath(paths.gooseConfig),
-        resolved.serversByTarget.goose.map((server) => server.name),
+        resolved.serversByTarget.goose.map((server) => toProjectScopedName(options.projectRoot, server.name)),
       )
     }
     probes.skills = await probeSkills(paths.agentsSkillsDir)
@@ -647,6 +613,13 @@ function compact(input: string): string {
 async function probeCodexTrust(projectRoot: string): Promise<string> {
   const state = await getCodexTrustState(projectRoot)
   if (state === 'unreadable') return 'global config unreadable'
+  return state === 'trusted' ? 'trusted' : 'untrusted'
+}
+
+/** Grok ignores this project's MCP servers and skills until the folder is trusted. */
+async function probeGrokTrust(projectRoot: string): Promise<string> {
+  const state = await getGrokTrustState(projectRoot)
+  if (state === 'unreadable') return 'trust file unreadable'
   return state === 'trusted' ? 'trusted' : 'untrusted'
 }
 

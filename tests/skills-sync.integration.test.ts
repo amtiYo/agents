@@ -179,6 +179,98 @@ describe('skills bridge sync', () => {
     const checkSync = await performSync({ projectRoot, check: true, verbose: false })
     expect(checkSync.changed).not.toContain('.gemini/skills')
   })
+
+  it('bridges skills into Kilo and removes the bridge when the integration is disabled', { timeout: 25000 }, async () => {
+    const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-skills-bridges-'))
+    tempDirs.push(projectRoot)
+
+    await runInit({ projectRoot, force: true })
+    const config = await loadAgentsConfig(projectRoot)
+    config.integrations.enabled = ['kilo']
+    await saveAgentsConfig(projectRoot, config)
+
+    await performSync({ projectRoot, check: false, verbose: false })
+
+    const bridge = path.join(projectRoot, '.kilo', 'skills')
+    expect(await pathExists(bridge)).toBe(true)
+    expect(await pathExists(path.join(bridge, 'skill-guide', 'SKILL.md'))).toBe(true)
+
+    const disabled = await loadAgentsConfig(projectRoot)
+    disabled.integrations.enabled = ['codex']
+    await saveAgentsConfig(projectRoot, disabled)
+    await performSync({ projectRoot, check: false, verbose: false })
+
+    expect(await pathExists(bridge)).toBe(false)
+  })
+
+  it('creates no bridge for tools that read .agents/skills themselves', { timeout: 25000 }, async () => {
+    const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-skills-native-'))
+    tempDirs.push(projectRoot)
+
+    await runInit({ projectRoot, force: true })
+    const config = await loadAgentsConfig(projectRoot)
+    config.integrations.enabled = ['zed', 'goose', 'devin', 'grok', 'droid']
+    await saveAgentsConfig(projectRoot, config)
+
+    await performSync({ projectRoot, check: false, verbose: false })
+
+    expect(await pathExists(path.join(projectRoot, '.zed', 'skills'))).toBe(false)
+    expect(await pathExists(path.join(projectRoot, '.goose', 'skills'))).toBe(false)
+    expect(await pathExists(path.join(projectRoot, '.devin', 'skills'))).toBe(false)
+    // Droid reports a duplicate skill name when both locations hold the same skill,
+    // and Grok reads .agents/skills once the folder is trusted. Neither needs a bridge.
+    expect(await pathExists(path.join(projectRoot, '.grok', 'skills'))).toBe(false)
+    expect(await pathExists(path.join(projectRoot, '.factory', 'skills'))).toBe(false)
+  })
+
+  it('warns that Zed does not discover skills nested in a grouping directory', { timeout: 25000 }, async () => {
+    const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-skills-nested-'))
+    tempDirs.push(projectRoot)
+
+    await runInit({ projectRoot, force: true })
+    const config = await loadAgentsConfig(projectRoot)
+    config.integrations.enabled = ['zed']
+    await saveAgentsConfig(projectRoot, config)
+
+    const skillsRoot = path.join(projectRoot, '.agents', 'skills')
+    await writeSkill(skillsRoot, 'group-a', 'deploy-flow', 'grouped skill')
+
+    const withNested = await performSync({ projectRoot, check: false, verbose: false })
+    expect(withNested.warnings.join(' ')).toContain('group-a/deploy-flow')
+    expect(withNested.warnings.join(' ')).toContain('Zed only discovers skills directly under .agents/skills')
+
+    await rm(path.join(skillsRoot, 'group-a'), { recursive: true, force: true })
+    const flat = await performSync({ projectRoot, check: false, verbose: false })
+    expect(flat.warnings.join(' ')).not.toContain('Zed only discovers skills')
+  })
+
+
+  it('links the Kilo bridge in global mode instead of falling back to a copy', { timeout: 25000 }, async () => {
+    const fakeHome = await mkdtemp(path.join(os.tmpdir(), 'agents-skills-global-'))
+    tempDirs.push(fakeHome)
+    const previousHome = process.env.AGENTS_HOME_DIR
+    process.env.AGENTS_HOME_DIR = fakeHome
+
+    try {
+      await runInit({ projectRoot: fakeHome, force: true })
+      const config = await loadAgentsConfig(fakeHome)
+      config.integrations.enabled = ['kilo']
+      await saveAgentsConfig(fakeHome, config)
+
+      const result = await performSync({ projectRoot: fakeHome, check: false, verbose: false })
+
+      // Kilo keeps kilo.jsonc under the XDG config directory and its skills under the
+      // home directory, so the bridge parent has to come from the bridge path itself.
+      const bridge = path.join(fakeHome, '.kilo', 'skills')
+      expect(await pathExists(bridge)).toBe(true)
+      expect((await lstat(bridge)).isSymbolicLink()).toBe(true)
+      expect(result.warnings.join(' ')).not.toContain('fallback to copy mode')
+    } finally {
+      if (previousHome === undefined) delete process.env.AGENTS_HOME_DIR
+      else process.env.AGENTS_HOME_DIR = previousHome
+    }
+  })
+
 })
 
 async function writeSkill(

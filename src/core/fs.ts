@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { access, copyFile as copyFileRaw, cp, lstat, mkdir, readFile, readdir, realpath, rename, rm, stat, writeFile } from 'node:fs/promises'
+import { access, chmod, copyFile as copyFileRaw, cp, lstat, mkdir, readFile, readdir, realpath, rename, rm, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
 export async function pathExists(filePath: string): Promise<boolean> {
@@ -48,12 +48,32 @@ export async function writePrivateTextAtomic(filePath: string, content: string):
   await writeTextAtomicWithMode(filePath, content, 0o600)
 }
 
-/** Write through a sibling temporary file and atomically rename it into place. */
+/**
+ * Write through a sibling temporary file and atomically rename it into place.
+ *
+ * The rename replaces the inode, so the permissions of the file being overwritten are
+ * carried over: a config the user restricted to 0600 must not come back world-readable
+ * because this CLI rewrote it. An explicit `mode` still wins.
+ */
 async function writeTextAtomicWithMode(filePath: string, content: string, mode?: number): Promise<void> {
   await ensureDir(path.dirname(filePath))
+
+  let targetMode = mode
+  if (targetMode === undefined) {
+    try {
+      targetMode = (await stat(filePath)).mode & 0o777
+    } catch {
+      // A file that does not exist yet keeps the umask default.
+    }
+  }
+
   const tmpPath = `${filePath}.${randomUUID()}.tmp`
   try {
-    await writeFile(tmpPath, content, { encoding: 'utf8', ...(mode === undefined ? {} : { mode }) })
+    await writeFile(tmpPath, content, { encoding: 'utf8', ...(targetMode === undefined ? {} : { mode: targetMode }) })
+    if (targetMode !== undefined) {
+      // writeFile honours mode only when it creates the file, and umask still applies.
+      await chmod(tmpPath, targetMode)
+    }
     await rename(tmpPath, filePath)
   } finally {
     await rm(tmpPath, { force: true })

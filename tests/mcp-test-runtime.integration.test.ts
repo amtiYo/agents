@@ -197,7 +197,8 @@ describe.sequential('mcp test runtime mode', () => {
     expect(payloadZero.runtime?.timeoutMs).toBe(8000)
   })
 
-  it('reports Claude Desktop runtime checks as unsupported', async () => {
+  // Spawns a probe process, which is slower than the 5s default when the suite runs in parallel.
+  it('reports Claude Desktop runtime checks as unsupported', { timeout: 20000 }, async () => {
     const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-mcp-runtime-'))
     tempDirs.push(projectRoot)
 

@@ -6,6 +6,7 @@ import YAML from 'yaml'
 import { runInit } from '../src/commands/init.js'
 import { runReset } from '../src/commands/reset.js'
 import { loadAgentsConfig, saveAgentsConfig } from '../src/core/config.js'
+import { toProjectScopedName } from '../src/core/globalScope.js'
 import { performSync } from '../src/core/sync.js'
 import { getProjectPaths } from '../src/core/paths.js'
 import { pathExists } from '../src/core/fs.js'
@@ -190,11 +191,16 @@ describe('new provider sync', () => {
     const doc = YAML.parse(await readFile(paths.gooseConfig, 'utf8')) as {
       extensions: Record<string, Record<string, unknown>>
     }
-    expect(doc.extensions.local?.cmd).toBe('npx')
-    expect(doc.extensions.local?.env_keys).toEqual(['LOG_LEVEL'])
-    expect(doc.extensions.local?.type).toBe('stdio')
-    expect(doc.extensions.remote?.type).toBe('streamable_http')
-    expect(doc.extensions.remote?.uri).toBe('https://mcp.example.com/mcp')
+    // The Goose config is shared by every project, so entries carry the project they
+    // came from and the key matches the name inside the entry.
+    const local = doc.extensions[toProjectScopedName(projectRoot, 'local')]
+    const remote = doc.extensions[toProjectScopedName(projectRoot, 'remote')]
+    expect(local?.name).toBe(toProjectScopedName(projectRoot, 'local'))
+    expect(local?.cmd).toBe('npx')
+    expect(local?.env_keys).toEqual(['LOG_LEVEL'])
+    expect(local?.type).toBe('stdio')
+    expect(remote?.type).toBe('streamable_http')
+    expect(remote?.uri).toBe('https://mcp.example.com/mcp')
 
     await writeFile(
       paths.gooseConfig,
