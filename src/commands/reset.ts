@@ -7,7 +7,15 @@ import { getProjectPaths } from '../core/paths.js'
 import type { ProjectPaths } from '../core/paths.js'
 import { loadAgentsConfig } from '../core/config.js'
 import { loadResolvedRegistry } from '../core/mcp.js'
+import { INTEGRATIONS } from '../integrations/registry.js'
+import { toProjectScopedName } from '../core/globalScope.js'
 import { readProjectMcpManagedNames } from '../core/projectMcp.js'
+import {
+  getWindsurfGlobalMcpPath,
+  normalizeWindsurfMcpPayload,
+  readWindsurfMcp,
+  writeWindsurfMcp
+} from '../core/windsurf.js'
 import { pathExists, readJson, readTextOrEmpty, removeIfExists, writeJsonAtomic, writeTextAtomic } from '../core/fs.js'
 import {
   isLegacyGeneratedCodexConfig,
@@ -17,7 +25,7 @@ import {
 import { cleanupManagedClaudeInstructions } from '../core/claudeInstructions.js'
 import { cleanupManagedClaudeDesktopConfig } from '../core/claudeDesktop.js'
 import { cleanupVscodeSettingsIfManaged } from '../core/vscodeSettings.js'
-import { BRIDGE_MARKER_FILENAME } from '../core/skills.js'
+import { BRIDGE_MARKER_FILENAME, SKILL_BRIDGES } from '../core/skills.js'
 import * as ui from '../core/ui.js'
 
 export interface ResetOptions {
@@ -100,27 +108,27 @@ export async function runReset(options: ResetOptions): Promise<void> {
     removed,
     warnings
   })
-  await cleanupKeyedJsonConfig({
-    projectRoot,
-    configPath: paths.ampSettings,
-    generatedPath: paths.generatedAmp,
-    removed,
-    warnings
-  }, 'Amp', 'amp.mcpServers')
-  await cleanupKeyedJsonConfig({
-    projectRoot,
-    configPath: paths.zedSettings,
-    generatedPath: paths.generatedZed,
-    removed,
-    warnings
-  }, 'Zed', 'context_servers', { jsonc: true })
-  await cleanupKeyedJsonConfig({
-    projectRoot,
-    configPath: paths.kiloConfig,
-    generatedPath: paths.generatedKilo,
-    removed,
-    warnings
-  }, 'Kilo', 'mcp', { jsonc: true })
+  // Every integration whose managed servers live under one key of a JSON or JSONC
+  // document is cleaned from the registry, so a new one of that shape needs no entry
+  // here. The formats with a managed block or their own document keep their routines.
+  for (const integration of INTEGRATIONS) {
+    const descriptor = integration.config
+    const managed = descriptor?.managedEntries
+    if (!descriptor || !managed) continue
+    await cleanupKeyedJsonConfig(
+      {
+        projectRoot,
+        configPath: paths[descriptor.pathKey],
+        generatedPath: paths[managed.generatedPathKey],
+        removed,
+        warnings
+      },
+      managed.shortLabel,
+      managed.key,
+      descriptor.format === 'jsonc' ? { jsonc: true } : undefined,
+    )
+  }
+
   await cleanupGooseConfig({
     projectRoot,
     configPath: paths.gooseConfig,
@@ -128,20 +136,13 @@ export async function runReset(options: ResetOptions): Promise<void> {
     removed,
     warnings
   })
-  await cleanupKeyedJsonConfig({
+  await cleanupWindsurfGlobalConfig({
     projectRoot,
-    configPath: paths.droidMcp,
-    generatedPath: paths.generatedDroid,
+    configPath: getWindsurfGlobalMcpPath(),
+    statePath: paths.generatedWindsurfState,
     removed,
     warnings
-  }, 'Droid', 'mcpServers')
-  await cleanupKeyedJsonConfig({
-    projectRoot,
-    configPath: paths.devinMcp,
-    generatedPath: paths.generatedDevin,
-    removed,
-    warnings
-  }, 'Devin', 'mcpServers')
+  })
   await cleanupProjectMcpFiles({
     projectRoot,
     paths,
@@ -150,11 +151,7 @@ export async function runReset(options: ResetOptions): Promise<void> {
   })
 
   const bridges = [
-    { bridgePath: paths.claudeSkillsBridge, sourcePath: paths.agentsSkillsDir },
-    { bridgePath: paths.cursorSkillsBridge, sourcePath: paths.agentsSkillsDir },
-    { bridgePath: paths.geminiSkillsBridge, sourcePath: paths.agentsSkillsDir },
-    { bridgePath: paths.windsurfSkillsBridge, sourcePath: paths.agentsSkillsDir },
-    { bridgePath: paths.junieSkillsBridge, sourcePath: paths.agentsSkillsDir },
+    ...SKILL_BRIDGES.map((bridge) => ({ bridgePath: paths[bridge.pathKey], sourcePath: paths.agentsSkillsDir })),
     { bridgePath: path.join(legacyAgentDir, 'skills'), sourcePath: paths.agentsSkillsDir }
   ]
   for (const bridge of bridges) {
@@ -548,6 +545,85 @@ async function readJsoncObjectForCleanup(
 }
 
 /** Remove the extensions agents added to the global Goose config, keeping the rest. */
+/**
+ * Remove this project's servers from the global Windsurf config.
+ *
+ * The file lives in the home directory and is shared with every other project, so only
+ * the entries recorded in the state file are touched. `reset` deletes
+ * `.agents/generated` afterwards, so without this the owner of those entries would be
+ * lost and no later sync could remove them.
+ */
+async function cleanupWindsurfGlobalConfig(args: {
+  projectRoot: string
+  configPath: string
+  statePath: string
+  removed: string[]
+  warnings: string[]
+}): Promise<void> {
+  if (!(await pathExists(args.configPath))) return
+
+  let managedNames: string[] = []
+  if (await pathExists(args.statePath)) {
+    try {
+      const state = await readJson<{ managedNames?: unknown }>(args.statePath)
+      // The file is under .agents/generated, which a repository can carry. Only names
+      // carrying this project may be removed from a config shared with every other one.
+      const scopePrefix = toProjectScopedName(args.projectRoot, '')
+      managedNames = Array.isArray(state.managedNames)
+        ? state.managedNames.filter(
+            (name): name is string => typeof name === 'string' && name.startsWith(scopePrefix),
+          )
+        : []
+    } catch {
+      managedNames = []
+    }
+  }
+
+  // A clone has no state file; fall back to the servers this project would have written,
+  // resolved the way the sync resolves them.
+  if (managedNames.length === 0) {
+    try {
+      const resolved = await loadResolvedRegistry(args.projectRoot)
+      managedNames = resolved.serversByTarget.windsurf.map((server) =>
+        toProjectScopedName(args.projectRoot, server.name),
+      )
+    } catch {
+      managedNames = []
+    }
+  }
+  if (managedNames.length === 0) return
+
+  let payload
+  try {
+    payload = await readWindsurfMcp(args.configPath)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    args.warnings.push(`Failed to read Windsurf config at ${args.configPath}: ${message}`)
+    return
+  }
+  if (!payload) return
+
+  const servers = { ...(payload.mcpServers ?? {}) }
+  let changed = false
+  for (const name of managedNames) {
+    if (name in servers) {
+      delete servers[name]
+      changed = true
+    }
+  }
+  if (!changed) return
+
+  const rest = Object.fromEntries(Object.entries(payload).filter(([key]) => key !== 'mcpServers'))
+  // A file that held nothing but this project's servers was created by this CLI.
+  if (Object.keys(servers).length === 0 && Object.keys(rest).length === 0) {
+    await removeResetTarget(args.configPath, args.projectRoot, args.removed)
+    return
+  }
+
+  await writeWindsurfMcp(args.configPath, normalizeWindsurfMcpPayload({ ...rest, mcpServers: servers }))
+  args.removed.push(args.configPath)
+}
+
 async function cleanupGooseConfig(args: {
   projectRoot: string
   configPath: string
@@ -561,8 +637,13 @@ async function cleanupGooseConfig(args: {
   if (await pathExists(args.statePath)) {
     try {
       const state = await readJson<{ managedNames?: unknown }>(args.statePath)
+      // The file is under .agents/generated, which a repository can carry. Only names
+      // carrying this project may be removed from a config shared with every other one.
+      const scopePrefix = toProjectScopedName(args.projectRoot, '')
       managedNames = Array.isArray(state.managedNames)
-        ? state.managedNames.filter((name): name is string => typeof name === 'string')
+        ? state.managedNames.filter(
+            (name): name is string => typeof name === 'string' && name.startsWith(scopePrefix),
+          )
         : []
     } catch {
       managedNames = []
@@ -575,7 +656,11 @@ async function cleanupGooseConfig(args: {
   if (managedNames.length === 0) {
     try {
       const resolved = await loadResolvedRegistry(args.projectRoot)
-      managedNames = resolved.serversByTarget.goose.map((server) => server.name)
+      // Only the scoped names. A bare entry under the same name is not this project's
+      // by definition, and deleting it here would take the user's own extension with it.
+      managedNames = resolved.serversByTarget.goose.map((server) =>
+        toProjectScopedName(args.projectRoot, server.name),
+      )
     } catch {
       managedNames = []
     }
@@ -626,7 +711,7 @@ async function cleanupProjectMcpFiles(args: {
 }): Promise<void> {
   const { projectRoot, paths, removed, warnings } = args
 
-  const managedByFile = await readProjectMcpManagedNames(paths.generatedProjectMcpState)
+  const managedByFile = await readProjectMcpManagedNames(paths.generatedProjectMcpState, projectRoot)
   let fallbackNames: string[] = []
   try {
     const config = await loadAgentsConfig(projectRoot)

@@ -1,7 +1,7 @@
 import path from 'node:path'
 import { listMcpEntries, loadMcpState, type McpServerEntry } from '../core/mcpCrud.js'
 import { commandExists, runCommand } from '../core/shell.js'
-import { listCursorMcpStatuses, type CursorServerState } from '../core/cursorCli.js'
+import { listCursorMcpStatuses, sanitizeTerminalOutput, type CursorServerState } from '../core/cursorCli.js'
 import { toManagedClaudeName } from '../integrations/claude.js'
 import { INTEGRATION_IDS } from '../integrations/registry.js'
 import * as ui from '../core/ui.js'
@@ -196,13 +196,13 @@ function testServer(name: string, server: McpServerDefinition): ServerTestResult
     if (!server.command) {
       messages.push('missing command')
     } else if (!commandExists(server.command)) {
-      messages.push(`command not found in PATH: ${server.command}`)
+      messages.push(`command not found in PATH: ${sanitizeTerminalOutput(server.command)}`)
     }
   } else {
     if (!server.url) {
       messages.push('missing url')
     } else if (!isValidHttpUrl(server.url)) {
-      messages.push(`invalid URL: ${server.url}`)
+      messages.push(`invalid URL: ${sanitizeTerminalOutput(server.url)}`)
     }
   }
 

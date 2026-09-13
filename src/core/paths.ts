@@ -87,7 +87,18 @@ export interface ProjectPaths {
   claudeSkillsBridge: string
   cursorSkillsBridge: string
   windsurfSkillsBridge: string
+  kiloSkillsBridge: string
 }
+
+/**
+ * Keys of ProjectPaths that hold a path.
+ *
+ * Tables that point at a file (skill bridges, managed configs) name it through this
+ * type, so an entry cannot point at `isHome` or at a key that no longer exists.
+ */
+export type ProjectPathKey = {
+  [K in keyof ProjectPaths]: ProjectPaths[K] extends string ? K : never
+}[keyof ProjectPaths]
 
 /** Resolve the effective user home directory, honoring AGENTS_HOME_DIR in test/override environments. */
 export function getHomeDir(): string {
@@ -299,7 +310,9 @@ export function getProjectPaths(projectRoot: string): ProjectPaths {
     generatedKilo: path.join(generatedDir, 'kilo.jsonc'),
     generatedDevin: path.join(generatedDir, 'devin.mcp_config.json'),
     generatedZed: path.join(generatedDir, 'zed.settings.json'),
-    generatedGoose: path.join(generatedDir, 'goose.config.yaml'),
+    // JSON, despite what Goose itself reads: the materializer parses this preview
+    // before turning it into YAML, and the extension has to say so.
+    generatedGoose: path.join(generatedDir, 'goose.extensions.json'),
     generatedGooseState: path.join(generatedDir, 'goose.state.json'),
     generatedAmpState: path.join(generatedDir, 'amp.state.json'),
     generatedDroidState: path.join(generatedDir, 'droid.state.json'),
@@ -311,6 +324,9 @@ export function getProjectPaths(projectRoot: string): ProjectPaths {
     geminiSkillsBridge: path.join(root, '.gemini', 'skills'),
     claudeSkillsBridge: path.join(root, '.claude', 'skills'),
     cursorSkillsBridge: path.join(root, '.cursor', 'skills'),
-    windsurfSkillsBridge: path.join(root, '.windsurf', 'skills')
+    windsurfSkillsBridge: path.join(root, '.windsurf', 'skills'),
+    // Kilo reads skills from its own directory. In global mode it looks under the home
+    // directory rather than the XDG config dir that holds kilo.jsonc.
+    kiloSkillsBridge: projectOrGlobal(root, homeDir, ['.kilo', 'skills'], path.join(homeDir, '.kilo', 'skills'))
   }
 }

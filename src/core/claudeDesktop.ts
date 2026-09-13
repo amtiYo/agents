@@ -1,7 +1,7 @@
-import { createHash } from 'node:crypto'
-import os from 'node:os'
 import path from 'node:path'
 import { pathExists, readJson, writeJsonAtomic } from './fs.js'
+import { getProjectScopePrefix } from './globalScope.js'
+import { getHomeDir } from './paths.js'
 import { acquireSyncLock } from './syncLock.js'
 import { MANAGED_CLAUDE_NAME_PREFIX } from '../integrations/claude.js'
 
@@ -18,13 +18,13 @@ export function getClaudeDesktopConfigPath(): string | undefined {
   }
 
   if (process.platform === 'darwin') {
-    return path.join(os.homedir(), 'Library', 'Application Support', 'Claude', 'claude_desktop_config.json')
+    return path.join(getHomeDir(), 'Library', 'Application Support', 'Claude', 'claude_desktop_config.json')
   }
 
   if (process.platform === 'win32') {
     const appData = process.env.APPDATA && process.env.APPDATA.trim().length > 0
       ? process.env.APPDATA
-      : path.join(os.homedir(), 'AppData', 'Roaming')
+      : path.join(getHomeDir(), 'AppData', 'Roaming')
     return path.join(appData, 'Claude', 'claude_desktop_config.json')
   }
 
@@ -38,9 +38,7 @@ export function getClaudeDesktopConfigUnavailableDetail(): string {
 
 /** Build the stable project-specific prefix used for managed Desktop server names. */
 export function getClaudeDesktopManagedPrefix(projectRoot: string): string {
-  const normalizedRoot = path.resolve(projectRoot)
-  const hash = createHash('sha1').update(normalizedRoot).digest('hex').slice(0, 12)
-  return `${MANAGED_CLAUDE_NAME_PREFIX}${hash}__`
+  return getProjectScopePrefix(projectRoot)
 }
 
 /** Convert a source MCP server name into the project-scoped Claude Desktop name. */

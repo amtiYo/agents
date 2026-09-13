@@ -418,6 +418,17 @@ export interface ImportPluginResult {
  * Names are prefixed with the plugin name so an imported package never silently
  * replaces a server the project already defines.
  */
+
+/** Commands that execute whatever string they are handed. */
+function isShellInterpreter(command: string | undefined): boolean {
+  if (!command) return false
+  // `CMD.EXE` is the same program as `cmd.exe`, and a package chooses how it spells it.
+  const base = (command.split(/[\\/]/).at(-1) ?? command).toLowerCase()
+  return ['sh', 'bash', 'zsh', 'dash', 'ksh', 'fish', 'cmd', 'cmd.exe', 'powershell', 'powershell.exe', 'pwsh'].includes(
+    base,
+  )
+}
+
 export async function importPlugin(args: {
   projectRoot: string
   pluginDir: string
@@ -479,6 +490,16 @@ export async function importPlugin(args: {
               : {})
           }
       addedServers.push(targetName)
+
+      // The package decides what runs on this machine the next time a tool starts the
+      // server. `validatePlugin` only checks the shape of the command, and a bare name
+      // like `sh` with `-c` passes it, so the reader is told what arrived.
+      if (server.type === 'stdio' && isShellInterpreter(server.command)) {
+        warnings.push(
+          `Server "${targetName}" runs "${server.command ?? ''}" with arguments from the package; `
+            + 'read them in .agents/agents.json before the next sync.',
+        )
+      }
     }
   }
 

@@ -143,6 +143,14 @@ export interface ResolvedMcpServer {
 
 export interface ResolvedRegistry {
   serversByTarget: Record<IntegrationName, ResolvedMcpServer[]>
+  /**
+   * The same servers resolved from `.agents/agents.json` alone, without the overrides
+   * from `.agents/local.json`. Written to configs that end up in version control, so a
+   * secret kept in `local.json` stays out of them.
+   */
+  publicServersByTarget: Record<IntegrationName, ResolvedMcpServer[]>
+  /** Per server, the value keys that exist only in `local.json`, for the sync warning. */
+  localOnlyKeysByServer: Record<string, string[]>
   warnings: string[]
   missingRequiredEnv: string[]
   selectedServerNames: string[]
