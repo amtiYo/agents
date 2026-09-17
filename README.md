@@ -180,6 +180,17 @@ your-project/
 | `agents plugin validate <dir>` | Check a package against the specification |
 | `agents plugin import <dir>` | Add a package's servers and skills to this project |
 
+### Recall
+
+| Command | Description |
+|:--------|:------------|
+| `agents recall install` | Index sessions, install the skill and MCP into `~/.agents`, sync globally |
+| `agents recall about --json` | Person shelves compiled from cited turns |
+| `agents recall project --json` | What indexed sessions say about the current repo |
+| `agents recall search "…" --json` | Search user/assistant speech (default: current project) |
+
+Memory is machine-global (`~/.local/share/agents/recall/`). `install` does not write a project-local `.agents/`.
+
 ### Skills & Integrations
 
 | Command | Description |

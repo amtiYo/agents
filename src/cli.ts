@@ -20,6 +20,17 @@ import { INTEGRATION_IDS } from './integrations/registry.js'
 import { runPluginExport, runPluginImport, runPluginValidate } from './commands/plugin.js'
 import { runProfileList, runProfileRemove, runProfileSet, runProfileUse } from './commands/profile.js'
 import { runMcpBudget } from './commands/mcp-budget.js'
+import {
+  runRecallAbout,
+  runRecallDoctor,
+  runRecallGet,
+  runRecallIngest,
+  runRecallInstall,
+  runRecallMcp,
+  runRecallProject,
+  runRecallReindex,
+  runRecallSearch
+} from './commands/recall.js'
 import { CancelledError } from './core/errors.js'
 import { maybeNotifyAboutUpdate } from './core/updateCheck.js'
 import { CLI_VERSION } from './core/version.js'
@@ -63,6 +74,7 @@ async function main(): Promise<void> {
     if (process.env.AGENTS_NO_UPDATE_CHECK === '1') return
     if (process.argv.includes('--json') || process.argv.includes('--quiet')) return
     if (actionCommand.name() === 'update') return
+    if (actionCommand.name() === 'mcp' && actionCommand.parent?.name() === 'recall') return
 
     const projectRoot = resolveTargetDirectory(opts)
     void maybeNotifyAboutUpdate({
@@ -584,6 +596,99 @@ async function main(): Promise<void> {
       })
     })
 
+  const recall = program.command('recall').description('Search local agent sessions and person shelves')
+
+  recall
+    .command('install')
+    .description('Index sessions, install the recall skill and MCP into ~/.agents, then sync globally')
+    .option('--json', 'Output machine-readable JSON', false)
+    .option('--yes', 'Skip confirmation (non-interactive)', false)
+    .option('--non-interactive', 'Do not prompt', false)
+    .action(async (opts: { json: boolean; yes: boolean; nonInteractive: boolean }) => {
+      await runRecallInstall({
+        json: Boolean(opts.json),
+        yes: Boolean(opts.yes),
+        nonInteractive: Boolean(opts.nonInteractive)
+      })
+    })
+
+  recall
+    .command('about')
+    .description('Person shelves compiled from indexed sessions')
+    .option('--json', 'Output machine-readable JSON', false)
+    .action(async (opts: { json: boolean }) => {
+      await runRecallAbout({ json: Boolean(opts.json) })
+    })
+
+  recall
+    .command('project')
+    .description('What indexed sessions say about the current project')
+    .option('--json', 'Output machine-readable JSON', false)
+    .option('--path <dir>', 'Project directory', process.cwd())
+    .action(async (opts: { json: boolean; path: string }) => {
+      await runRecallProject({ json: Boolean(opts.json), cwd: resolvePath(opts.path) })
+    })
+
+  recall
+    .command('search <query>')
+    .description('Search indexed user/assistant speech (default: current project)')
+    .option('--json', 'Output machine-readable JSON', false)
+    .option('--limit <n>', 'Maximum hits (default 5)', '5')
+    .option('--all', 'Search every project on this machine', false)
+    .option('--project <dir>', 'Limit search to this project (default: current directory)')
+    .action(async (query: string, opts: { json: boolean; limit: string; all: boolean; project?: string }) => {
+      await runRecallSearch({
+        json: Boolean(opts.json),
+        query,
+        limit: parsePositiveIntOption(opts.limit, '--limit'),
+        all: Boolean(opts.all),
+        project: opts.project ? resolvePath(opts.project) : undefined
+      })
+    })
+
+  recall
+    .command('get <sessionId> <turn>')
+    .description('Re-read one turn from the original transcript')
+    .option('--json', 'Output machine-readable JSON', false)
+    .action(async (sessionId: string, turn: string, opts: { json: boolean }) => {
+      await runRecallGet({
+        json: Boolean(opts.json),
+        sessionId,
+        turn: parsePositiveIntOption(turn, 'turn')
+      })
+    })
+
+  recall
+    .command('doctor')
+    .description('Show recall index health')
+    .option('--json', 'Output machine-readable JSON', false)
+    .action(async (opts: { json: boolean }) => {
+      await runRecallDoctor({ json: Boolean(opts.json) })
+    })
+
+  recall
+    .command('ingest')
+    .description('Incrementally index local agent sessions')
+    .option('--json', 'Output machine-readable JSON', false)
+    .action(async (opts: { json: boolean }) => {
+      await runRecallIngest({ json: Boolean(opts.json) })
+    })
+
+  recall
+    .command('reindex')
+    .description('Rebuild the recall index, ignoring mtime/size')
+    .option('--json', 'Output machine-readable JSON', false)
+    .action(async (opts: { json: boolean }) => {
+      await runRecallReindex({ json: Boolean(opts.json) })
+    })
+
+  recall
+    .command('mcp')
+    .description('Run the recall MCP server on stdio (tools: about, project, search, get)')
+    .action(async () => {
+      await runRecallMcp()
+    })
+
   await program.parseAsync(process.argv)
 }
 
@@ -599,6 +704,19 @@ function parseTimeoutOption(value: string): number {
     throw new Error(`Invalid --timeout value "${value}"; expected a whole number of milliseconds.`)
   }
   return Number(trimmed)
+}
+
+/** Parse a positive integer option such as `--limit` or a 1-based turn number. */
+function parsePositiveIntOption(value: string, flag: string): number {
+  const trimmed = value.trim()
+  if (!/^\d+$/.test(trimmed)) {
+    throw new Error(`Invalid ${flag} value "${value}"; expected a positive integer.`)
+  }
+  const parsed = Number(trimmed)
+  if (parsed < 1) {
+    throw new Error(`Invalid ${flag} value "${value}"; expected a positive integer.`)
+  }
+  return parsed
 }
 
 main().catch((error: unknown) => {
