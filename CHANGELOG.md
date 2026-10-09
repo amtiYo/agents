@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- No changes yet.
+
+## [0.9.2] - 2026-10-09
+
 ### Fixed
 
 - OpenCode `opencode.json` always includes `"$schema": "https://opencode.ai/config.json"`, matching OpenCode's own config examples. A from-scratch sync (or a CI job that deletes the file and regenerates) previously wrote `{ "mcp": {} }` only, which drifted against committed files that followed the docs.
