@@ -68,10 +68,17 @@ describe('windsurf + opencode sync', () => {
     expect(Object.keys(windsurfGlobal.mcpServers ?? {})).toContain('manual')
 
     const opencode = JSON.parse(await readFile(path.join(projectRoot, 'opencode.json'), 'utf8')) as {
+      $schema?: string
       mcp?: Record<string, { type?: string; command?: string[] }>
     }
+    expect(opencode.$schema).toBe('https://opencode.ai/config.json')
     expect(opencode.mcp?.filesystem?.type).toBe('local')
     expect(opencode.mcp?.filesystem?.command?.[0]).toBe('npx')
+
+    const generated = JSON.parse(
+      await readFile(path.join(projectRoot, '.agents', 'generated', 'opencode.json'), 'utf8'),
+    ) as { $schema?: string }
+    expect(generated.$schema).toBe('https://opencode.ai/config.json')
 
     const windsurfSkills = await lstat(path.join(projectRoot, '.windsurf', 'skills'))
     expect(windsurfSkills.isDirectory() || windsurfSkills.isSymbolicLink()).toBe(true)
@@ -161,9 +168,11 @@ describe('windsurf + opencode sync', () => {
     })
 
     const opencode = JSON.parse(await readFile(path.join(projectRoot, 'opencode.json'), 'utf8')) as {
+      $schema?: string
       theme?: string
       mcp?: Record<string, unknown>
     }
+    expect(opencode.$schema).toBe('https://opencode.ai/config.json')
     expect(opencode.theme).toBe('solarized')
     expect(Object.keys(opencode.mcp ?? {})).toContain('filesystem')
     expect(Object.keys(opencode.mcp ?? {})).not.toContain('legacy')
