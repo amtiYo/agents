@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Recall redacts secrets in quoted JSON fields, including passwords with punctuation and escaped quotes, before indexing.
+
 ### Added
 
 - `agents recall` reads the local session index: `about`, `project`, `search`, `get`, `doctor`, `ingest`, `reindex`, and `agents recall mcp` (stdio MCP tools `about`, `project`, `search`, `get`).

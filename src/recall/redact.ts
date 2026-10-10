@@ -14,6 +14,9 @@ const PROVIDER_TOKEN =
 const JWT = /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{4,}\.[A-Za-z0-9_-]{4,}\b/g
 const CONN_URL = /\b([A-Za-z][A-Za-z0-9+.-]*:\/\/)([^\s/@:]{0,128}):([^\s]+)@([^\s]+)/g
 const BEARER = /\b(Bearer|Basic)(\s+)([A-Za-z0-9._~+/=-]{16,})/gi
+// Quoted JSON/JSON-like fields can contain punctuation, spaces and escaped quotes.
+const QUOTED_SECRET =
+  /(['"])([\w.-]{0,80}?(?:api[_-]?key|secret|token|passwd|password|pwd|authorization|access[_-]?token|client[_-]?secret|_key))\1(\s*[:=]\s*)(['"])((?:\\[\s\S]|(?!\4)[^\\])*)\4/gi
 const ASSIGNED_SECRET =
   /\b([\w.-]{0,80}?(?:api[_-]?key|secret|token|passwd|password|authorization|access[_-]?token|client[_-]?secret))\s*[:=]\s*(['"]?)([A-Za-z0-9/+=._-]{16,})\2/gi
 const ENV_KEY = /\b([A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*_KEY)\s*[:=]\s*(['"]?)([A-Za-z0-9/+=._-]{16,})\2/g
@@ -53,6 +56,12 @@ export function redactSecrets(input: string): RedactResult {
     },
     () => {
       const result = apply(AWS_ACCESS, text, REDACTED_PLACEHOLDER)
+      text = result.text
+      count += result.count
+    },
+    () => {
+      const result = apply(QUOTED_SECRET, text, (_full, keyQuote, key, separator, valueQuote) =>
+        `${keyQuote}${key}${keyQuote}${separator}${valueQuote}${REDACTED_PLACEHOLDER}${valueQuote}`)
       text = result.text
       count += result.count
     },
