@@ -327,8 +327,9 @@ describeRecall('recall adapters + FTS5 index', () => {
 
     const second = await ingest({ homeDir: home, env, indexPath })
     expect(second.filesUnchanged).toBeGreaterThan(0)
-    expect(second.filesIndexed).toBe(0)
-    expect(second.turnsIndexed).toBe(0)
+    expect(second.filesIndexed).toBe(2)
+    expect(second.turnsIndexed).toBeGreaterThan(0)
+    expect((await doctor({ indexPath })).turns).toBe(stats.turns)
 
     const hits = await search('OmniRoute', { indexPath, project: app, cwd: app, limit: 20 })
     expect(hits.length).toBeGreaterThan(0)
@@ -381,8 +382,8 @@ describeRecall('recall adapters + FTS5 index', () => {
     await utimes(path.join(claudeProject, 'sess-claude.jsonl'), stamp, stamp)
 
     const third = await ingest({ homeDir: home, env, indexPath })
-    expect(third.filesIndexed).toBe(1)
-    expect(third.turnsIndexed).toBe(3)
+    expect(third.filesIndexed).toBe(3)
+    expect(third.turnsIndexed).toBe(3 + second.turnsIndexed)
 
     const follow = await search('digest pull 403', { indexPath, project: app, cwd: app })
     expect(follow.some((hit) => hit.quote.includes('403'))).toBe(true)

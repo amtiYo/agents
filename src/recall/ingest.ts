@@ -49,8 +49,12 @@ async function ingestPath(
   options.result.filesSeen += 1
 
   const existing = options.db.prepare('SELECT id, mtime_ms, size FROM files WHERE path = ?').get(filePath)
+  // Live SQLite stores commit to their WAL without changing the main file's
+  // mtime or size. Re-read them so a metadata cache cannot hide new turns.
+  const mutableDatabase = /\.(?:db|sqlite|vscdb)$/i.test(filePath)
   if (
     !options.force &&
+    !mutableDatabase &&
     existing &&
     sqlNumber(existing.mtime_ms) === info.mtimeMs &&
     sqlNumber(existing.size) === info.size
@@ -145,7 +149,8 @@ async function ingestPath(
 /**
  * Scan provider stores and write speech turns into the SQLite FTS5 index.
  *
- * Unchanged files (same mtime + size) are skipped. Missing files are dropped
+ * Unchanged text files (same mtime + size) are skipped; SQLite stores are always
+ * refreshed to include WAL commits. Missing files are dropped
  * from the index. Does not walk the user's real home unless the caller points
  * `homeDir` / env at it.
  */

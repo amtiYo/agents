@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Recall refreshes SQLite session stores even when only their WAL changed, so new Cursor and OpenCode turns are not missed.
+
 - Recall filters search candidates by project and ranks text matches before limiting them, so other projects and early low-ranked rows cannot hide relevant results.
 
 - Recall redacts secrets in quoted JSON fields, including passwords with punctuation and escaped quotes, before indexing.
