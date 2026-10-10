@@ -121,6 +121,7 @@ async function ingestPath(
         tsMs: turn.timestampMs,
         project: normalizeProjectPath(turn.project),
         quote,
+        searchText: redactedSpeech.text,
         tools: uniqueStrings(turn.tools),
         paths: uniqueStrings(turn.paths),
         sourceKind: turn.sourceKind,

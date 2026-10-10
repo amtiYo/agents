@@ -4,9 +4,10 @@ import os from 'node:os'
 import path from 'node:path'
 import type { DatabaseSync, DatabaseSyncOptions, SQLOutputValue } from 'node:sqlite'
 import { ensureDir, pathExists } from '../core/fs.js'
+import { redactSecrets } from './redact.js'
 import type { RecallFileRow, RecallProvider } from './types.js'
 
-export const RECALL_SCHEMA_VERSION = '1'
+export const RECALL_SCHEMA_VERSION = '2'
 
 const SCHEMA_SQL = `
 PRAGMA foreign_keys = ON;
@@ -115,12 +116,35 @@ export async function openRecallDatabase(indexPath: string): Promise<DatabaseSyn
   db.exec('PRAGMA synchronous = NORMAL')
   db.exec('PRAGMA foreign_keys = ON')
   db.exec(SCHEMA_SQL)
-  const existing = sqlString(db.prepare('SELECT value FROM meta WHERE key = ?').get('schema_version')?.value)
-  if (existing !== RECALL_SCHEMA_VERSION) {
-    db.prepare('INSERT INTO meta(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value').run(
-      'schema_version',
-      RECALL_SCHEMA_VERSION
-    )
+  const version = sqlString(db.prepare('SELECT value FROM meta WHERE key = ?').get('schema_version')?.value)
+  if (version !== RECALL_SCHEMA_VERSION) {
+    db.exec('BEGIN IMMEDIATE')
+    try {
+      const existing = sqlString(db.prepare('SELECT value FROM meta WHERE key = ?').get('schema_version')?.value)
+      if (existing !== null && existing !== '1' && existing !== RECALL_SCHEMA_VERSION) {
+        throw new Error(`Unsupported recall index schema ${existing}. Upgrade agents before opening this index.`)
+      }
+      if (existing !== RECALL_SCHEMA_VERSION) {
+        // The old FTS stored excerpts only. Retain readable cached excerpts, sanitize
+        // them with the current redactor, and force all sources through ingest again.
+        for (const row of db.prepare('SELECT id, quote FROM turns').all()) {
+          const quote = redactSecrets(sqlString(row.quote) ?? '').text
+          db.prepare('UPDATE turns SET quote = ? WHERE id = ?').run(quote, row.id!)
+        }
+        db.exec(`DELETE FROM turns_fts;
+          INSERT INTO turns_fts(rowid, quote, tools_text, paths_text)
+            SELECT id, quote, tools_text, paths_text FROM turns;
+          UPDATE files SET mtime_ms = -1;`)
+        db.prepare('INSERT INTO meta(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value').run(
+          'schema_version', RECALL_SCHEMA_VERSION
+        )
+      }
+      db.exec('COMMIT')
+    } catch (error) {
+      db.exec('ROLLBACK')
+      db.close()
+      throw error
+    }
   }
   try {
     await chmod(indexPath, 0o600)
@@ -260,6 +284,7 @@ export interface TurnInsert {
   tsMs: number | null
   project: string | null
   quote: string
+  searchText?: string
   tools: string[]
   paths: string[]
   sourceKind: string
@@ -297,7 +322,7 @@ export function insertTurn(db: DatabaseSync, turn: TurnInsert): number {
   const id = Number(result.lastInsertRowid)
   db.prepare('INSERT INTO turns_fts(rowid, quote, tools_text, paths_text) VALUES(?, ?, ?, ?)').run(
     id,
-    turn.quote,
+    turn.searchText ?? turn.quote,
     toolsText,
     pathsText
   )

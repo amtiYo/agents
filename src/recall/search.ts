@@ -4,7 +4,7 @@ import { adapterById } from './adapters/index.js'
 import { indexedSessionTurns } from './ingest.js'
 import { getRecallIndexPath, normalizeProjectPath, projectMatches } from './paths.js'
 import { redactSecrets } from './redact.js'
-import { clipSpeech, isoFromMs } from './speech.js'
+import { clipQuote, clipSpeech, isoFromMs } from './speech.js'
 import {
   isWalEnabled,
   openRecallDatabase,
@@ -56,6 +56,15 @@ function recencyBoost(tsMs: number | null, now: number): number {
   return 1 / (1 + ageDays / 45)
 }
 
+/** Keep the first match visible even when the FTS snippet exceeds the quote budget. */
+function matchingQuote(snippet: string): string {
+  const collapsed = snippet.replace(/\s+/g, ' ').trim()
+  const match = collapsed.indexOf('\u0001')
+  const start = Math.max(0, match - 120)
+  const plain = collapsed.replace(/[\u0001\u0002]/g, '')
+  return clipQuote((start > 0 ? '…' : '') + plain.slice(start))
+}
+
 function rowToHit(row: Record<string, SQLOutputValue>): RecallHit {
   return {
     provider: (sqlString(row.provider) ?? 'claude') as RecallProvider,
@@ -64,7 +73,7 @@ function rowToHit(row: Record<string, SQLOutputValue>): RecallHit {
     role: sqlString(row.role) === 'user' ? 'user' : 'assistant',
     timestamp: isoFromMs(sqlNumber(row.ts_ms)),
     project: sqlString(row.project),
-    quote: sqlString(row.quote) ?? '',
+    quote: matchingQuote(sqlString(row.matched_quote) ?? sqlString(row.quote) ?? ''),
     tools: parseStringArray(sqlString(row.tools_json)),
     paths: parseStringArray(sqlString(row.paths_json))
   }
@@ -95,7 +104,8 @@ export async function search(query: string, options: RecallSearchOptions = {}): 
         projectMatches(sqlString(stored), projectFilter) ? 1 : 0)
     }
     const rows = db.prepare(
-      `SELECT t.*, bm25(turns_fts) AS rank
+      `SELECT t.*, bm25(turns_fts) AS rank,
+              snippet(turns_fts, 0, char(1), char(2), '…', 64) AS matched_quote
        FROM turns_fts
        JOIN turns t ON t.id = turns_fts.rowid
        WHERE turns_fts MATCH ?

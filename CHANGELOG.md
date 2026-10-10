@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Recall searches the full redacted speech instead of only the first 500 characters and returns a short matching excerpt. Existing indexes are marked for refresh on the next ingest.
+
 - Recall refreshes SQLite session stores even when only their WAL changed, so new Cursor and OpenCode turns are not missed.
 
 - Recall filters search candidates by project and ranks text matches before limiting them, so other projects and early low-ranked rows cannot hide relevant results.
