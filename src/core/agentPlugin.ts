@@ -1,4 +1,5 @@
 import path from 'node:path'
+import { realpath } from 'node:fs/promises'
 import { copyDir, ensureDir, pathExists, readJson, removeIfExists, writeJsonAtomic } from './fs.js'
 import { discoverSkills } from './skillsDiscovery.js'
 import { getProjectPaths } from './paths.js'
@@ -232,6 +233,12 @@ export async function exportPlugin(options: ExportPluginOptions): Promise<Export
   }
 
   const outDir = path.resolve(options.outDir)
+  const [realOutput, realSource] = await Promise.all([
+    resolveProspectivePath(outDir), resolveProspectivePath(paths.agentsDir)
+  ])
+  if (containsPath(realOutput, realSource) || containsPath(realSource, realOutput)) {
+    throw new Error('Plugin output must not overlap the .agents source directory. Choose a separate output directory.')
+  }
   await ensureDir(outDir)
   await writeJsonAtomic(path.join(outDir, 'plugin.json'), manifest)
   await writeJsonAtomic(path.join(outDir, 'mcp.json'), file)
@@ -262,6 +269,23 @@ export async function exportPlugin(options: ExportPluginOptions): Promise<Export
     requiredEnv,
     warnings
   }
+}
+
+/** Resolve symlinked ancestors even when the final output does not exist yet. */
+async function resolveProspectivePath(target: string): Promise<string> {
+  try {
+    return await realpath(target)
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+    const parent = path.dirname(target)
+    if (parent === target) throw error
+    return path.join(await resolveProspectivePath(parent), path.basename(target))
+  }
+}
+
+function containsPath(parent: string, child: string): boolean {
+  const relative = path.relative(parent, child)
+  return relative === '' || (!relative.startsWith(`..${path.sep}`) && relative !== '..' && !path.isAbsolute(relative))
 }
 
 /** Check that a value read from an untrusted plugin has the type the spec requires. */

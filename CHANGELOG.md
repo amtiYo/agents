@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Plugin export rejects output paths overlapping `.agents`, including paths through symlinked parents, before writing or deleting source files.
+
 - Disconnect removes managed MCP servers from Gemini, OpenCode, Cursor, VS Code and Junie while preserving manual entries.
 
 - Sync preserves manual MCP entries and settings in Gemini, OpenCode, Cursor, VS Code and Junie, tracking ownership to remove only stale generated servers.

@@ -1,6 +1,6 @@
 import os from 'node:os'
 import path from 'node:path'
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { afterEach, describe, expect, it } from 'vitest'
 import { runInit } from '../src/commands/init.js'
 import { runPluginExport } from '../src/commands/plugin.js'
@@ -278,6 +278,25 @@ describe('plugin name derivation', () => {
 })
 
 describe('plugin export safety', () => {
+  it.each(['.agents', '.agents/skills', '.agents/skills/nested/export'])('refuses overlapping export to %s without changing sources', async relative => {
+    const projectRoot = await makeProject()
+    const source = path.join(projectRoot, '.agents/skills/docs-research/SKILL.md')
+    const before = await readFile(source, 'utf8')
+    const outDir = path.join(projectRoot, relative)
+    await expect(exportPlugin({ projectRoot, outDir, name: 'team-stack' })).rejects.toThrow(/overlap/)
+    expect(await readFile(source, 'utf8')).toBe(before)
+    expect(await pathExists(path.join(outDir, 'plugin.json'))).toBe(false)
+  })
+
+  it('resolves symlinked parents before validating a not-yet-existing output', async () => {
+    const projectRoot = await makeProject()
+    const alias = path.join(projectRoot, 'alias')
+    await symlink(path.join(projectRoot, '.agents'), alias, 'dir')
+    const outDir = path.join(alias, 'skills/new/export')
+    await expect(exportPlugin({ projectRoot, outDir, name: 'team-stack' })).rejects.toThrow(/overlap/)
+    expect(await pathExists(path.join(outDir, 'plugin.json'))).toBe(false)
+  })
+
   it('refuses to export a literal credential from the committed config', async () => {
     const projectRoot = await makeProject()
     const config = await loadAgentsConfig(projectRoot)
