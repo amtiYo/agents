@@ -502,10 +502,8 @@ async function syncManagedAntigravityWorkspace(args: {
       try {
         existing = normalizeAntigravityMcpPayload(await readAntigravityMcp(args.workspacePath) ?? {})
       } catch (error) {
-        args.warnings.push(
-          `Failed to read existing Antigravity MCP at ${args.workspacePath}; skipped Antigravity workspace sync. ${error instanceof Error ? error.message : String(error)}`,
-        )
-        return
+        throw new Error(
+          `Failed to read existing Antigravity MCP at ${args.workspacePath}; skipped Antigravity workspace sync. ${error instanceof Error ? error.message : String(error)}`)
       }
     }
 
@@ -570,10 +568,8 @@ async function cleanupLegacyAntigravityGlobal(args: {
     try {
       existing = normalizeAntigravityMcpPayload(await readAntigravityMcp(args.globalPath) ?? {})
     } catch (error) {
-      args.warnings.push(
-        `Failed to read legacy Antigravity MCP at ${args.globalPath}; skipped legacy cleanup. ${error instanceof Error ? error.message : String(error)}`,
-      )
-      return
+      throw new Error(
+        `Failed to read legacy Antigravity MCP at ${args.globalPath}; skipped legacy cleanup. ${error instanceof Error ? error.message : String(error)}`)
     }
 
     const existingServers = recordFrom(existing.mcpServers)
@@ -630,10 +626,8 @@ async function syncManagedWindsurfGlobal(args: {
       try {
         existing = normalizeWindsurfMcpPayload(await readWindsurfMcp(args.globalPath) ?? {})
       } catch (error) {
-        args.warnings.push(
-          `Failed to read existing Windsurf MCP at ${args.globalPath}; skipped Windsurf global sync. ${error instanceof Error ? error.message : String(error)}`,
-        )
-        return
+        throw new Error(
+          `Failed to read existing Windsurf MCP at ${args.globalPath}; skipped Windsurf global sync. ${error instanceof Error ? error.message : String(error)}`)
       }
     }
 
@@ -765,8 +759,7 @@ async function materializeTomlConfig(args: {
       cleaned = removeCodexManagedBlock(existingText)
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
-      context.warnings.push(`Failed to clean ${label} config at ${targetPath}; left unchanged. ${message}`)
-      return
+      throw new Error(`Failed to clean ${label} config at ${targetPath}; left unchanged. ${message}`)
     }
 
     if (cleaned === existingText) return
@@ -792,8 +785,7 @@ async function materializeTomlConfig(args: {
     content = mergeCodexConfig(existingText, generatedContent)
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
-    context.warnings.push(`Failed to merge ${label} config at ${targetPath}; skipped ${label} sync. ${message}`)
-    return
+    throw new Error(`Failed to merge ${label} config at ${targetPath}; skipped ${label} sync. ${message}`)
   }
 
   await writeManagedFile({
@@ -827,8 +819,9 @@ async function mergeManagedKey(args: {
 }): Promise<void> {
   const { context, targetPath, rawGenerated, key, label, statePath, jsonc, removeEmptyFile } = args
 
+  const hasState = await pathExists(statePath)
   let previousNames = await readManagedGlobalNames(statePath)
-  if (!context.enabled && previousNames.length === 0 && !args.previousGenerated) return
+  if (!context.enabled && previousNames.length === 0 && (hasState || !args.previousGenerated)) return
 
   let generated: Record<string, unknown> = {}
   if (context.enabled && rawGenerated.trim()) {
@@ -843,29 +836,28 @@ async function mergeManagedKey(args: {
       const errors: { error: number; offset: number; length: number }[] = []
       const parsed = parseJsonc(existingText, errors, { allowTrailingComma: true }) as unknown
       if (errors.length > 0 || (parsed !== undefined && !isRecord(parsed))) {
-        context.warnings.push(`Existing ${label} config at ${targetPath} is not valid JSONC; skipped ${label} sync.`)
-        return
+        throw new Error(`Existing ${label} config at ${targetPath} is not valid JSONC; skipped ${label} sync.`)
       }
       existing = isRecord(parsed) ? parsed : {}
     } else {
       try {
         const parsed = JSON.parse(existingText) as unknown
         if (!isRecord(parsed)) {
-          context.warnings.push(`Existing ${label} config at ${targetPath} is not a JSON object; skipped ${label} sync.`)
-          return
+          throw new Error(`Existing ${label} config at ${targetPath} is not a JSON object; skipped ${label} sync.`)
         }
         existing = parsed
       } catch (error) {
+        // A preview alone does not establish ownership of a disabled tool's file.
+        if (!context.enabled && previousNames.length === 0) return
         const message = error instanceof Error ? error.message : String(error)
-        context.warnings.push(`Failed to read existing ${label} config at ${targetPath}; skipped ${label} sync. ${message}`)
-        return
+        throw new Error(`Failed to read existing ${label} config at ${targetPath}; skipped ${label} sync. ${message}`)
       }
     }
   }
 
   // Older releases recorded only the preview. Adopt matching entries without
   // claiming unrelated manual servers when introducing the ownership state.
-  if (!(await pathExists(statePath)) && args.previousGenerated?.trim()) {
+  if (!hasState && args.previousGenerated?.trim()) {
     try {
       const previous = recordFrom(parseJsonObject(args.previousGenerated, 'previous generated config')[key])
       const current = recordFrom(existing[key])
@@ -972,8 +964,7 @@ async function syncManagedGooseGlobal(context: HookContext): Promise<void> {
       doc = await readGooseDocument(configPath)
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
-      context.warnings.push(`Failed to read existing Goose config at ${configPath}; skipped Goose sync. ${message}`)
-      return
+      throw new Error(`Failed to read existing Goose config at ${configPath}; skipped Goose sync. ${message}`)
     }
 
     const rawGenerated = context.generatedByIntegration.goose ?? ''

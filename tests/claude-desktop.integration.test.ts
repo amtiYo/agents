@@ -259,13 +259,12 @@ describe('claude desktop sync', () => {
     config.integrations.enabled = ['claude_desktop']
     await saveAgentsConfig(projectRoot, config)
 
-    const result = await performSync({
+    await expect(performSync({
       projectRoot,
       check: false,
       verbose: false
-    })
+    })).rejects.toThrow(/Failed reading Claude Desktop config/)
 
     expect(await readFile(desktopConfigPath, 'utf8')).toBe('{ invalid')
-    expect(result.warnings.join(' ')).toContain('Failed reading Claude Desktop config')
   })
 })

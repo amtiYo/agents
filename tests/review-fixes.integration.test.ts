@@ -140,9 +140,8 @@ describe('one broken integration does not stop the others', () => {
     // A directory where a file belongs makes every write to it fail.
     await mkdir(path.join(projectRoot, '.cursor', 'mcp.json'), { recursive: true })
 
-    const result = await performSync({ projectRoot, check: false, verbose: false })
+    await expect(performSync({ projectRoot, check: false, verbose: false })).rejects.toThrow(/cursor/)
 
-    expect(result.warnings.join(' ')).toContain('cursor')
     expect(await pathExists(path.join(projectRoot, '.junie', 'mcp', 'mcp.json'))).toBe(true)
   })
 })

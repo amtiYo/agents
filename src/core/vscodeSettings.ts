@@ -32,7 +32,7 @@ export async function syncVscodeSettings(args: {
 
   if (parseErrors.length > 0 || !isObject(parsed)) {
     if (hasSettings) {
-      warnings.push('Cannot parse .vscode/settings.json (JSONC). Skipped VS Code hide sync.')
+      throw new Error('Cannot parse .vscode/settings.json (JSONC). Skipped VS Code hide sync.')
     }
     return
   }

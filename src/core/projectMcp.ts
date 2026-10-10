@@ -322,14 +322,12 @@ async function writeProjectMcpTarget(args: {
     try {
       const parsed = await readJson<unknown>(targetPath)
       if (!isRecord(parsed)) {
-        warnings.push(`Existing ${targetPath} is not a JSON object; skipped project MCP sync.`)
-        return previousManagedNames
+        throw new Error(`Existing ${targetPath} is not a JSON object; skipped project MCP sync.`)
       }
       existing = parsed
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
-      warnings.push(`Failed to read ${targetPath}; skipped project MCP sync. ${message}`)
-      return previousManagedNames
+      throw new Error(`Failed to read ${targetPath}; skipped project MCP sync. ${message}`)
     }
   }
 
@@ -373,8 +371,7 @@ async function writeProjectMcpTarget(args: {
 /**
  * Remove the agents-managed servers from a file this run no longer writes.
  *
- * @returns `true` when the file was handled, `false` when it could not be read and the
- * ownership record has to be kept for a later run.
+ * Throws on unreadable files so ownership is kept for a later retry.
  */
 async function cleanupProjectMcpFile(args: {
   targetPath: string
@@ -384,7 +381,7 @@ async function cleanupProjectMcpFile(args: {
   changed: string[]
   warnings: string[]
 }): Promise<boolean> {
-  const { targetPath, managedNames, projectRoot, check, changed, warnings } = args
+  const { targetPath, managedNames, projectRoot, check, changed } = args
   if (managedNames.length === 0 || !(await pathExists(targetPath))) return true
 
   let parsed: unknown
@@ -392,13 +389,11 @@ async function cleanupProjectMcpFile(args: {
     parsed = await readJson<unknown>(targetPath)
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
-    warnings.push(`Failed to read ${targetPath} while cleaning up managed MCP servers. ${message}`)
-    return false
+    throw new Error(`Failed to read ${targetPath} while cleaning up managed MCP servers. ${message}`)
   }
 
   if (!isRecord(parsed)) {
-    warnings.push(`${targetPath} is not a JSON object; left untouched and still tracked.`)
-    return false
+    throw new Error(`${targetPath} is not a JSON object; left untouched and still tracked.`)
   }
   const servers = isRecord(parsed.mcpServers) ? { ...parsed.mcpServers } : {}
   for (const name of managedNames) {

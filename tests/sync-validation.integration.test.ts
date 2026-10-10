@@ -1,7 +1,7 @@
 import os from 'node:os'
 import path from 'node:path'
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import { runInit } from '../src/commands/init.js'
 import { loadAgentsConfig, saveAgentsConfig } from '../src/core/config.js'
 import { performSync } from '../src/core/sync.js'
@@ -41,7 +41,7 @@ describe('sync validation', () => {
     ).rejects.toThrow(/Invalid environment variable key "BAD KEY" in server "invalid"/)
   })
 
-  it('reports warning and preserves existing gemini settings when JSON is invalid', async () => {
+  it('reports failure and preserves existing gemini settings when JSON is invalid', async () => {
     const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-sync-validation-'))
     tempDirs.push(projectRoot)
 
@@ -54,24 +54,9 @@ describe('sync validation', () => {
     await mkdir(path.dirname(geminiPath), { recursive: true })
     await writeFile(geminiPath, '{ invalid json', 'utf8')
 
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    let result
-    try {
-      result = await performSync({
-        projectRoot,
-        check: false,
-        verbose: false
-      })
-    } finally {
-      warnSpy.mockRestore()
-    }
-
-    expect(result.warnings.some((warning) =>
-      warning.includes('Failed to read existing Gemini config at')
-      && warning.includes('skipped Gemini sync')
-    )).toBe(true)
+    await expect(performSync({ projectRoot, check: false, verbose: false }))
+      .rejects.toThrow(/Failed to read existing Gemini config/)
     expect(await readFile(geminiPath, 'utf8')).toBe('{ invalid json')
-    expect(warnSpy).not.toHaveBeenCalled()
   })
 
   it('skips malformed Codex config and continues syncing other integrations', async () => {
@@ -90,23 +75,15 @@ describe('sync validation', () => {
     await writeFile(codexPath, '[invalid\n', 'utf8')
     await writeFile(geminiPath, '{"theme":"dark"}\n', 'utf8')
 
-    const result = await performSync({
-      projectRoot,
-      check: false,
-      verbose: false
-    })
-
-    expect(result.warnings.some((warning) =>
-      warning.includes('Failed to merge Codex config at')
-      && warning.includes('skipped Codex sync')
-    )).toBe(true)
+    await expect(performSync({ projectRoot, check: false, verbose: false }))
+      .rejects.toThrow(/Failed to merge Codex config/)
     expect(await readFile(codexPath, 'utf8')).toBe('[invalid\n')
     const gemini = JSON.parse(await readFile(geminiPath, 'utf8')) as Record<string, unknown>
     expect(gemini.theme).toBe('dark')
     expect(gemini).toHaveProperty('mcpServers')
   })
 
-  it('reports warning and preserves existing OpenCode settings when JSON is invalid', async () => {
+  it('reports failure and preserves existing OpenCode settings when JSON is invalid', async () => {
     const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-sync-validation-'))
     tempDirs.push(projectRoot)
 
@@ -118,16 +95,8 @@ describe('sync validation', () => {
     const opencodePath = path.join(projectRoot, 'opencode.json')
     await writeFile(opencodePath, '{ invalid json', 'utf8')
 
-    const result = await performSync({
-      projectRoot,
-      check: false,
-      verbose: false
-    })
-
-    expect(result.warnings.some((warning) =>
-      warning.includes('Failed to read existing OpenCode config at')
-      && warning.includes('skipped OpenCode sync')
-    )).toBe(true)
+    await expect(performSync({ projectRoot, check: false, verbose: false }))
+      .rejects.toThrow(/Failed to read existing OpenCode config/)
     expect(await readFile(opencodePath, 'utf8')).toBe('{ invalid json')
   })
 })
