@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Watch retries unchanged source files after a failed sync instead of remembering the failed attempt as already applied.
+
 - Sync and `sync --check` fail when an integration config cannot be read or written, after attempting the remaining integrations. Failed runs no longer update the successful-sync timestamp.
 
 - Profile changes, connect/disconnect and plugin import lock the full config update and reload current state after prompts, preventing concurrent edits from being lost.

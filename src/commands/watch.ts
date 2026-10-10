@@ -63,8 +63,9 @@ export async function runWatch(options: WatchOptions): Promise<void> {
       if (nextSignature === null) continue
       if (nextSignature === lastSignature) continue
 
-      lastSignature = nextSignature
-      await runSingleSync(projectRoot, options.quiet)
+      if (await runSingleSync(projectRoot, options.quiet)) {
+        lastSignature = nextSignature
+      }
     }
   } finally {
     process.off('SIGINT', stop)
