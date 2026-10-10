@@ -28,7 +28,7 @@ export interface ManagedConfigDescriptor {
    * Formats with a managed block (Codex, Grok) or their own document shape (Goose,
    * OpenCode, Gemini) are cleaned by the code that knows them.
    */
-  managedEntries?: { key: string; generatedPathKey: ProjectPathKey; shortLabel: string }
+  managedEntries?: { key: string; generatedPathKey: ProjectPathKey; statePathKey: ProjectPathKey; shortLabel: string }
 }
 
 export interface IntegrationDefinition {
@@ -68,7 +68,7 @@ export const INTEGRATIONS: IntegrationDefinition[] = [
     nativeSkills: true,
     config: {
       pathKey: 'vscodeMcp', format: 'json', label: '.vscode/mcp.json',
-      managedEntries: { key: 'servers', generatedPathKey: 'generatedCopilot', shortLabel: 'Copilot VS Code' }
+      managedEntries: { key: 'servers', generatedPathKey: 'generatedCopilot', statePathKey: 'generatedCopilotState', shortLabel: 'Copilot VS Code' }
     }
   },
   { id: 'copilot_cli', label: 'Copilot CLI', requiredBinary: 'copilot', nativeSkills: true },
@@ -78,7 +78,7 @@ export const INTEGRATIONS: IntegrationDefinition[] = [
     requiredBinary: 'cursor-agent',
     config: {
       pathKey: 'cursorMcp', format: 'json', label: '.cursor/mcp.json',
-      managedEntries: { key: 'mcpServers', generatedPathKey: 'generatedCursor', shortLabel: 'Cursor' }
+      managedEntries: { key: 'mcpServers', generatedPathKey: 'generatedCursor', statePathKey: 'generatedCursorMcpState', shortLabel: 'Cursor' }
     }
   },
   {
@@ -87,7 +87,7 @@ export const INTEGRATIONS: IntegrationDefinition[] = [
     requiredBinary: 'agy',
     config: {
       pathKey: 'antigravityWorkspaceMcp', format: 'json', label: '.agents/mcp_config.json',
-      managedEntries: { key: 'mcpServers', generatedPathKey: 'generatedAntigravity', shortLabel: 'Antigravity' }
+      managedEntries: { key: 'mcpServers', generatedPathKey: 'generatedAntigravity', statePathKey: 'generatedAntigravityState', shortLabel: 'Antigravity' }
     }
   },
   { id: 'windsurf', label: 'Devin Desktop (Windsurf)' },
@@ -104,7 +104,7 @@ export const INTEGRATIONS: IntegrationDefinition[] = [
     requiredBinary: 'junie',
     config: {
       pathKey: 'junieMcp', format: 'json', label: '.junie/mcp/mcp.json',
-      managedEntries: { key: 'mcpServers', generatedPathKey: 'generatedJunie', shortLabel: 'Junie' }
+      managedEntries: { key: 'mcpServers', generatedPathKey: 'generatedJunie', statePathKey: 'generatedJunieState', shortLabel: 'Junie' }
     }
   },
   {
@@ -122,7 +122,7 @@ export const INTEGRATIONS: IntegrationDefinition[] = [
     config: {
       pathKey: 'ampSettings',
       format: 'json',
-      managedEntries: { key: 'amp.mcpServers', generatedPathKey: 'generatedAmp', shortLabel: 'Amp' }
+      managedEntries: { key: 'amp.mcpServers', generatedPathKey: 'generatedAmp', statePathKey: 'generatedAmpState', shortLabel: 'Amp' }
     }
   },
   {
@@ -133,7 +133,7 @@ export const INTEGRATIONS: IntegrationDefinition[] = [
     config: {
       pathKey: 'droidMcp',
       format: 'json',
-      managedEntries: { key: 'mcpServers', generatedPathKey: 'generatedDroid', shortLabel: 'Droid' }
+      managedEntries: { key: 'mcpServers', generatedPathKey: 'generatedDroid', statePathKey: 'generatedDroidState', shortLabel: 'Droid' }
     }
   },
   {
@@ -143,7 +143,7 @@ export const INTEGRATIONS: IntegrationDefinition[] = [
     config: {
       pathKey: 'kiloConfig',
       format: 'jsonc',
-      managedEntries: { key: 'mcp', generatedPathKey: 'generatedKilo', shortLabel: 'Kilo' }
+      managedEntries: { key: 'mcp', generatedPathKey: 'generatedKilo', statePathKey: 'generatedKiloState', shortLabel: 'Kilo' }
     }
   },
   {
@@ -154,7 +154,7 @@ export const INTEGRATIONS: IntegrationDefinition[] = [
     config: {
       pathKey: 'devinMcp',
       format: 'json',
-      managedEntries: { key: 'mcpServers', generatedPathKey: 'generatedDevin', shortLabel: 'Devin' }
+      managedEntries: { key: 'mcpServers', generatedPathKey: 'generatedDevin', statePathKey: 'generatedDevinState', shortLabel: 'Devin' }
     }
   },
   {
@@ -165,7 +165,7 @@ export const INTEGRATIONS: IntegrationDefinition[] = [
     config: {
       pathKey: 'zedSettings',
       format: 'jsonc',
-      managedEntries: { key: 'context_servers', generatedPathKey: 'generatedZed', shortLabel: 'Zed' }
+      managedEntries: { key: 'context_servers', generatedPathKey: 'generatedZed', statePathKey: 'generatedZedState', shortLabel: 'Zed' }
     }
   },
   {

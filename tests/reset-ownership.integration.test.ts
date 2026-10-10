@@ -60,4 +60,38 @@ describe('reset config ownership', () => {
       })
     }
   })
+
+  it('does not claim manual entries solely because their names appear in a preview', async () => {
+    const projectRoot = await fixture()
+    for (const [relative, generated, key] of configs) {
+      const file = path.join(projectRoot, relative)
+      const preview = path.join(projectRoot, '.agents/generated', generated)
+      await mkdir(path.dirname(file), { recursive: true })
+      await mkdir(path.dirname(preview), { recursive: true })
+      await writeFile(preview, JSON.stringify({ [key]: { sameName: { command: 'preview-only' } } }))
+      await writeFile(file, JSON.stringify({ [key]: { sameName: { command: 'manual' } } }))
+    }
+    await runReset({ projectRoot, localOnly: false, hard: false })
+    for (const [relative, , key] of configs) {
+      expect(JSON.parse(await readFile(path.join(projectRoot, relative), 'utf8'))[key])
+        .toEqual({ sameName: { command: 'manual' } })
+    }
+  })
+
+  it('uses the last applied ownership when previews have already changed', async () => {
+    const projectRoot = await fixture()
+    await mkdir(path.join(projectRoot, '.cursor'), { recursive: true })
+    await mkdir(path.join(projectRoot, '.agents/generated'), { recursive: true })
+    await writeFile(path.join(projectRoot, '.cursor/mcp.json'), JSON.stringify({ mcpServers: {
+      old: { command: 'managed' }, next: { command: 'manual' }
+    } }))
+    await writeFile(path.join(projectRoot, '.agents/generated/cursor.mcp.json'), JSON.stringify({ mcpServers: {
+      next: { command: 'generated' }
+    } }))
+    await writeFile(path.join(projectRoot, '.agents/generated/cursor.mcp.state.json'), JSON.stringify({ managedNames: ['old'] }))
+    await runReset({ projectRoot, localOnly: true, hard: false })
+    expect(JSON.parse(await readFile(path.join(projectRoot, '.cursor/mcp.json'), 'utf8')).mcpServers)
+      .toEqual({ next: { command: 'manual' } })
+  })
+
 })
