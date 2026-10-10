@@ -78,13 +78,13 @@ const DECISION_RES: RegExp[] = [
   /\blet's (?:go with|use)\b[^.!?\n]{8,180}/i,
   /\bwe'll (?:go with|use)\b[^.!?\n]{8,180}/i,
   /\bagreed (?:to|on)\b[^.!?\n]{8,180}/i,
-  /\bмы решили(?:\s+что)?\b[^.!?\n]{8,180}/i,
-  /\bрешили(?:\s+что)?\b[^.!?\n]{8,180}/i,
-  /\bостановились на\b[^.!?\n]{8,180}/i,
-  /\bдоговорились(?:\s+что)?\b[^.!?\n]{8,180}/i
+  /(?<![\p{L}\p{N}_])мы решили(?:\s+что)?(?![\p{L}\p{N}_])[^.!?\n]{8,180}/iu,
+  /(?<![\p{L}\p{N}_])решили(?:\s+что)?(?![\p{L}\p{N}_])[^.!?\n]{8,180}/iu,
+  /(?<![\p{L}\p{N}_])остановились на(?![\p{L}\p{N}_])[^.!?\n]{8,180}/iu,
+  /(?<![\p{L}\p{N}_])договорились(?:\s+что)?(?![\p{L}\p{N}_])[^.!?\n]{8,180}/iu
 ]
 
-const ASSISTANT_DECISION_RE = /\bwe decided\b|\bмы решили\b|\bas (?:we|you) decided\b|\byou decided\b/i
+const ASSISTANT_DECISION_RE = /\bwe decided\b|(?<![\p{L}\p{N}_])мы решили(?![\p{L}\p{N}_])|\bas (?:we|you) decided\b|\byou decided\b/iu
 
 const DECISION_FTS =
   '"we decided" OR "decided to" OR "settled on" OR "going with" OR "go with" OR agreed OR решили OR остановились OR договорились'

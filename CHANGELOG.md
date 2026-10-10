@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Recall recognizes Russian decision phrases with Unicode word boundaries, including cited assistant summaries, without matching fragments inside longer words.
+
 - Recall searches the full redacted speech instead of only the first 500 characters and returns a short matching excerpt. Existing indexes are marked for refresh on the next ingest.
 
 - Recall refreshes SQLite session stores even when only their WAL changed, so new Cursor and OpenCode turns are not missed.
