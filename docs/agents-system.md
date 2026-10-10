@@ -298,7 +298,11 @@ never `local.json`, so a package carries `${VAR}` placeholders instead of secret
 `${PROJECT_ROOT}` becomes the specification's `${PLUGIN_ROOT}`.
 
 `agents plugin import` goes the other way, prefixing imported server names with the
-plugin name so nothing already defined is replaced.
+plugin name so nothing already defined is replaced. Scripts and resources are installed
+in a content-addressed snapshot under `.agents/plugins/`; `${PLUGIN_ROOT}` points
+to that snapshot through a portable `${PROJECT_ROOT}` path. Commit the snapshot
+alongside `.agents/agents.json` so the imported servers also work in other clones.
+Links outside the package are rejected.
 
 ## MCP Server Format
 

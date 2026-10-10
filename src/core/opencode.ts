@@ -7,7 +7,10 @@ export {
   getOpencodeGlobalConfigPath
 } from './paths.js'
 
+export const OPENCODE_CONFIG_SCHEMA = 'https://opencode.ai/config.json'
+
 export interface OpencodeConfig {
+  $schema?: string
   mcp?: Record<string, unknown>
   [key: string]: unknown
 }
@@ -26,11 +29,18 @@ export async function writeOpencodeConfig(configPath: string, config: OpencodeCo
   await writeJsonAtomic(configPath, normalizeOpencodeConfig(config))
 }
 
-/** Normalize an OpenCode configuration ensuring the mcp container is a valid record. */
-export function normalizeOpencodeConfig(config: OpencodeConfig): OpencodeConfig {
+/** Normalize an OpenCode configuration ensuring $schema and a valid mcp record. */
+export function normalizeOpencodeConfig(config: OpencodeConfig): OpencodeConfig & {
+  $schema: string
+  mcp: Record<string, unknown>
+} {
+  const { $schema: existingSchema, mcp, ...rest } = config
   return {
-    ...config,
-    mcp: isRecord(config.mcp) ? config.mcp : {}
+    $schema: typeof existingSchema === 'string' && existingSchema !== ''
+      ? existingSchema
+      : OPENCODE_CONFIG_SCHEMA,
+    ...rest,
+    mcp: isRecord(mcp) ? mcp : {}
   }
 }
 

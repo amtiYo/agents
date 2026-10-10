@@ -1,4 +1,4 @@
-import { loadAgentsConfig, saveAgentsConfig } from '../core/config.js'
+import { loadAgentsConfig, updateAgentsConfig } from '../core/config.js'
 import { performSync } from '../core/sync.js'
 import { CancelledError } from '../core/errors.js'
 import { formatWarnings } from '../core/warnings.js'
@@ -16,7 +16,6 @@ export interface ConnectOptions {
 
 export async function runConnect(options: ConnectOptions): Promise<void> {
   const config = await loadAgentsConfig(options.projectRoot)
-  const currentlyEnabled = new Set(config.integrations.enabled)
 
   const rawSelection = options.llm
 
@@ -29,27 +28,27 @@ export async function runConnect(options: ConnectOptions): Promise<void> {
     throw new Error('No LLM selected. Use --llm or --interactive.')
   }
 
-  const added = selected.filter((integration) => !currentlyEnabled.has(integration))
   if (selected.length === 0) {
     ui.info('No integrations selected.')
     ui.keyValue('Integrations', ui.formatList(config.integrations.enabled))
     return
   }
 
-  for (const integration of added) {
-    currentlyEnabled.add(integration)
-  }
-  const nextEnabled = [...currentlyEnabled]
-
   const spin = ui.spinner()
-  spin.start(added.length > 0 ? 'Updating integrations...' : 'Synchronizing integrations...')
+  spin.start('Updating integrations...')
 
+  let added: IntegrationName[] = []
+  let nextEnabled: IntegrationName[] = []
   let syncResult
   try {
-    if (added.length > 0) {
-      config.integrations.enabled = nextEnabled
-      await saveAgentsConfig(options.projectRoot, config)
-    }
+    const updated = await updateAgentsConfig(options.projectRoot, (current) => {
+      const enabled = new Set(current.integrations.enabled)
+      const added = selected.filter(integration => !enabled.has(integration))
+      current.integrations.enabled = [...new Set([...enabled, ...selected])]
+      return added
+    })
+    added = updated.result
+    nextEnabled = updated.config.integrations.enabled
     syncResult = await performSync({
       projectRoot: options.projectRoot,
       check: false,

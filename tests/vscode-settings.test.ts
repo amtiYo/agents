@@ -124,7 +124,7 @@ describe('VS Code settings sync', () => {
 
     const changed: string[] = []
     const warnings: string[] = []
-    await syncVscodeSettings({
+    await expect(syncVscodeSettings({
       settingsPath,
       statePath,
       hiddenPaths: ['**/.codex'],
@@ -133,10 +133,9 @@ describe('VS Code settings sync', () => {
       changed,
       warnings,
       projectRoot: root
-    })
+    })).rejects.toThrow(/Cannot parse .vscode\/settings.json/)
 
     expect(changed).toHaveLength(0)
-    expect(warnings.join(' ')).toContain('Cannot parse .vscode/settings.json')
     expect(await readFile(settingsPath, 'utf8')).toContain('invalid jsonc')
   })
 })

@@ -20,12 +20,18 @@ export async function runSync(options: SyncCommandOptions): Promise<void> {
   const spin = ui.spinner()
   spin.start(options.check ? 'Checking for changes...' : 'Syncing configurations...')
 
-  const result = await performSync({
-    projectRoot: options.projectRoot,
-    check: options.check,
-    verbose: options.verbose,
-    ...(options.profile === undefined ? {} : { profile: options.profile })
-  })
+  let result
+  try {
+    result = await performSync({
+      projectRoot: options.projectRoot,
+      check: options.check,
+      verbose: options.verbose,
+      ...(options.profile === undefined ? {} : { profile: options.profile })
+    })
+  } catch (error) {
+    spin.stop(options.check ? 'Check failed' : 'Sync failed')
+    throw error
+  }
 
   spin.stop(options.check ? 'Check complete' : 'Sync complete')
 

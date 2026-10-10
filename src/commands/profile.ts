@@ -1,4 +1,4 @@
-import { loadAgentsConfig, saveAgentsConfig } from '../core/config.js'
+import { loadAgentsConfig, updateAgentsConfig } from '../core/config.js'
 import { performSync } from '../core/sync.js'
 import * as ui from '../core/ui.js'
 import type { AgentsConfig } from '../types.js'
@@ -55,22 +55,22 @@ export interface ProfileSetOptions {
 
 /** Create or replace a profile: a named subset of the configured MCP servers. */
 export async function runProfileSet(options: ProfileSetOptions): Promise<void> {
-  const config = await loadAgentsConfig(options.projectRoot)
-
-  const unknown = options.servers.filter((server) => !config.mcp.servers[server])
-  if (unknown.length > 0) {
-    throw new Error(`Unknown MCP server(s): ${unknown.join(', ')}. Configured: ${Object.keys(config.mcp.servers).join(', ')}`)
-  }
-
-  const wasActive = config.activeProfile === options.name
-  config.profiles = {
-    ...config.profiles,
-    [options.name]: {
-      ...(options.description ? { description: options.description } : {}),
-      servers: [...new Set(options.servers)].sort((a, b) => a.localeCompare(b))
+  const { config, result: wasActive } = await updateAgentsConfig(options.projectRoot, (config) => {
+    const unknown = options.servers.filter((server) => !config.mcp.servers[server])
+    if (unknown.length > 0) {
+      throw new Error(`Unknown MCP server(s): ${unknown.join(', ')}. Configured: ${Object.keys(config.mcp.servers).join(', ')}`)
     }
-  }
-  await saveAgentsConfig(options.projectRoot, config)
+
+    const wasActive = config.activeProfile === options.name
+    config.profiles = {
+      ...config.profiles,
+      [options.name]: {
+        ...(options.description ? { description: options.description } : {}),
+        servers: [...new Set(options.servers)].sort((a, b) => a.localeCompare(b))
+      }
+    }
+    return wasActive
+  })
 
   // Replacing the active profile changes the server set, and tool configs still hold
   // the previous one until a sync runs.
@@ -82,7 +82,7 @@ export async function runProfileSet(options: ProfileSetOptions): Promise<void> {
   if (options.json) {
     ui.json({
       name: options.name,
-      profile: config.profiles[options.name],
+      profile: config.profiles?.[options.name],
       changed: result.changed,
       warnings: result.warnings
     })
@@ -112,14 +112,13 @@ export interface ProfileUseOptions {
 
 /** Switch the active profile (or clear it) and re-sync so tool configs follow. */
 export async function runProfileUse(options: ProfileUseOptions): Promise<void> {
-  const config = await loadAgentsConfig(options.projectRoot)
+  const { config } = await updateAgentsConfig(options.projectRoot, (config) => {
+    if (options.name !== null && !config.profiles?.[options.name]) {
+      throw new Error(`Profile "${options.name}" is not defined. Known profiles: ${profileNames(config).join(', ') || '(none)'}`)
+    }
 
-  if (options.name !== null && !config.profiles?.[options.name]) {
-    throw new Error(`Profile "${options.name}" is not defined. Known profiles: ${profileNames(config).join(', ') || '(none)'}`)
-  }
-
-  config.activeProfile = options.name
-  await saveAgentsConfig(options.projectRoot, config)
+    config.activeProfile = options.name
+  })
 
   const result = options.sync
     ? await performSync({ projectRoot: options.projectRoot, check: false, verbose: false })
@@ -153,18 +152,19 @@ export interface ProfileRemoveOptions {
  * to every server.
  */
 export async function runProfileRemove(options: ProfileRemoveOptions): Promise<void> {
-  const config = await loadAgentsConfig(options.projectRoot)
-  if (!config.profiles?.[options.name]) {
-    throw new Error(`Profile "${options.name}" is not defined.`)
-  }
+  const { config, result: wasActive } = await updateAgentsConfig(options.projectRoot, (config) => {
+    if (!config.profiles?.[options.name]) {
+      throw new Error(`Profile "${options.name}" is not defined.`)
+    }
 
-  const wasActive = config.activeProfile === options.name
-  const { [options.name]: _removed, ...rest } = config.profiles
-  config.profiles = Object.keys(rest).length > 0 ? rest : undefined
-  if (wasActive) {
-    config.activeProfile = null
-  }
-  await saveAgentsConfig(options.projectRoot, config)
+    const wasActive = config.activeProfile === options.name
+    const { [options.name]: _removed, ...rest } = config.profiles
+    config.profiles = Object.keys(rest).length > 0 ? rest : undefined
+    if (wasActive) {
+      config.activeProfile = null
+    }
+    return wasActive
+  })
 
   // Removing the active profile widens the server set, and tool configs still hold the
   // narrow one until a sync runs.

@@ -7,7 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-- No changes yet.
+### Fixed
+
+- Reset uses applied ownership records instead of preview names, preserving same-named manual servers and cleaning previously applied servers after a failed sync.
+
+- Updated transitive `source-map-js` to 1.2.2 to remove its reported high-severity vulnerability.
+
+- Updated transitive `brace-expansion` dependencies to 5.0.12 and 1.1.21 to remove the reported denial-of-service vulnerabilities.
+
+- Plugin import installs scripts and resources under `.agents/plugins` and points portable `${PLUGIN_ROOT}` references to that snapshot. Escaping links are rejected and executable permissions are preserved.
+
+- Watch retries unchanged source files after a failed sync instead of remembering the failed attempt as already applied.
+
+- Sync and `sync --check` fail when an integration config cannot be read or written, after attempting the remaining integrations. Failed runs no longer update the successful-sync timestamp.
+
+- Profile changes, connect/disconnect and plugin import lock the full config update and reload current state after prompts, preventing concurrent edits from being lost.
+
+- Plugin export rejects output paths overlapping `.agents`, including paths through symlinked parents, before writing or deleting source files.
+
+- Disconnect removes managed MCP servers from Gemini, OpenCode, Cursor, VS Code and Junie while preserving manual entries.
+
+- Sync preserves manual MCP entries and settings in Gemini, OpenCode, Cursor, VS Code and Junie, tracking ownership to remove only stale generated servers.
+
+- Safe reset preserves manual MCP servers and settings in Cursor, Antigravity, VS Code and Junie configs, removing only agents-managed entries.
+
+## [0.9.2] - 2026-10-09
+
+### Fixed
+
+- OpenCode `opencode.json` always includes `"$schema": "https://opencode.ai/config.json"`, matching OpenCode's own config examples. A from-scratch sync (or a CI job that deletes the file and regenerates) previously wrote `{ "mcp": {} }` only, which drifted against committed files that followed the docs.
 
 ## [0.9.1] - 2026-09-13
 

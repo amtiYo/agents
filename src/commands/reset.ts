@@ -91,6 +91,7 @@ export async function runReset(options: ResetOptions): Promise<void> {
     projectRoot,
     configPath: paths.geminiSettings,
     generatedPath: paths.generatedGemini,
+    statePath: paths.generatedGeminiState,
     removed,
     warnings
   })
@@ -98,6 +99,7 @@ export async function runReset(options: ResetOptions): Promise<void> {
     projectRoot,
     configPath: paths.opencodeConfig,
     generatedPath: paths.generatedOpencode,
+    statePath: paths.generatedOpencodeState,
     removed,
     warnings
   })
@@ -120,6 +122,7 @@ export async function runReset(options: ResetOptions): Promise<void> {
         projectRoot,
         configPath: paths[descriptor.pathKey],
         generatedPath: paths[managed.generatedPathKey],
+        statePath: paths[managed.statePathKey],
         removed,
         warnings
       },
@@ -159,13 +162,15 @@ export async function runReset(options: ResetOptions): Promise<void> {
     await removeResetTarget(bridge.bridgePath, projectRoot, removed)
   }
 
-  const targets = [
-    paths.cursorMcp,
-    paths.antigravityWorkspaceMcp,
-    paths.antigravityProjectMcp,
-    paths.vscodeMcp,
-    paths.junieMcp
-  ]
+  await cleanupKeyedJsonConfig({
+    projectRoot,
+    configPath: paths.antigravityProjectMcp,
+    generatedPath: paths.generatedAntigravity,
+    removed,
+    warnings
+  }, 'legacy Antigravity', 'mcpServers')
+
+  const targets: string[] = []
   if (!options.localOnly) {
     targets.push(paths.generatedDir)
   }
@@ -231,7 +236,7 @@ async function cleanupGeminiConfig(args: JsonConfigCleanupArgs): Promise<void> {
   if (cleaned.contextFileName === generated.contextFileName) {
     delete cleaned.contextFileName
   }
-  removeManagedMapEntries(cleaned, generated, 'mcpServers')
+  await removeManagedMapEntries(args, cleaned, generated, 'mcpServers')
 
   await persistCleanedJsonConfig(args, existing, cleaned)
 }
@@ -249,7 +254,7 @@ async function cleanupOpencodeConfig(args: JsonConfigCleanupArgs): Promise<void>
   if (generated === null) return
 
   const cleaned = { ...existing }
-  removeManagedMapEntries(cleaned, generated, 'mcp')
+  await removeManagedMapEntries(args, cleaned, generated, 'mcp')
   await persistCleanedJsonConfig(args, existing, cleaned)
 }
 
@@ -257,6 +262,7 @@ interface JsonConfigCleanupArgs {
   projectRoot: string
   configPath: string
   generatedPath: string
+  statePath?: string
   removed: string[]
   warnings: string[]
 }
@@ -309,14 +315,34 @@ async function readGeneratedObjectForCleanup(
 }
 
 /** Remove generated map keys from a materialized JSON object without touching unknown entries. */
-function removeManagedMapEntries(
+async function removeManagedMapEntries(
+  args: JsonConfigCleanupArgs,
   cleaned: Record<string, unknown>,
   generated: Record<string, unknown>,
   key: string,
-): void {
-  if (!isRecord(cleaned[key]) || !isRecord(generated[key])) return
+): Promise<void> {
+  if (!isRecord(cleaned[key])) return
   const remaining = { ...cleaned[key] }
-  for (const managedName of Object.keys(generated[key])) {
+  let managedNames: string[]
+  if (args.statePath && await pathExists(args.statePath)) {
+    try {
+      const state = await readJson<{ managedNames?: unknown }>(args.statePath)
+      if (!Array.isArray(state.managedNames) || !state.managedNames.every(name => typeof name === 'string')) {
+        throw new Error('Invalid managedNames')
+      }
+      managedNames = state.managedNames
+    } catch {
+      args.warnings.push(`Could not read ownership at ${args.statePath}; preserved MCP entries.`)
+      return
+    }
+  } else {
+    // A preview is generated for disabled integrations too. Only matching content
+    // can identify legacy ownership when no applied-state record exists.
+    const preview = isRecord(generated[key]) ? generated[key] : {}
+    managedNames = Object.keys(preview).filter(name =>
+      JSON.stringify(remaining[name]) === JSON.stringify(preview[name]))
+  }
+  for (const managedName of managedNames) {
     delete remaining[managedName]
   }
   if (Object.keys(remaining).length === 0) {
@@ -493,7 +519,7 @@ async function cleanupKeyedJsonConfig(
   if (generated === null) return
 
   const cleaned = { ...existing }
-  removeManagedMapEntries(cleaned, generated, key)
+  await removeManagedMapEntries(args, cleaned, generated, key)
 
   if (options?.jsonc) {
     await persistCleanedJsoncConfig(args, existing, cleaned, key)

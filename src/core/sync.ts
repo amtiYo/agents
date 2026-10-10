@@ -1,6 +1,6 @@
 import path from 'node:path'
 import { readFile } from 'node:fs/promises'
-import { ensureDir, pathExists, readJson, writeJsonAtomic } from './fs.js'
+import { ensureDir, pathExists, readJson, readTextOrEmpty, writeJsonAtomic } from './fs.js'
 import { loadAgentsConfigDetailed, persistMigratedConfig, saveAgentsConfig } from './config.js'
 import { loadResolvedRegistry } from './mcp.js'
 import { writeManagedFile } from './managedFiles.js'
@@ -66,6 +66,14 @@ export async function performSync(options: SyncOptions): Promise<SyncResult> {
     const { config, migratedFrom } = await loadAgentsConfigDetailed(projectRoot)
     const sourceFingerprint = await computeSharedSourceFingerprint(projectRoot, config)
     const changed: string[] = []
+    const errors: string[] = []
+    const attempt = async (label: string, operation: () => Promise<void>): Promise<void> => {
+      try {
+        await operation()
+      } catch (error) {
+        errors.push(`${label}: ${error instanceof Error ? error.message : String(error)}`)
+      }
+    }
 
     const migrationWarnings: string[] = []
     if (migratedFrom !== null) {
@@ -105,6 +113,7 @@ export async function performSync(options: SyncOptions): Promise<SyncResult> {
     const enabled = new Set(config.integrations.enabled)
     warnings.push(...collectUnsupportedFieldWarnings(resolved.serversByTarget, config.integrations.enabled))
 
+    const previousGeneratedByIntegration: Partial<Record<IntegrationName, string>> = {}
     const generatedByIntegration: Partial<Record<IntegrationName, string>> = {}
     for (const hook of INTEGRATION_SYNC_HOOKS) {
       const committed = writesCommittedConfig(hook.id, config)
@@ -118,6 +127,7 @@ export async function performSync(options: SyncOptions): Promise<SyncResult> {
       if (enabled.has(hook.id)) {
         warnings.push(...generated.warnings)
       }
+      previousGeneratedByIntegration[hook.id] = await readTextOrEmpty(hook.generatedPath(paths))
       generatedByIntegration[hook.id] = generated.content
       await writeManagedFile({
         absolutePath: hook.generatedPath(paths),
@@ -155,13 +165,14 @@ export async function performSync(options: SyncOptions): Promise<SyncResult> {
           warnings,
           config,
           generatedByIntegration,
+          previousGeneratedByIntegration,
           enabled: hookEnabled
         })
       } catch (error) {
         // One tool with a broken file used to abort the whole run, leaving the
         // integrations after it unwritten and the message with no name on it.
         const message = error instanceof Error ? error.message : String(error)
-        warnings.push(`${hook.id}: sync skipped after an error while writing its config. ${message}`)
+        errors.push(`${hook.id}: sync skipped after an error while writing its config. ${message}`)
       }
     }
 
@@ -191,7 +202,7 @@ export async function performSync(options: SyncOptions): Promise<SyncResult> {
       paths
     })
 
-    await syncProjectMcpFile({
+    await attempt('Project MCP', () => syncProjectMcpFile({
       plan: projectMcpPlan,
       statePath: paths.generatedProjectMcpState,
       generatedPath: paths.generatedClaudeProjectMcp,
@@ -200,9 +211,9 @@ export async function performSync(options: SyncOptions): Promise<SyncResult> {
       changed,
       warnings,
       knownServerNames: Object.keys(config.mcp.servers)
-    })
+    }))
 
-    await syncClaude({
+    await attempt('Claude', () => syncClaude({
       // Project scope is a file, so the CLI path only runs when the user opted into local scope.
       // When switching from local to project, this still runs once with `enabled: false` to
       // remove the servers previously registered in ~/.claude.json.
@@ -213,9 +224,9 @@ export async function performSync(options: SyncOptions): Promise<SyncResult> {
       statePath: paths.generatedClaudeState,
       changed,
       warnings
-    })
+    }))
 
-    await syncClaudeDesktop({
+    await attempt('Claude Desktop', () => syncClaudeDesktop({
       enabled: enabled.has('claude_desktop'),
       check,
       projectRoot,
@@ -223,9 +234,9 @@ export async function performSync(options: SyncOptions): Promise<SyncResult> {
       statePath: paths.generatedClaudeDesktopState,
       changed,
       warnings
-    })
+    }))
 
-    await syncCursor({
+    await attempt('Cursor approvals', () => syncCursor({
       enabled: enabled.has('cursor'),
       autoApprove: config.integrations.options.cursorAutoApprove,
       check,
@@ -234,25 +245,25 @@ export async function performSync(options: SyncOptions): Promise<SyncResult> {
       statePath: paths.generatedCursorState,
       changed,
       warnings
-    })
+    }))
 
-    await syncSkills({
+    await attempt('Skills', () => syncSkills({
       projectRoot,
       enabledIntegrations: config.integrations.enabled,
       check,
       changed,
       warnings
-    })
+    }))
 
-    await syncClaudeInstructions({
+    await attempt('Claude instructions', () => syncClaudeInstructions({
       enabled: enabled.has('claude'),
       projectRoot,
       check,
       changed,
       warnings
-    })
+    }))
 
-    await syncVscodeSettings({
+    await attempt('VS Code settings', () => syncVscodeSettings({
       settingsPath: paths.vscodeSettings,
       statePath: paths.generatedVscodeSettingsState,
       hiddenPaths: config.workspace.vscode.hiddenPaths,
@@ -261,7 +272,11 @@ export async function performSync(options: SyncOptions): Promise<SyncResult> {
       changed,
       warnings,
       projectRoot
-    })
+    }))
+
+    if (errors.length > 0) {
+      throw new Error(`Sync incomplete:\n${errors.map(error => `- ${error}`).join('\n')}`)
+    }
 
     // Sync bookkeeping lives in .agents/generated (gitignored). Keeping it in the
     // committed config meant every teammate's sync produced a diff.
@@ -359,10 +374,8 @@ async function syncClaudeDesktop(args: {
     try {
       existing = await readClaudeDesktopConfig(configPath) as Record<string, unknown> | undefined
     } catch (error) {
-      warnings.push(
-        `Failed reading Claude Desktop config at ${configPath}; skipped Claude Desktop sync. ${error instanceof Error ? error.message : String(error)}`,
-      )
-      return
+      throw new Error(
+        `Failed reading Claude Desktop config at ${configPath}; skipped Claude Desktop sync. ${error instanceof Error ? error.message : String(error)}`)
     }
 
     let managedServers: Record<string, unknown> = {}
@@ -375,8 +388,7 @@ async function syncClaudeDesktop(args: {
           ? parsed.mcpServers
           : {}
       } catch (error) {
-        warnings.push(`Failed parsing generated Claude Desktop config: ${error instanceof Error ? error.message : String(error)}`)
-        return
+        throw new Error(`Failed parsing generated Claude Desktop config: ${error instanceof Error ? error.message : String(error)}`)
       }
     }
 

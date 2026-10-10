@@ -1,6 +1,7 @@
 import path from 'node:path'
 import { copyFile, ensureDir, pathExists, readJson, writeJsonAtomic } from './fs.js'
 import { getProjectPaths } from './paths.js'
+import { acquireSyncLock } from './syncLock.js'
 import { INTEGRATION_IDS } from '../integrations/registry.js'
 import type {
   AgentsConfig,
@@ -311,6 +312,22 @@ export async function saveAgentsConfig(projectRoot: string, config: AgentsConfig
   }
 
   await writeJsonAtomic(paths.agentsConfig, config)
+}
+
+/** Read, modify and save the current config under the same lock as sync and MCP edits. */
+export async function updateAgentsConfig<T>(
+  projectRoot: string,
+  update: (config: AgentsConfig) => T | Promise<T>
+): Promise<{ config: AgentsConfig; result: T }> {
+  const release = await acquireSyncLock(getProjectPaths(projectRoot).generatedSyncLock)
+  try {
+    const config = await loadAgentsConfig(projectRoot)
+    const result = await update(config)
+    await saveAgentsConfig(projectRoot, config)
+    return { config, result }
+  } finally {
+    await release()
+  }
 }
 
 /**
