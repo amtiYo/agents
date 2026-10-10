@@ -175,6 +175,6 @@ describe('windsurf + opencode sync', () => {
     expect(opencode.$schema).toBe('https://opencode.ai/config.json')
     expect(opencode.theme).toBe('solarized')
     expect(Object.keys(opencode.mcp ?? {})).toContain('filesystem')
-    expect(Object.keys(opencode.mcp ?? {})).not.toContain('legacy')
+    expect(Object.keys(opencode.mcp ?? {})).toContain('legacy')
   })
 })

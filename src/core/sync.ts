@@ -1,6 +1,6 @@
 import path from 'node:path'
 import { readFile } from 'node:fs/promises'
-import { ensureDir, pathExists, readJson, writeJsonAtomic } from './fs.js'
+import { ensureDir, pathExists, readJson, readTextOrEmpty, writeJsonAtomic } from './fs.js'
 import { loadAgentsConfigDetailed, persistMigratedConfig, saveAgentsConfig } from './config.js'
 import { loadResolvedRegistry } from './mcp.js'
 import { writeManagedFile } from './managedFiles.js'
@@ -105,6 +105,7 @@ export async function performSync(options: SyncOptions): Promise<SyncResult> {
     const enabled = new Set(config.integrations.enabled)
     warnings.push(...collectUnsupportedFieldWarnings(resolved.serversByTarget, config.integrations.enabled))
 
+    const previousGeneratedByIntegration: Partial<Record<IntegrationName, string>> = {}
     const generatedByIntegration: Partial<Record<IntegrationName, string>> = {}
     for (const hook of INTEGRATION_SYNC_HOOKS) {
       const committed = writesCommittedConfig(hook.id, config)
@@ -118,6 +119,7 @@ export async function performSync(options: SyncOptions): Promise<SyncResult> {
       if (enabled.has(hook.id)) {
         warnings.push(...generated.warnings)
       }
+      previousGeneratedByIntegration[hook.id] = await readTextOrEmpty(hook.generatedPath(paths))
       generatedByIntegration[hook.id] = generated.content
       await writeManagedFile({
         absolutePath: hook.generatedPath(paths),
@@ -155,6 +157,7 @@ export async function performSync(options: SyncOptions): Promise<SyncResult> {
           warnings,
           config,
           generatedByIntegration,
+          previousGeneratedByIntegration,
           enabled: hookEnabled
         })
       } catch (error) {

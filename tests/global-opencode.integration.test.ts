@@ -132,7 +132,7 @@ describe('global installation and OpenCode config sync', () => {
     expect(parsed.theme).toBe('catppuccin')
     expect(parsed.default_agent).toBe('code-review')
     expect(Object.keys(parsed.mcp ?? {})).toContain('filesystem')
-    expect(Object.keys(parsed.mcp ?? {})).not.toContain('personal')
+    expect(Object.keys(parsed.mcp ?? {})).toContain('personal')
   })
 
   it('migrates settings from legacy ~/opencode.json if global config does not exist yet', async () => {

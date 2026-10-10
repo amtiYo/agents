@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Sync preserves manual MCP entries and settings in Gemini, OpenCode, Cursor, VS Code and Junie, tracking ownership to remove only stale generated servers.
+
 - Safe reset preserves manual MCP servers and settings in Cursor, Antigravity, VS Code and Junie configs, removing only agents-managed entries.
 
 ## [0.9.2] - 2026-10-09
