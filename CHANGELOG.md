@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Plugin import installs scripts and resources under `.agents/plugins` and points portable `${PLUGIN_ROOT}` references to that snapshot. Escaping links are rejected and executable permissions are preserved.
+
 - Watch retries unchanged source files after a failed sync instead of remembering the failed attempt as already applied.
 
 - Sync and `sync --check` fail when an integration config cannot be read or written, after attempting the remaining integrations. Failed runs no longer update the successful-sync timestamp.

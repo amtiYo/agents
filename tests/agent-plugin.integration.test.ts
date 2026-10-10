@@ -1,6 +1,7 @@
 import os from 'node:os'
+import { spawnSync } from 'node:child_process'
 import path from 'node:path'
-import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rename, rm, symlink, writeFile } from 'node:fs/promises'
 import { afterEach, describe, expect, it } from 'vitest'
 import { runInit } from '../src/commands/init.js'
 import { runPluginExport } from '../src/commands/plugin.js'
@@ -225,6 +226,53 @@ describe('agent plugin import', () => {
     expect(after.mcp.servers['team-stack.legacy']?.transport).toBe('sse')
   })
 
+  it('keeps plugin runtime assets portable and usable after the source is deleted', async () => {
+    const source = await makeProject()
+    const pluginDir = path.join(source, 'dist/plugin')
+    await exportPlugin({ projectRoot: source, outDir: pluginDir, name: 'runtime' })
+    await mkdir(path.join(pluginDir, 'scripts'), { recursive: true })
+    await mkdir(path.join(pluginDir, 'data'), { recursive: true })
+    await writeFile(path.join(pluginDir, 'data/value.txt'), 'bundled resource')
+    await symlink('value.txt', path.join(pluginDir, 'data/alias.txt'))
+    await writeFile(path.join(pluginDir, 'scripts/server.cjs'), "process.stdout.write(require('node:fs').readFileSync(process.env.ASSET, 'utf8'))")
+    await writeFile(path.join(pluginDir, 'mcp.json'), JSON.stringify({
+      $schema: PLUGIN_MCP_SCHEMA,
+      mcpServers: { server: {
+        type: 'stdio', command: process.execPath,
+        args: ['${PLUGIN_ROOT}/scripts/server.cjs'], cwd: '${PLUGIN_ROOT}',
+        env: { ASSET: '${PLUGIN_ROOT}/data/alias.txt' }
+      } }
+    }))
+    const target = await makeProject()
+    await importPlugin({ projectRoot: target, pluginDir })
+    await rm(source, { recursive: true, force: true })
+    const relocated = target + '-relocated'
+    await rename(target, relocated)
+    tempDirs.push(relocated)
+    const config = await loadAgentsConfig(relocated)
+    const server = config.mcp.servers['runtime.server']!
+    const resolve = (value: string): string => value.replaceAll('${PROJECT_ROOT}', relocated)
+    expect(server.args?.[0]).toMatch(/^\$\{PROJECT_ROOT\}\/\.agents\/plugins\//)
+    expect(JSON.stringify(server)).not.toContain(source)
+    const result = spawnSync(server.command!, server.args?.map(resolve), {
+      cwd: resolve(server.cwd!), env: { ...process.env, ASSET: resolve(server.env!.ASSET!) }, encoding: 'utf8'
+    })
+    expect(result.status).toBe(0)
+    expect(result.stdout).toBe('bundled resource')
+  })
+
+  it('rejects plugin assets linked outside the bundle before saving server definitions', async () => {
+    const source = await makeProject()
+    const pluginDir = path.join(source, 'dist/plugin')
+    await exportPlugin({ projectRoot: source, outDir: pluginDir, name: 'escaping' })
+    await writeFile(path.join(source, 'outside.txt'), 'private data')
+    await symlink(path.join(source, 'outside.txt'), path.join(pluginDir, 'external.txt'))
+    const target = await makeProject()
+    const before = await readFile(path.join(target, '.agents/agents.json'), 'utf8')
+    await expect(importPlugin({ projectRoot: target, pluginDir })).rejects.toThrow(/outside.*plugin|plugin.*outside/i)
+    expect(await readFile(path.join(target, '.agents/agents.json'), 'utf8')).toBe(before)
+  })
+
   it('refuses to import a package that fails validation', async () => {
     const dir = await mkdtemp(path.join(os.tmpdir(), 'agents-plugin-broken-'))
     tempDirs.push(dir)
@@ -442,7 +490,7 @@ describe('plugin secret handling', () => {
     expect(result.errors.join(' ')).toContain('not a string')
   })
 
-  it('restores ${PROJECT_ROOT} in url and headers on import', async () => {
+  it('uses a portable installed plugin root in headers on import', async () => {
     const source = await makeProject()
     const config = await loadAgentsConfig(source)
     config.mcp.servers = {
@@ -463,6 +511,6 @@ describe('plugin secret handling', () => {
     await importPlugin({ projectRoot: target, pluginDir: outDir })
 
     const imported = await loadAgentsConfig(target)
-    expect(imported.mcp.servers['team-stack.api']?.headers?.['X-Workspace']).toBe('${PROJECT_ROOT}')
+    expect(imported.mcp.servers['team-stack.api']?.headers?.['X-Workspace']).toMatch(/^\$\{PROJECT_ROOT\}\/\.agents\/plugins\/team-stack-/)
   })
 })

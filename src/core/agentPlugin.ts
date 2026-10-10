@@ -1,5 +1,6 @@
 import path from 'node:path'
-import { realpath } from 'node:fs/promises'
+import { createHash } from 'node:crypto'
+import { chmod, mkdtemp, readFile, readdir, realpath, rename, stat, writeFile } from 'node:fs/promises'
 import { copyDir, ensureDir, pathExists, readJson, removeIfExists, writeJsonAtomic } from './fs.js'
 import { discoverSkills } from './skillsDiscovery.js'
 import { getProjectPaths } from './paths.js'
@@ -288,6 +289,55 @@ function containsPath(parent: string, child: string): boolean {
   return relative === '' || (!relative.startsWith(`..${path.sep}`) && relative !== '..' && !path.isAbsolute(relative))
 }
 
+/** Install a self-contained snapshot without following links outside the package. */
+async function installPluginSnapshot(pluginDir: string, pluginsDir: string, name: string): Promise<string> {
+  const sourceRoot = await realpath(pluginDir)
+  const installRoot = await resolveProspectivePath(pluginsDir)
+  if (containsPath(sourceRoot, installRoot)) {
+    throw new Error('Plugin source must not contain its .agents/plugins installation directory.')
+  }
+  await ensureDir(installRoot)
+  const staging = await mkdtemp(path.join(installRoot, '.staging-'))
+  const hash = createHash('sha256')
+
+  const copy = async (source: string, relative: string, ancestors: Set<string>): Promise<void> => {
+    const resolved = await realpath(source)
+    if (!containsPath(sourceRoot, resolved)) {
+      throw new Error(`Plugin asset "${relative}" links outside the plugin directory.`)
+    }
+    const info = await stat(resolved)
+    const destination = path.join(staging, relative)
+    if (info.isDirectory()) {
+      if (ancestors.has(resolved)) throw new Error(`Plugin asset "${relative}" contains a symlink cycle.`)
+      await ensureDir(destination)
+      hash.update(JSON.stringify(['directory', relative]))
+      const nextAncestors = new Set([...ancestors, resolved])
+      for (const entry of (await readdir(resolved)).sort()) {
+        if (entry === '.git') continue
+        await copy(path.join(resolved, entry), path.join(relative, entry), nextAncestors)
+      }
+    } else if (info.isFile()) {
+      const content = await readFile(resolved)
+      const mode = info.mode & 0o777
+      hash.update(JSON.stringify(['file', relative, mode, content.length]))
+      hash.update(content)
+      await writeFile(destination, content)
+      await chmod(destination, mode)
+    } else {
+      throw new Error(`Plugin asset "${relative}" is not a regular file or directory.`)
+    }
+  }
+
+  try {
+    await copy(sourceRoot, '', new Set())
+    const installed = path.join(installRoot, `${name}-${hash.digest('hex')}`)
+    if (!(await pathExists(installed))) await rename(staging, installed)
+    return path.join(path.resolve(pluginsDir), path.basename(installed))
+  } finally {
+    await removeIfExists(staging)
+  }
+}
+
 /** Check that a value read from an untrusted plugin has the type the spec requires. */
 function isStringArray(value: unknown): boolean {
   return Array.isArray(value) && value.every((item) => typeof item === 'string')
@@ -472,6 +522,11 @@ export async function importPlugin(args: {
 
   const paths = getProjectPaths(args.projectRoot)
   const { result } = await updateAgentsConfig(args.projectRoot, async (config) => {
+    let installedDir: string | undefined
+    const install = async (): Promise<string> => {
+      installedDir ??= await installPluginSnapshot(dir, path.join(paths.agentsDir, 'plugins'), manifest.name)
+      return installedDir
+    }
     const mcpPath = path.join(dir, 'mcp.json')
     if (await pathExists(mcpPath)) {
       const mcp = await readJson<PluginMcpFile>(mcpPath)
@@ -488,9 +543,11 @@ export async function importPlugin(args: {
           skippedServers.push(targetName)
           continue
         }
-        // ${PLUGIN_ROOT} becomes ${PROJECT_ROOT}: an absolute path here would be written
-        // into the committed config and break for everyone else who clones the repo.
-        const toProjectPlaceholder = (value: string): string => value.replaceAll('${PLUGIN_ROOT}', '${PROJECT_ROOT}')
+        const installed = await install()
+        const relativeRoot = path.relative(args.projectRoot, installed).split(path.sep).join('/')
+        const pluginRoot = '${PROJECT_ROOT}/' + relativeRoot
+        // Keep the package root portable and separate from the consuming project root.
+        const toProjectPlaceholder = (value: string): string => value.replaceAll('${PLUGIN_ROOT}', pluginRoot)
         config.mcp.servers[targetName] = server.type === 'stdio'
           ? {
               transport: 'stdio',
@@ -499,7 +556,7 @@ export async function importPlugin(args: {
               ...(server.env
                 ? { env: Object.fromEntries(Object.entries(server.env).map(([k, v]) => [k, toProjectPlaceholder(v)])) }
                 : {}),
-              ...(server.cwd ? { cwd: toProjectPlaceholder(server.cwd) } : {})
+              cwd: toProjectPlaceholder(server.cwd ?? '${PLUGIN_ROOT}')
             }
           : {
               transport: server.type === 'sse' ? 'sse' : 'http',
@@ -529,14 +586,14 @@ export async function importPlugin(args: {
     const addedSkills: string[] = []
     const pluginSkills = path.join(dir, 'skills')
     if (await pathExists(pluginSkills)) {
-      const discovery = await discoverSkills(pluginSkills)
+      const discovery = await discoverSkills(path.join(await install(), 'skills'))
       for (const skill of discovery.skills) {
         const targetDir = path.join(paths.agentsSkillsDir, skill.name)
         if (await pathExists(targetDir)) {
           warnings.push(`Skill "${skill.name}" already exists in .agents/skills; left untouched.`)
           continue
         }
-        await copyDir(path.dirname(skill.skillFilePath), targetDir)
+        await copyDir(path.dirname(skill.skillFilePath), targetDir, { dereference: true })
         addedSkills.push(skill.name)
       }
     }
