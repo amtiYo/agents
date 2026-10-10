@@ -90,18 +90,23 @@ export async function search(query: string, options: RecallSearchOptions = {}): 
   const idents = identifierTokens(query)
 
   try {
+    if (projectFilter) {
+      db.function('recall_project_matches', { deterministic: true }, (stored) =>
+        projectMatches(sqlString(stored), projectFilter) ? 1 : 0)
+    }
     const rows = db.prepare(
       `SELECT t.*, bm25(turns_fts) AS rank
        FROM turns_fts
        JOIN turns t ON t.id = turns_fts.rowid
        WHERE turns_fts MATCH ?
+       ${projectFilter ? 'AND recall_project_matches(t.project) = 1' : ''}
+       ORDER BY rank ASC, t.ts_ms DESC, t.id ASC
        LIMIT ?`
     ).all(match, limit * CANDIDATE_MULTIPLIER)
 
     const scored = rows
       .map((row) => {
         const hit = rowToHit(row)
-        if (projectFilter && !projectMatches(hit.project, projectFilter)) return null
         const rank = sqlNumber(row.rank) ?? 0
         const bm25 = -rank
         const roleBoost = hit.role === 'user' ? 1.35 : 1
@@ -110,7 +115,6 @@ export async function search(query: string, options: RecallSearchOptions = {}): 
         const identBoost = idents.some((token) => quote.includes(token)) ? 1.4 : 1
         return { hit, score: bm25 * recency * roleBoost * identBoost }
       })
-      .filter((entry): entry is { hit: RecallHit; score: number } => entry !== null)
       .sort((left, right) => right.score - left.score)
       .slice(0, limit)
       .map((entry) => entry.hit)
