@@ -7,7 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-- No changes yet.
+### Fixed
+
+- Safe reset preserves manual MCP servers and settings in Cursor, Antigravity, VS Code and Junie configs, removing only agents-managed entries.
 
 ## [0.9.2] - 2026-10-09
 

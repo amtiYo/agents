@@ -66,20 +66,29 @@ export const INTEGRATIONS: IntegrationDefinition[] = [
     label: 'Copilot VS Code',
     requiredBinary: 'code',
     nativeSkills: true,
-    config: { pathKey: 'vscodeMcp', format: 'json', label: '.vscode/mcp.json' }
+    config: {
+      pathKey: 'vscodeMcp', format: 'json', label: '.vscode/mcp.json',
+      managedEntries: { key: 'servers', generatedPathKey: 'generatedCopilot', shortLabel: 'Copilot VS Code' }
+    }
   },
   { id: 'copilot_cli', label: 'Copilot CLI', requiredBinary: 'copilot', nativeSkills: true },
   {
     id: 'cursor',
     label: 'Cursor',
     requiredBinary: 'cursor-agent',
-    config: { pathKey: 'cursorMcp', format: 'json', label: '.cursor/mcp.json' }
+    config: {
+      pathKey: 'cursorMcp', format: 'json', label: '.cursor/mcp.json',
+      managedEntries: { key: 'mcpServers', generatedPathKey: 'generatedCursor', shortLabel: 'Cursor' }
+    }
   },
   {
     id: 'antigravity',
     label: 'Antigravity',
     requiredBinary: 'agy',
-    config: { pathKey: 'antigravityWorkspaceMcp', format: 'json', label: '.agents/mcp_config.json' }
+    config: {
+      pathKey: 'antigravityWorkspaceMcp', format: 'json', label: '.agents/mcp_config.json',
+      managedEntries: { key: 'mcpServers', generatedPathKey: 'generatedAntigravity', shortLabel: 'Antigravity' }
+    }
   },
   { id: 'windsurf', label: 'Devin Desktop (Windsurf)' },
   {
@@ -93,7 +102,10 @@ export const INTEGRATIONS: IntegrationDefinition[] = [
     id: 'junie',
     label: 'Junie',
     requiredBinary: 'junie',
-    config: { pathKey: 'junieMcp', format: 'json', label: '.junie/mcp/mcp.json' }
+    config: {
+      pathKey: 'junieMcp', format: 'json', label: '.junie/mcp/mcp.json',
+      managedEntries: { key: 'mcpServers', generatedPathKey: 'generatedJunie', shortLabel: 'Junie' }
+    }
   },
   {
     id: 'grok',

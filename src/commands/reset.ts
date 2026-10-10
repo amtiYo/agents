@@ -159,13 +159,15 @@ export async function runReset(options: ResetOptions): Promise<void> {
     await removeResetTarget(bridge.bridgePath, projectRoot, removed)
   }
 
-  const targets = [
-    paths.cursorMcp,
-    paths.antigravityWorkspaceMcp,
-    paths.antigravityProjectMcp,
-    paths.vscodeMcp,
-    paths.junieMcp
-  ]
+  await cleanupKeyedJsonConfig({
+    projectRoot,
+    configPath: paths.antigravityProjectMcp,
+    generatedPath: paths.generatedAntigravity,
+    removed,
+    warnings
+  }, 'legacy Antigravity', 'mcpServers')
+
+  const targets: string[] = []
   if (!options.localOnly) {
     targets.push(paths.generatedDir)
   }
