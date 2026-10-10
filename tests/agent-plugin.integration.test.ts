@@ -238,7 +238,7 @@ describe('agent plugin import', () => {
     await writeFile(path.join(pluginDir, 'mcp.json'), JSON.stringify({
       $schema: PLUGIN_MCP_SCHEMA,
       mcpServers: { server: {
-        type: 'stdio', command: process.execPath,
+        type: 'stdio', command: 'node',
         args: ['${PLUGIN_ROOT}/scripts/server.cjs'], cwd: '${PLUGIN_ROOT}',
         env: { ASSET: '${PLUGIN_ROOT}/data/alias.txt' }
       } }
