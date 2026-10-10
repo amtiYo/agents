@@ -1,4 +1,4 @@
-import { loadAgentsConfig, saveAgentsConfig } from '../core/config.js'
+import { loadAgentsConfig, updateAgentsConfig } from '../core/config.js'
 import { CancelledError } from '../core/errors.js'
 import { performSync } from '../core/sync.js'
 import { formatWarnings } from '../core/warnings.js'
@@ -15,7 +15,6 @@ export interface DisconnectOptions {
 
 export async function runDisconnect(options: DisconnectOptions): Promise<void> {
   const config = await loadAgentsConfig(options.projectRoot)
-  const enabled = new Set(config.integrations.enabled)
 
   const rawSelection = options.llm
 
@@ -28,22 +27,26 @@ export async function runDisconnect(options: DisconnectOptions): Promise<void> {
   const spin = ui.spinner()
   spin.start('Updating integrations...')
 
-  for (const integration of toDisable) {
-    enabled.delete(integration)
+  let syncResult
+  let nextEnabled: IntegrationName[] = []
+  try {
+    const updated = await updateAgentsConfig(options.projectRoot, (current) => {
+      current.integrations.enabled = current.integrations.enabled.filter(integration => !toDisable.includes(integration))
+    })
+    nextEnabled = updated.config.integrations.enabled
+    syncResult = await performSync({
+      projectRoot: options.projectRoot,
+      check: false,
+      verbose: options.verbose
+    })
+  } catch (error) {
+    spin.stop('Synchronization failed')
+    throw error
   }
-
-  config.integrations.enabled = [...enabled]
-  await saveAgentsConfig(options.projectRoot, config)
-
-  const syncResult = await performSync({
-    projectRoot: options.projectRoot,
-    check: false,
-    verbose: options.verbose
-  })
 
   spin.stop('Integrations updated')
 
-  ui.keyValue('Integrations', ui.formatList(config.integrations.enabled))
+  ui.keyValue('Integrations', ui.formatList(nextEnabled))
 
   const warningBlock = formatWarnings(syncResult.warnings, 5)
   if (warningBlock) {

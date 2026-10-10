@@ -3,7 +3,7 @@ import { realpath } from 'node:fs/promises'
 import { copyDir, ensureDir, pathExists, readJson, removeIfExists, writeJsonAtomic } from './fs.js'
 import { discoverSkills } from './skillsDiscovery.js'
 import { getProjectPaths } from './paths.js'
-import { loadAgentsConfig, saveAgentsConfig } from './config.js'
+import { loadAgentsConfig, updateAgentsConfig } from './config.js'
 import { validateServerName } from './mcpValidation.js'
 import { isSecretLikeKey } from './mcpSecrets.js'
 import type { McpServerDefinition, McpTransportType } from '../types.js'
@@ -471,78 +471,76 @@ export async function importPlugin(args: {
   const skippedServers: string[] = []
 
   const paths = getProjectPaths(args.projectRoot)
-  const config = await loadAgentsConfig(args.projectRoot)
+  const { result } = await updateAgentsConfig(args.projectRoot, async (config) => {
+    const mcpPath = path.join(dir, 'mcp.json')
+    if (await pathExists(mcpPath)) {
+      const mcp = await readJson<PluginMcpFile>(mcpPath)
+      for (const [name, server] of Object.entries(mcp.mcpServers ?? {})) {
+        const targetName = prefix ? `${prefix}.${name}` : name
+        try {
+          validateServerName(targetName)
+        } catch (error) {
+          warnings.push(error instanceof Error ? error.message : String(error))
+          skippedServers.push(targetName)
+          continue
+        }
+        if (config.mcp.servers[targetName]) {
+          skippedServers.push(targetName)
+          continue
+        }
+        // ${PLUGIN_ROOT} becomes ${PROJECT_ROOT}: an absolute path here would be written
+        // into the committed config and break for everyone else who clones the repo.
+        const toProjectPlaceholder = (value: string): string => value.replaceAll('${PLUGIN_ROOT}', '${PROJECT_ROOT}')
+        config.mcp.servers[targetName] = server.type === 'stdio'
+          ? {
+              transport: 'stdio',
+              command: toProjectPlaceholder(server.command ?? ''),
+              ...(server.args ? { args: server.args.map(toProjectPlaceholder) } : {}),
+              ...(server.env
+                ? { env: Object.fromEntries(Object.entries(server.env).map(([k, v]) => [k, toProjectPlaceholder(v)])) }
+                : {}),
+              ...(server.cwd ? { cwd: toProjectPlaceholder(server.cwd) } : {})
+            }
+          : {
+              transport: server.type === 'sse' ? 'sse' : 'http',
+              url: toProjectPlaceholder(server.url ?? ''),
+              ...(server.headers
+                ? {
+                    headers: Object.fromEntries(
+                      Object.entries(server.headers).map(([key, value]) => [key, toProjectPlaceholder(value)]),
+                    )
+                  }
+                : {})
+            }
+        addedServers.push(targetName)
 
-  const mcpPath = path.join(dir, 'mcp.json')
-  if (await pathExists(mcpPath)) {
-    const mcp = await readJson<PluginMcpFile>(mcpPath)
-    for (const [name, server] of Object.entries(mcp.mcpServers ?? {})) {
-      const targetName = prefix ? `${prefix}.${name}` : name
-      try {
-        validateServerName(targetName)
-      } catch (error) {
-        warnings.push(error instanceof Error ? error.message : String(error))
-        skippedServers.push(targetName)
-        continue
-      }
-      if (config.mcp.servers[targetName]) {
-        skippedServers.push(targetName)
-        continue
-      }
-      // ${PLUGIN_ROOT} becomes ${PROJECT_ROOT}: an absolute path here would be written
-      // into the committed config and break for everyone else who clones the repo.
-      const toProjectPlaceholder = (value: string): string => value.replaceAll('${PLUGIN_ROOT}', '${PROJECT_ROOT}')
-      config.mcp.servers[targetName] = server.type === 'stdio'
-        ? {
-            transport: 'stdio',
-            command: toProjectPlaceholder(server.command ?? ''),
-            ...(server.args ? { args: server.args.map(toProjectPlaceholder) } : {}),
-            ...(server.env
-              ? { env: Object.fromEntries(Object.entries(server.env).map(([k, v]) => [k, toProjectPlaceholder(v)])) }
-              : {}),
-            ...(server.cwd ? { cwd: toProjectPlaceholder(server.cwd) } : {})
-          }
-        : {
-            transport: server.type === 'sse' ? 'sse' : 'http',
-            url: toProjectPlaceholder(server.url ?? ''),
-            ...(server.headers
-              ? {
-                  headers: Object.fromEntries(
-                    Object.entries(server.headers).map(([key, value]) => [key, toProjectPlaceholder(value)]),
-                  )
-                }
-              : {})
-          }
-      addedServers.push(targetName)
-
-      // The package decides what runs on this machine the next time a tool starts the
-      // server. `validatePlugin` only checks the shape of the command, and a bare name
-      // like `sh` with `-c` passes it, so the reader is told what arrived.
-      if (server.type === 'stdio' && isShellInterpreter(server.command)) {
-        warnings.push(
-          `Server "${targetName}" runs "${server.command ?? ''}" with arguments from the package; `
-            + 'read them in .agents/agents.json before the next sync.',
-        )
+        // The package decides what runs on this machine the next time a tool starts the
+        // server. `validatePlugin` only checks the shape of the command, and a bare name
+        // like `sh` with `-c` passes it, so the reader is told what arrived.
+        if (server.type === 'stdio' && isShellInterpreter(server.command)) {
+          warnings.push(
+            `Server "${targetName}" runs "${server.command ?? ''}" with arguments from the package; `
+              + 'read them in .agents/agents.json before the next sync.',
+          )
+        }
       }
     }
-  }
 
-  const addedSkills: string[] = []
-  const pluginSkills = path.join(dir, 'skills')
-  if (await pathExists(pluginSkills)) {
-    const discovery = await discoverSkills(pluginSkills)
-    for (const skill of discovery.skills) {
-      const targetDir = path.join(paths.agentsSkillsDir, skill.name)
-      if (await pathExists(targetDir)) {
-        warnings.push(`Skill "${skill.name}" already exists in .agents/skills; left untouched.`)
-        continue
+    const addedSkills: string[] = []
+    const pluginSkills = path.join(dir, 'skills')
+    if (await pathExists(pluginSkills)) {
+      const discovery = await discoverSkills(pluginSkills)
+      for (const skill of discovery.skills) {
+        const targetDir = path.join(paths.agentsSkillsDir, skill.name)
+        if (await pathExists(targetDir)) {
+          warnings.push(`Skill "${skill.name}" already exists in .agents/skills; left untouched.`)
+          continue
+        }
+        await copyDir(path.dirname(skill.skillFilePath), targetDir)
+        addedSkills.push(skill.name)
       }
-      await copyDir(path.dirname(skill.skillFilePath), targetDir)
-      addedSkills.push(skill.name)
     }
-  }
-
-  await saveAgentsConfig(args.projectRoot, config)
-
-  return { addedServers, skippedServers, addedSkills, warnings }
+    return { addedServers, skippedServers, addedSkills, warnings }
+  })
+  return result
 }
