@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Updated transitive `brace-expansion` dependencies to 5.0.12 and 1.1.21 to remove the reported denial-of-service vulnerabilities.
+
 - Plugin import installs scripts and resources under `.agents/plugins` and points portable `${PLUGIN_ROOT}` references to that snapshot. Escaping links are rejected and executable permissions are preserved.
 
 - Watch retries unchanged source files after a failed sync instead of remembering the failed attempt as already applied.
