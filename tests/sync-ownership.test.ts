@@ -79,4 +79,36 @@ describe('sync config ownership', () => {
     })
   })
 
+
+  it.each(cases)('cleans up disabled %s without touching manual servers', async (id, pathKey, key) => {
+    const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-disconnect-ownership-'))
+    tempDirs.push(projectRoot)
+    vi.stubEnv('AGENTS_HOME_DIR', path.join(projectRoot, 'home'))
+    const paths = getProjectPaths(projectRoot)
+    const target = paths[pathKey]
+    const hook = INTEGRATION_SYNC_HOOKS.find(hook => hook.id === id)!
+    const generated = JSON.stringify({ [key]: { managed: { command: 'managed-command' } } })
+    const context = {
+      projectRoot, paths, config: createDefaultAgentsConfig(), enabled: false,
+      check: false, changed: [], warnings: [],
+      generatedByIntegration: { [id]: generated },
+      previousGeneratedByIntegration: { [id]: generated }
+    }
+    // Previews exist even for tools that have never been enabled.
+    if (hook.materializeWhenDisabled) await hook.materialize!(context)
+    await expect(readFile(target, 'utf8')).rejects.toThrow()
+    context.enabled = true
+    await hook.materialize!(context)
+    const config = JSON.parse(await readFile(target, 'utf8'))
+    config[key].manual = { command: 'mine' }
+    await writeFile(target, JSON.stringify(config))
+    context.enabled = false
+    if (hook.materializeWhenDisabled) await hook.materialize!(context)
+    expect(JSON.parse(await readFile(target, 'utf8'))[key]).toEqual({ manual: { command: 'mine' } })
+    // Repeated sync must stay idempotent after cleanup.
+    const before = await readFile(target, 'utf8')
+    if (hook.materializeWhenDisabled) await hook.materialize!(context)
+    expect(await readFile(target, 'utf8')).toBe(before)
+  })
+
 })

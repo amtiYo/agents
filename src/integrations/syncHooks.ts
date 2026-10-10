@@ -86,6 +86,7 @@ export const INTEGRATION_SYNC_HOOKS: IntegrationSyncHook[] = [
         warnings: gemini.warnings
       }
     },
+    materializeWhenDisabled: true,
     materialize: async (context) => {
       await mergeJsonKey({
         context,
@@ -113,6 +114,7 @@ export const INTEGRATION_SYNC_HOOKS: IntegrationSyncHook[] = [
         warnings: copilot.warnings
       }
     },
+    materializeWhenDisabled: true,
     materialize: async (context) => {
       await mergeJsonKey({
         context,
@@ -149,6 +151,7 @@ export const INTEGRATION_SYNC_HOOKS: IntegrationSyncHook[] = [
         warnings: cursor.warnings
       }
     },
+    materializeWhenDisabled: true,
     materialize: async (context) => {
       await mergeJsonKey({
         context,
@@ -243,6 +246,7 @@ export const INTEGRATION_SYNC_HOOKS: IntegrationSyncHook[] = [
         warnings: opencode.warnings
       }
     },
+    materializeWhenDisabled: true,
     materialize: async (context) => {
       const targetPath = context.paths.opencodeConfig
       let sourcePath = targetPath
@@ -276,6 +280,7 @@ export const INTEGRATION_SYNC_HOOKS: IntegrationSyncHook[] = [
         warnings: junie.warnings
       }
     },
+    materializeWhenDisabled: true,
     materialize: async (context) => {
       await mergeJsonKey({
         context,
@@ -870,6 +875,8 @@ async function mergeManagedKey(args: {
       // An unreadable preview is not evidence of ownership.
     }
   }
+  if (!context.enabled && previousNames.length === 0) return
+
   const takenOver: string[] = []
   const nextEntries = mergeManagedServers(recordFrom(existing[key]), previousNames, managed, takenOver)
   context.warnings.push(...formatTakenOverWarnings(label, takenOver))
