@@ -51,12 +51,10 @@ export async function syncClaude(args: {
   ]))
   let currentNames = state.managedNames ?? []
   if (!commandExists('claude')) {
-    if (enabled || state.managedNames.length > 0) {
-      warnings.push('Claude CLI not found; skipped Claude MCP sync.')
-      if (!enabled && state.managedNames.length > 0) {
-        throw new Error('Claude CLI not found; cannot remove managed Claude MCP servers.')
-      }
+    if (!enabled && currentNames.length > 0) {
+      throw new Error('Claude CLI not found; cannot remove managed Claude MCP servers.')
     }
+    if (enabled) warnings.push('Claude CLI not found; skipped Claude MCP sync.')
     return
   }
 

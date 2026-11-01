@@ -18,7 +18,7 @@ import {
   readWindsurfMcp,
   writeWindsurfMcp
 } from '../core/windsurf.js'
-import { pathExists, readJson, readTextOrEmpty, removeIfExists, writeJsonAtomic, writeTextAtomic } from '../core/fs.js'
+import { ensureDir, pathExists, readJson, readTextOrEmpty, removeIfExists, writeJsonAtomic, writeTextAtomic } from '../core/fs.js'
 import {
   isLegacyGeneratedCodexConfig,
   removeCodexManagedBlock,
@@ -59,16 +59,26 @@ export async function runReset(options: ResetOptions): Promise<void> {
 
   const removed: string[] = []
   const warnings: string[] = []
-  await syncClaude({
-    enabled: false,
-    scope: 'local',
-    check: false,
-    projectRoot,
-    servers: [],
-    statePath: paths.generatedClaudeState,
-    changed: removed,
-    warnings
-  })
+  // A Claude CLI failure must not stop the rest of the cleanup. The state is kept so a
+  // later reset can retry, and the warning names the registrations that are left.
+  let claudeStateToKeep: string | null = null
+  const claudeChanged: string[] = []
+  try {
+    await syncClaude({
+      enabled: false,
+      scope: 'local',
+      check: false,
+      projectRoot,
+      servers: [],
+      statePath: paths.generatedClaudeState,
+      changed: claudeChanged,
+      warnings
+    })
+    if (claudeChanged.length > 0) removed.push('Claude Code MCP registrations')
+  } catch (error) {
+    claudeStateToKeep = await readTextOrEmpty(paths.generatedClaudeState)
+    warnings.push(describeClaudeCleanupFailure(error, claudeStateToKeep, options.hard))
+  }
   const claudeDesktopCleanup = await cleanupManagedClaudeDesktopConfig(projectRoot)
   if (claudeDesktopCleanup.changed && claudeDesktopCleanup.path) {
     removed.push(claudeDesktopCleanup.path)
@@ -193,6 +203,14 @@ export async function runReset(options: ResetOptions): Promise<void> {
 
   for (const target of targets) {
     await removeResetTarget(target, projectRoot, removed)
+  }
+
+  if (claudeStateToKeep !== null) {
+    if (claudeStateToKeep && !options.hard && !(await pathExists(paths.generatedClaudeState))) {
+      await ensureDir(paths.generatedDir)
+      await writeTextAtomic(paths.generatedClaudeState, claudeStateToKeep)
+    }
+    process.exitCode = 1
   }
 
   if (options.hard) {
@@ -434,6 +452,25 @@ async function cleanupCodexConfig(args: {
 }
 
 /** Remove one reset target and prune empty parent directories inside the project. */
+/** Explain a failed Claude cleanup and how to remove what it left behind. */
+function describeClaudeCleanupFailure(error: unknown, stateText: string, hard: boolean): string {
+  const reason = error instanceof Error ? error.message : String(error)
+  let scope = 'local'
+  let names: string[] = []
+  try {
+    const state = JSON.parse(stateText) as { scope?: string; managedNames?: unknown }
+    if (state.scope === 'user') scope = 'user'
+    if (Array.isArray(state.managedNames)) names = state.managedNames.filter((name): name is string => typeof name === 'string')
+  } catch {
+    // The reason alone is still worth reporting.
+  }
+  if (names.length === 0) return `Claude Code MCP cleanup failed: ${reason}`
+  const retry = hard ? '' : ', or rerun "agents reset" once the Claude CLI works'
+  return `Claude Code MCP cleanup failed: ${reason}\n`
+    + `  Still registered in ${scope} scope: ${names.join(', ')}\n`
+    + `  Remove them with "claude mcp remove -s ${scope} <name>"${retry}.`
+}
+
 async function removeResetTarget(target: string, projectRoot: string, removed: string[]): Promise<void> {
   if (!(await pathExists(target))) return
   await removeIfExists(target)

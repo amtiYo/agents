@@ -12,10 +12,11 @@ import { performSync } from '../src/core/sync.js'
 const cli = vi.hoisted(() => ({
   entries: new Map<string, string[]>(),
   calls: [] as string[][],
-  failRemove: false
+  failRemove: false,
+  installed: true
 }))
 vi.mock('../src/core/shell.js', () => ({
-  commandExists: (command: string) => command === 'claude',
+  commandExists: (command: string) => cli.installed && command === 'claude',
   runCommand: (_command: string, args: string[], cwd: string) => {
     cli.calls.push(args)
     const result = { ok: true, code: 0, stdout: '', stderr: '', timedOut: false }
@@ -43,6 +44,8 @@ afterEach(async () => {
   cli.entries.clear()
   cli.calls.length = 0
   cli.failRemove = false
+  cli.installed = true
+  process.exitCode = undefined
   await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true })))
 })
 
@@ -159,11 +162,30 @@ it('replaces user definitions and retries reset failures without losing ownershi
   await performSync({ projectRoot, check: false, verbose: false })
   expect(cli.entries.get(`user:${toProjectScopedName(projectRoot, 'docs')}`)).toContain('https://updated.example/mcp')
   cli.failRemove = true
-  await expect(runReset({ projectRoot, localOnly: false, hard: false })).rejects.toThrow('permission denied')
+  await runReset({ projectRoot, localOnly: false, hard: false })
+  expect(process.exitCode).toBe(1)
   const state = JSON.parse(await readFile(path.join(projectRoot, '.agents/generated/claude.state.json'), 'utf8'))
   expect(state.scope).toBe('user')
   expect(state.managedNames).toContain(toProjectScopedName(projectRoot, 'docs'))
   cli.failRemove = false
+  process.exitCode = undefined
+  await runReset({ projectRoot, localOnly: false, hard: false })
+  expect(cli.entries.size).toBe(0)
+  expect(process.exitCode).toBeUndefined()
+})
+
+it('finishes reset without the Claude CLI, keeping Claude ownership for a later retry', async () => {
+  const { projectRoot } = await fixture()
+  await performSync({ projectRoot, check: false, verbose: false })
+  await writeFile(path.join(projectRoot, '.agents/generated/codex.config.toml'), '# preview\n')
+  cli.installed = false
+  await runReset({ projectRoot, localOnly: false, hard: false })
+  expect(process.exitCode).toBe(1)
+  await expect(readFile(path.join(projectRoot, '.agents/generated/codex.config.toml'), 'utf8')).rejects.toThrow()
+  const state = JSON.parse(await readFile(path.join(projectRoot, '.agents/generated/claude.state.json'), 'utf8'))
+  expect(state.managedNames).toContain(toProjectScopedName(projectRoot, 'docs'))
+  cli.installed = true
+  process.exitCode = undefined
   await runReset({ projectRoot, localOnly: false, hard: false })
   expect(cli.entries.size).toBe(0)
 })
