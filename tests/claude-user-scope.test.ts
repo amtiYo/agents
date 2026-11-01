@@ -5,6 +5,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { runStart } from '../src/commands/start.js'
 import { runInit } from '../src/commands/init.js'
 import { runReset } from '../src/commands/reset.js'
+import { runDoctor } from '../src/commands/doctor.js'
 import { createDefaultAgentsConfig, loadAgentsConfig, saveAgentsConfig } from '../src/core/config.js'
 import { toProjectScopedName } from '../src/core/globalScope.js'
 import { performSync } from '../src/core/sync.js'
@@ -188,6 +189,33 @@ it('finishes reset without the Claude CLI, keeping Claude ownership for a later 
   process.exitCode = undefined
   await runReset({ projectRoot, localOnly: false, hard: false })
   expect(cli.entries.size).toBe(0)
+})
+
+it('doctor points a home install on local or project scope to user scope', async () => {
+  const home = await mkdtemp(path.join(os.tmpdir(), 'agents-claude-home-'))
+  roots.push(home)
+  vi.stubEnv('AGENTS_HOME_DIR', home)
+  await runInit({ projectRoot: home, force: true })
+  const config = await loadAgentsConfig(home)
+  config.integrations.enabled = ['claude']
+  const doctorOutput = async (scope: 'local' | 'project' | 'user') => {
+    config.integrations.options.claudeScope = scope
+    await saveAgentsConfig(home, config)
+    let output = ''
+    const write = vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
+      output += String(chunk)
+      return true
+    })
+    try {
+      await runDoctor({ projectRoot: home, fix: false })
+    } finally {
+      write.mockRestore()
+    }
+    return output
+  }
+  expect(await doctorOutput('local')).toContain('Claude Code uses local scope in the home directory')
+  expect(await doctorOutput('project')).toContain('Claude Code uses project scope in the home directory')
+  expect(await doctorOutput('user')).not.toContain('in the home directory, so its MCP servers')
 })
 
 it('reads current registrations from Claude config instead of the slow mcp list', async () => {
