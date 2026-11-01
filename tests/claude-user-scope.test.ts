@@ -1,6 +1,6 @@
 import os from 'node:os'
 import path from 'node:path'
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { afterEach, expect, it, vi } from 'vitest'
 import { runStart } from '../src/commands/start.js'
 import { runInit } from '../src/commands/init.js'
@@ -188,4 +188,19 @@ it('finishes reset without the Claude CLI, keeping Claude ownership for a later 
   process.exitCode = undefined
   await runReset({ projectRoot, localOnly: false, hard: false })
   expect(cli.entries.size).toBe(0)
+})
+
+it('reads current registrations from Claude config instead of the slow mcp list', async () => {
+  const { projectRoot } = await fixture()
+  await performSync({ projectRoot, check: false, verbose: false })
+  const configDir = path.join(projectRoot, 'claude-config')
+  await mkdir(configDir)
+  vi.stubEnv('CLAUDE_CONFIG_DIR', configDir)
+  const registered = Object.fromEntries([...cli.entries.keys()].map(key => [key.split(':').at(-1), {}]))
+  await writeFile(path.join(configDir, '.claude.json'), JSON.stringify({
+    mcpServers: { ...registered, [toProjectScopedName(path.join(projectRoot, 'other'), 'docs')]: {} }
+  }))
+  cli.calls.length = 0
+  expect((await performSync({ projectRoot, check: true, verbose: false })).changed).toEqual([])
+  expect(cli.calls.filter(args => args[1] === 'list')).toEqual([])
 })

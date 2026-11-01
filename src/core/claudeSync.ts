@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto'
 import { isDeepStrictEqual } from 'node:util'
 import { ensureDir, pathExists, readJson, writeJsonAtomic } from './fs.js'
 import { commandExists, runCommand } from './shell.js'
-import { listClaudeManagedServerNames } from './claudeCli.js'
+import { listClaudeManagedServerNames, readClaudeScopeServerNames } from './claudeCli.js'
 import { toManagedClaudeName } from '../integrations/claude.js'
 import { getProjectScopePrefix, toProjectScopedName } from './globalScope.js'
 import { validateEnvValueForShell, validateServerName } from './mcpValidation.js'
@@ -80,12 +80,16 @@ export async function syncClaude(args: {
 
   if (enabled) {
     const prefix = scope === 'user' ? getProjectScopePrefix(projectRoot) : 'agents__'
-    const listed = listClaudeManagedServerNames(projectRoot, prefix, 5000)
-    if (!listed.ok) {
-      throw new Error(`Failed checking Claude MCP status: ${compactError(listed.stderr)}`)
+    const fromFile = await readClaudeScopeServerNames(projectRoot, scope, prefix)
+    if (fromFile) {
+      currentNames = fromFile
+    } else {
+      const listed = listClaudeManagedServerNames(projectRoot, prefix, 5000)
+      if (!listed.ok) {
+        throw new Error(`Failed checking Claude MCP status: ${compactError(listed.stderr)}`)
+      }
+      currentNames = listed.names
     }
-
-    currentNames = listed.names
     // `mcp list` merges all scopes. Local sync must not adopt another project's
     // user registrations; only desired names and recorded ownership belong here.
     if (scope === 'local') {
