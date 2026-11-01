@@ -56,7 +56,7 @@ describe('status command', () => {
     ]
     await saveAgentsConfig(projectRoot, config)
 
-    const runCommandSpy = vi.spyOn(shell, 'runCommand')
+    const runCommandSpy = vi.spyOn(shell, 'runCommandAsync')
     const commandExistsSpy = vi.spyOn(shell, 'commandExists')
 
     const output = await captureStdout(async () => {
@@ -172,7 +172,7 @@ describe('status command', () => {
     let serverName = toProjectScopedName(projectRoot, 'docs')
     if (nameKind === 'plain') serverName = 'docs'
     else if (nameKind === 'local') serverName = 'agents__docs'
-    vi.spyOn(shell, 'runCommand').mockReturnValue({
+    vi.spyOn(shell, 'runCommandAsync').mockResolvedValue({
       ok: true, code: 0, stderr: '', timedOut: false,
       stdout: `${serverName}: https://example.com/mcp - ✓ Connected`
     })
@@ -191,7 +191,7 @@ describe('status command', () => {
     config.mcp.servers = { docs: { transport: 'http', url: 'https://example.com/mcp' } }
     await saveAgentsConfig(projectRoot, config)
     vi.spyOn(shell, 'commandExists').mockImplementation(command => command === 'claude')
-    vi.spyOn(shell, 'runCommand').mockReturnValue({
+    vi.spyOn(shell, 'runCommandAsync').mockResolvedValue({
       ok: true, code: 0, stderr: '', timedOut: false,
       stdout: [
         'docs: https://example.com/mcp - ✗ Failed to connect',
