@@ -81,11 +81,9 @@ export function planProjectMcp(args: {
     return { targets: [], warnings }
   }
 
-  // Both tools read the repository root file, so a Claude local scope plus Copilot CLI
-  // means Claude sees each server twice: once from ~/.claude.json, once from .mcp.json.
   if (claudeEnabled && !claudeUsesProjectScope && copilotCliEnabled && copilotUsesRootFile) {
     warnings.push(
-      'Claude Code is on local scope while Copilot CLI writes .mcp.json, which Claude Code also reads. '
+      `Claude Code is on ${config.integrations.options.claudeScope} scope while Copilot CLI writes .mcp.json, which Claude Code also reads. `
       + 'Servers will appear twice in Claude Code. Set integrations.options.claudeScope to "project", '
       + 'or point Copilot CLI at .github/mcp.json.',
     )

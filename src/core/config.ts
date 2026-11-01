@@ -1,6 +1,6 @@
 import path from 'node:path'
 import { copyFile, ensureDir, pathExists, readJson, writeJsonAtomic } from './fs.js'
-import { getProjectPaths } from './paths.js'
+import { getProjectPaths, isHomeDirectory } from './paths.js'
 import { acquireSyncLock } from './syncLock.js'
 import { INTEGRATION_IDS } from '../integrations/registry.js'
 import type {
@@ -127,9 +127,12 @@ export function createDefaultAgentsConfig(args?: {
 /** Lowest schema version this CLI can read and migrate forward. */
 export const MIN_SUPPORTED_SCHEMA_VERSION = 3
 
-/** Coerce a stored Claude scope to a known value, defaulting to project scope. */
-function normalizeClaudeScope(value: unknown): ClaudeScope {
-  return value === 'local' ? 'local' : 'project'
+/** Coerce a stored Claude scope, defaulting home installs to user scope. */
+function normalizeClaudeScope(value: unknown, projectRoot?: string): ClaudeScope {
+  if (value === 'user' || value === 'global') return 'user'
+  if (value === 'local' || value === 'project') return value
+  if (projectRoot && isHomeDirectory(projectRoot)) return 'user'
+  return 'project'
 }
 
 /** Coerce a stored Copilot CLI path to one of the two files Copilot CLI reads. */
@@ -237,7 +240,7 @@ export async function loadAgentsConfigDetailed(projectRoot: string): Promise<Loa
     options: {
       cursorAutoApprove: config.integrations?.options?.cursorAutoApprove !== false,
       antigravityGlobalSync: config.integrations?.options?.antigravityGlobalSync !== false,
-      claudeScope: normalizeClaudeScope(config.integrations?.options?.claudeScope),
+      claudeScope: normalizeClaudeScope(config.integrations?.options?.claudeScope, projectRoot),
       copilotCliPath: normalizeCopilotCliPath(config.integrations?.options?.copilotCliPath)
     }
   }

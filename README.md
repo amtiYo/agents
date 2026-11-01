@@ -64,7 +64,7 @@ Eighteen tools. "Verified" means the tool's own CLI was run against the file thi
 | Integration | `--llm` id | MCP config it writes | Skills | Verified |
 |:--|:--|:--|:--:|:--:|
 | Codex | `codex` | `.codex/config.toml` (managed block, project trust handled) | native | ✅ |
-| Claude Code | `claude` | `.mcp.json` project scope, plus root `CLAUDE.md` wrapper | bridge | ✅ |
+| Claude Code | `claude` | `.mcp.json` project scope or CLI local/user scope, plus root `CLAUDE.md` wrapper | bridge | ✅ |
 | Claude Desktop | `claude_desktop` | global `claude_desktop_config.json`, stdio servers only | — | ✅ |
 | Gemini CLI | `gemini` | `.gemini/settings.json` | bridge | ✅ |
 | Cursor | `cursor` | `.cursor/mcp.json` + CLI enable | bridge | ✅ |
@@ -326,7 +326,7 @@ No. <code>AGENTS.md</code> stays the instruction file every tool reads. This CLI
 <details>
 <summary><b>Why does Claude Code use <code>.mcp.json</code> now?</b></summary>
 <br/>
-Project scope is the location Anthropic documents for teams: it lives in the repository, so everyone working on it gets the same servers, and in `commit-generated` mode it is reviewed like any other file. Before 0.9.0 the CLI registered servers in the machine-local <code>~/.claude.json</code>, which nobody else could see. Set <code>integrations.options.claudeScope</code> to <code>"local"</code> for the old behaviour; projects upgrading from schema 3 keep it automatically.
+Project scope is the location Anthropic documents for teams: it lives in the repository, so everyone working on it gets the same servers, and in `commit-generated` mode it is reviewed like any other file. Before 0.9.0 the CLI registered servers in the machine-local <code>~/.claude.json</code>, which nobody else could see. Set <code>integrations.options.claudeScope</code> to <code>"local"</code> for the old behaviour; projects upgrading from schema 3 keep it automatically. For servers available in every project, set it to <code>"user"</code> (<code>"global"</code> is an alias) and run <code>agents sync -g</code>. New home-directory installs (<code>agents init -g</code> or <code>agents start -g</code>) default to user scope; normal repositories default to project scope. Existing explicit choices are preserved. See [Claude MCP scopes](docs/agents-system.md#claude-mcp-scopes) for migration and cleanup.
 </details>
 
 <details>

@@ -24,6 +24,7 @@ import {
   removeCodexManagedBlock,
   removeLegacyGeneratedCodexMcp
 } from '../core/codexConfig.js'
+import { syncClaude } from '../core/claudeSync.js'
 import { cleanupManagedClaudeInstructions } from '../core/claudeInstructions.js'
 import { cleanupManagedClaudeDesktopConfig } from '../core/claudeDesktop.js'
 import { cleanupVscodeSettingsIfManaged } from '../core/vscodeSettings.js'
@@ -58,6 +59,16 @@ export async function runReset(options: ResetOptions): Promise<void> {
 
   const removed: string[] = []
   const warnings: string[] = []
+  await syncClaude({
+    enabled: false,
+    scope: 'local',
+    check: false,
+    projectRoot,
+    servers: [],
+    statePath: paths.generatedClaudeState,
+    changed: removed,
+    warnings
+  })
   const claudeDesktopCleanup = await cleanupManagedClaudeDesktopConfig(projectRoot)
   if (claudeDesktopCleanup.changed && claudeDesktopCleanup.path) {
     removed.push(claudeDesktopCleanup.path)

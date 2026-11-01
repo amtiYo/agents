@@ -1,4 +1,5 @@
 import path from 'node:path'
+import { isHomeDirectory } from '../core/paths.js'
 import { ensureProjectGitignore } from '../core/gitignore.js'
 import { AGENTS_SCHEMA_VERSION } from '../types.js'
 import { initializeProjectSkeleton } from '../core/project.js'
@@ -23,7 +24,7 @@ export async function runInit(options: InitOptions): Promise<void> {
     integrationOptions: {
       cursorAutoApprove: true,
       antigravityGlobalSync: true,
-      claudeScope: 'project',
+      claudeScope: isHomeDirectory(projectRoot) ? 'user' : 'project',
       copilotCliPath: '.mcp.json'
     },
     syncMode: 'source-only',

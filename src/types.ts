@@ -24,7 +24,7 @@ export type SyncMode = 'source-only' | 'commit-generated'
 export type McpTransportType = 'stdio' | 'http' | 'sse'
 
 /** Where the Claude Code integration materializes MCP servers. */
-export type ClaudeScope = 'project' | 'local'
+export type ClaudeScope = 'project' | 'local' | 'user'
 
 /** Which file the Copilot CLI integration writes; both are read by Copilot CLI. */
 export type CopilotCliPath = '.mcp.json' | '.github/mcp.json'

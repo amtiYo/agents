@@ -110,12 +110,12 @@ describe('shared project .mcp.json', () => {
     expect(Object.keys(payload.mcpServers).sort()).toEqual(['api', 'docs'])
   })
 
-  it('warns about double registration when Claude stays on local scope', async () => {
+  it.each(['local', 'user'] as const)('warns about double registration when Claude uses %s scope', async scope => {
     const projectRoot = await setupProject(['claude', 'copilot_cli'], (config) => {
-      config.integrations.options.claudeScope = 'local'
+      config.integrations.options.claudeScope = scope
     })
 
-    // The local-scope path shells out to the claude CLI; hide it so the test never
+    // The local/user-scope path shells out to the claude CLI; hide it so the test never
     // touches the developer's real ~/.claude.json.
     const previousPath = process.env.PATH
     process.env.PATH = ''
@@ -127,6 +127,7 @@ describe('shared project .mcp.json', () => {
       else process.env.PATH = previousPath
     }
 
+    expect(result.warnings.join(' ')).toContain(`Claude Code is on ${scope} scope`)
     expect(result.warnings.join(' ')).toContain('Servers will appear twice in Claude Code')
   })
 

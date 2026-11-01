@@ -1,7 +1,8 @@
 import os from 'node:os'
 import path from 'node:path'
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type * as shell from '../src/core/shell.js'
 import { runInit } from '../src/commands/init.js'
 import { runDoctor } from '../src/commands/doctor.js'
 import { runStatus } from '../src/commands/status.js'
@@ -9,6 +10,13 @@ import { loadAgentsConfig, saveAgentsConfig } from '../src/core/config.js'
 import { pathExists } from '../src/core/fs.js'
 import { performSync } from '../src/core/sync.js'
 import { INTEGRATION_IDS } from '../src/integrations/registry.js'
+
+// Global Claude defaults use the CLI; this file verifies materialized configs,
+// so keep it independent of installed CLIs and real machine registrations.
+vi.mock('../src/core/shell.js', async importOriginal => ({
+  ...await importOriginal<typeof shell>(),
+  commandExists: () => false
+}))
 
 const tempDirs: string[] = []
 let previousHomeDir: string | undefined

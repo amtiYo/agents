@@ -70,7 +70,7 @@ project/
 | Tool | Generated Config |
 |:-----|:-----------------|
 | **Codex** | `.codex/config.toml`, managed block only |
-| **Claude Code** | `.mcp.json` (project scope) + root `CLAUDE.md` wrapper; `claude mcp add -s local` when `claudeScope` is `local` |
+| **Claude Code** | `.mcp.json` (project scope) + root `CLAUDE.md` wrapper; `claude mcp add -s local` or `-s user` when `claudeScope` is `local` or `user` |
 | **Claude Desktop** | Global `claude_desktop_config.json`, local stdio MCP only, preserving other entries |
 | **Gemini** | `.gemini/settings.json` |
 | **Cursor** | `.cursor/mcp.json` + CLI enable |
@@ -98,6 +98,52 @@ exactly those and leaves everything else, including entries added by hand.
 `.mcp.json` is a second kind of sharing: two different tools read the same file.
 Claude Code (project scope) and Copilot CLI both do, so it is written once for both,
 and `agents sync` reports that per-tool `targets` cannot isolate servers inside it.
+
+## Claude MCP Scopes
+
+`integrations.options.claudeScope` accepts:
+
+| Value | Storage | Availability |
+| --- | --- | --- |
+| `project` | Repository `.mcp.json` | Everyone using that repository |
+| `local` | Project entry in `~/.claude.json`, through the Claude CLI | You, in that project |
+| `user` | User entry in `~/.claude.json`, through the Claude CLI | You, in every project |
+
+`global` is accepted as an alias for `user`. New home-directory installs, including
+`agents init -g` and `agents start -g`, default to `user`; normal repositories default
+to `project`. Existing explicit values are preserved, including `local` from a schema 3
+migration. `-g` selects `~/.agents`; it does not override an explicit scope.
+
+To move an existing home install from `local` or `project` to `user`, set this in
+`~/.agents/agents.json`:
+
+```json
+{
+  "integrations": {
+    "enabled": ["claude"],
+    "options": { "claudeScope": "user" }
+  }
+}
+```
+
+Then run:
+
+```bash
+agents sync -g
+# Later syncs should report no changes:
+agents sync -g --check
+```
+
+Claude CLI must be installed for local/user registrations. User entries use
+`agents__<hash of the source project path>__<server>` so separate configs do not overwrite
+each other. Sync removes recorded registrations in the previous scope before adding
+entries in the new CLI scope. When moving from project scope, it removes managed
+`.mcp.json` entries unless Copilot CLI still needs them. Failed CLI removals retain
+ownership for retry; `--check` reports drift without adding or removing registrations.
+Disabling Claude or running `agents reset -g` also removes its recorded CLI registrations.
+
+Claude gives local scope precedence over project and user scope. See
+[Anthropic's MCP scope documentation](https://code.claude.com/docs/en/mcp#mcp-installation-scopes).
 
 ## Claude Instructions
 
@@ -241,7 +287,7 @@ syncing every server is the opposite of what was asked for.
 
 ## Entries in Global Configs
 
-Claude Desktop, the global Windsurf config and the Goose config live in the home
+Claude Code user scope, Claude Desktop, the global Windsurf config and the Goose config live in the home
 directory and are shared by every project on the machine. Entries this CLI writes into
 them are named `agents__<hash of the project path>__<server>`, so two projects that both
 define a server called `fetch` keep their own entry and `agents reset` in one of them

@@ -25,6 +25,7 @@ import { listMcpEntries, loadMcpState } from '../core/mcpCrud.js'
 import { inspectAntigravitySkillsBridge, SKILL_BRIDGES } from '../core/skills.js'
 import { listCursorMcpStatuses, sanitizeTerminalOutput } from '../core/cursorCli.js'
 import * as ui from '../core/ui.js'
+import type { ClaudeScope } from '../types.js'
 
 export interface StatusOptions {
   projectRoot: string
@@ -144,7 +145,11 @@ export async function runStatus(options: StatusOptions): Promise<void> {
     if (enabled.has('codex')) probes.codex_trust = await probeCodexTrust(options.projectRoot)
     if (enabled.has('grok')) probes.grok_trust = await probeGrokTrust(options.projectRoot)
     if (enabled.has('claude')) {
-      probes.claude = probeClaude(options.projectRoot, resolved.serversByTarget.claude.map((server) => server.name))
+      probes.claude = probeClaude(
+        options.projectRoot,
+        resolved.serversByTarget.claude.map((server) => server.name),
+        config.integrations.options.claudeScope
+      )
     }
     if (enabled.has('claude_desktop')) {
       probes.claude_desktop = claudeDesktopConfigPath && claudeDesktopConfigLabel
@@ -357,13 +362,8 @@ function probeCodex(projectRoot: string, expectedServerNames: string[]): string 
   }
 }
 
-/**
- * Count the MCP servers Claude Code sees for this project.
- *
- * Project scope registers servers under their plain names, local scope under the
- * `agents__` prefix, so both spellings are counted.
- */
-function probeClaude(projectRoot: string, expectedServerNames: string[]): string {
+/** Count the MCP servers Claude Code sees for this project. */
+function probeClaude(projectRoot: string, expectedServerNames: string[], claudeScope: ClaudeScope): string {
   if (!commandExists('claude')) return 'claude CLI not found'
   const result = runCommand('claude', ['mcp', 'list'], projectRoot)
   if (!result.ok) return `failed (${compact(result.stderr)})`
@@ -371,15 +371,18 @@ function probeClaude(projectRoot: string, expectedServerNames: string[]): string
     .split('\n')
     .map((line) => line.trim())
 
-  // One line per expected server: a project-scope entry and its local-scope twin are
-  // the same server, not two.
   const linesByName = new Map<string, string>()
   for (const line of lines) {
     const name = line.match(/^([a-zA-Z0-9._:-]+):/)?.[1]
     if (name !== undefined && !linesByName.has(name)) linesByName.set(name, line)
   }
   const managedLines = expectedServerNames
-    .map((name) => linesByName.get(name) ?? linesByName.get(`agents__${name}`))
+    .map((name) => {
+      const unscopedLine = linesByName.get(name) ?? linesByName.get(`agents__${name}`)
+      const scopedLine = linesByName.get(toProjectScopedName(projectRoot, name))
+      if (claudeScope === 'user') return scopedLine ?? unscopedLine
+      return unscopedLine ?? scopedLine
+    })
     .filter((line): line is string => line !== undefined)
 
   const managed = managedLines.length
