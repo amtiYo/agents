@@ -114,8 +114,8 @@ and `agents sync` reports that per-tool `targets` cannot isolate servers inside 
 to `project`. Existing explicit values are preserved, including `local` from a schema 3
 migration. `-g` selects `~/.agents`; it does not override an explicit scope.
 
-To move an existing home install from `local` or `project` to `user`, set this in
-`~/.agents/agents.json`:
+`agents doctor` warns about a home install on `local` or `project` scope. To move it to
+`user`, set this in `~/.agents/agents.json`:
 
 ```json
 {
@@ -141,6 +141,12 @@ entries in the new CLI scope. When moving from project scope, it removes managed
 `.mcp.json` entries unless Copilot CLI still needs them. Failed CLI removals retain
 ownership for retry; `--check` reports drift without adding or removing registrations.
 Disabling Claude or running `agents reset -g` also removes its recorded CLI registrations.
+If the Claude CLI is missing or a removal fails, reset still cleans everything else,
+exits with status 1 and lists the registrations left behind.
+
+Sync reads the current registrations from `.claude.json` (in `CLAUDE_CONFIG_DIR` when it
+is set), because `claude mcp list` health-checks every server and can take seconds. It
+falls back to `claude mcp list` when the file is missing or has an unexpected shape.
 
 Claude gives local scope precedence over project and user scope. See
 [Anthropic's MCP scope documentation](https://code.claude.com/docs/en/mcp#mcp-installation-scopes).
