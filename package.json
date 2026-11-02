@@ -63,7 +63,7 @@
   "author": "amtiYo",
   "repository": {
     "type": "git",
-    "url": "https://github.com/amtiYo/agents.git"
+    "url": "git+https://github.com/amtiYo/agents.git"
   },
   "bugs": {
     "url": "https://github.com/amtiYo/agents/issues"
