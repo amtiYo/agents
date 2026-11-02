@@ -19,12 +19,13 @@ import {
   toManagedClaudeDesktopName
 } from '../core/claudeDesktop.js'
 import { getWindsurfGlobalMcpPath } from '../core/windsurf.js'
-import { commandExists, runCommand } from '../core/shell.js'
+import { commandExists, runCommandAsync } from '../core/shell.js'
 import { getCodexTrustState, getGrokTrustState } from '../core/trust.js'
 import { listMcpEntries, loadMcpState } from '../core/mcpCrud.js'
 import { inspectAntigravitySkillsBridge, SKILL_BRIDGES } from '../core/skills.js'
-import { listCursorMcpStatuses, sanitizeTerminalOutput } from '../core/cursorCli.js'
+import { parseCursorMcpStatuses, sanitizeTerminalOutput } from '../core/cursorCli.js'
 import * as ui from '../core/ui.js'
+import type { ClaudeScope } from '../types.js'
 
 export interface StatusOptions {
   projectRoot: string
@@ -140,12 +141,23 @@ export async function runStatus(options: StatusOptions): Promise<void> {
 
   const probes: Record<string, string> = {}
   if (!options.fast) {
-    if (enabled.has('codex')) probes.codex = probeCodex(options.projectRoot, expectedCodexServers)
+    // External CLIs take from under a second to several seconds each (`claude mcp list`
+    // health-checks every server), so they run side by side and are awaited in order.
+    const codexProbe = enabled.has('codex') ? probeCodex(options.projectRoot, expectedCodexServers) : undefined
+    const claudeProbe = enabled.has('claude')
+      ? probeClaude(
+        options.projectRoot,
+        resolved.serversByTarget.claude.map((server) => server.name),
+        config.integrations.options.claudeScope
+      )
+      : undefined
+    const geminiProbe = enabled.has('gemini') ? probeGemini(options.projectRoot) : undefined
+    const cursorProbe = enabled.has('cursor') ? probeCursor(options.projectRoot, expectedCursorServers) : undefined
+
+    if (codexProbe) probes.codex = await codexProbe
     if (enabled.has('codex')) probes.codex_trust = await probeCodexTrust(options.projectRoot)
     if (enabled.has('grok')) probes.grok_trust = await probeGrokTrust(options.projectRoot)
-    if (enabled.has('claude')) {
-      probes.claude = probeClaude(options.projectRoot, resolved.serversByTarget.claude.map((server) => server.name))
-    }
+    if (claudeProbe) probes.claude = await claudeProbe
     if (enabled.has('claude_desktop')) {
       probes.claude_desktop = claudeDesktopConfigPath && claudeDesktopConfigLabel
         ? await probeClaudeDesktop(
@@ -156,7 +168,7 @@ export async function runStatus(options: StatusOptions): Promise<void> {
         )
         : getClaudeDesktopConfigUnavailableDetail()
     }
-    if (enabled.has('gemini')) probes.gemini = probeGemini(options.projectRoot)
+    if (geminiProbe) probes.gemini = await geminiProbe
     if (enabled.has('copilot_vscode')) probes.copilot_vscode = await probeCopilot(paths.vscodeMcp)
     if (enabled.has('copilot_cli')) {
       probes.copilot_cli = await probeMcpServersFile(
@@ -166,7 +178,7 @@ export async function runStatus(options: StatusOptions): Promise<void> {
         expectedCopilotCliServers,
       )
     }
-    if (enabled.has('cursor')) probes.cursor = probeCursor(options.projectRoot, expectedCursorServers)
+    if (cursorProbe) probes.cursor = await cursorProbe
     if (enabled.has('antigravity') && antigravityMcpSyncEnabled) {
       probes.antigravity = await probeAntigravity(paths.antigravityWorkspaceMcp, '.agents/mcp_config.json', expectedAntigravityServers)
     } else if (enabled.has('antigravity')) {
@@ -340,9 +352,9 @@ export async function runStatus(options: StatusOptions): Promise<void> {
   })
 }
 
-function probeCodex(projectRoot: string, expectedServerNames: string[]): string {
+async function probeCodex(projectRoot: string, expectedServerNames: string[]): Promise<string> {
   if (!commandExists('codex')) return 'codex CLI not found'
-  const result = runCommand('codex', ['mcp', 'list', '--json'], projectRoot)
+  const result = await runCommandAsync('codex', ['mcp', 'list', '--json'], projectRoot)
   if (!result.ok) return `failed (${compact(result.stderr)})`
   try {
     const parsed = JSON.parse(result.stdout) as Array<Record<string, unknown>>
@@ -357,29 +369,27 @@ function probeCodex(projectRoot: string, expectedServerNames: string[]): string 
   }
 }
 
-/**
- * Count the MCP servers Claude Code sees for this project.
- *
- * Project scope registers servers under their plain names, local scope under the
- * `agents__` prefix, so both spellings are counted.
- */
-function probeClaude(projectRoot: string, expectedServerNames: string[]): string {
+/** Count the MCP servers Claude Code sees for this project. */
+async function probeClaude(projectRoot: string, expectedServerNames: string[], claudeScope: ClaudeScope): Promise<string> {
   if (!commandExists('claude')) return 'claude CLI not found'
-  const result = runCommand('claude', ['mcp', 'list'], projectRoot)
+  const result = await runCommandAsync('claude', ['mcp', 'list'], projectRoot)
   if (!result.ok) return `failed (${compact(result.stderr)})`
   const lines = sanitizeTerminalOutput(result.stdout)
     .split('\n')
     .map((line) => line.trim())
 
-  // One line per expected server: a project-scope entry and its local-scope twin are
-  // the same server, not two.
   const linesByName = new Map<string, string>()
   for (const line of lines) {
     const name = line.match(/^([a-zA-Z0-9._:-]+):/)?.[1]
     if (name !== undefined && !linesByName.has(name)) linesByName.set(name, line)
   }
   const managedLines = expectedServerNames
-    .map((name) => linesByName.get(name) ?? linesByName.get(`agents__${name}`))
+    .map((name) => {
+      const unscopedLine = linesByName.get(name) ?? linesByName.get(`agents__${name}`)
+      const scopedLine = linesByName.get(toProjectScopedName(projectRoot, name))
+      if (claudeScope === 'user') return scopedLine ?? unscopedLine
+      return unscopedLine ?? scopedLine
+    })
     .filter((line): line is string => line !== undefined)
 
   const managed = managedLines.length
@@ -400,9 +410,9 @@ function probeClaude(projectRoot: string, expectedServerNames: string[]): string
   return `${String(managed)}/${total} MCP server(s) detected`
 }
 
-function probeGemini(projectRoot: string): string {
+async function probeGemini(projectRoot: string): Promise<string> {
   if (!commandExists('gemini')) return 'gemini CLI not found'
-  const result = runCommand('gemini', ['mcp', 'list'], projectRoot)
+  const result = await runCommandAsync('gemini', ['mcp', 'list'], projectRoot)
   const output = sanitizeTerminalOutput(`${result.stdout}\n${result.stderr}`)
   if (!result.ok) return `failed (${compact(result.stderr)})`
   if (output.includes('Invalid configuration')) return 'invalid Gemini config detected'
@@ -464,17 +474,18 @@ async function probeMcpServersFile(
  * @param expectedServerNames - List of MCP server names expected to be present
  * @returns A comma-separated status summary such as `2 ready, 1 need approval, 1 disabled, missing in list: server-a` describing counts per status and any missing expected servers
  */
-function probeCursor(projectRoot: string, expectedServerNames: string[]): string {
+async function probeCursor(projectRoot: string, expectedServerNames: string[]): Promise<string> {
   if (!commandExists('cursor-agent')) return 'cursor-agent CLI not found'
-  const listed = listCursorMcpStatuses(projectRoot)
-  if (!listed.ok) return `failed (${compact(listed.stderr)})`
+  const result = await runCommandAsync('cursor-agent', ['mcp', 'list'], projectRoot)
+  if (!result.ok) return `failed (${compact(result.stderr)})`
+  const statuses = parseCursorMcpStatuses(`${result.stdout}\n${result.stderr}`)
 
-  const entries = Object.entries(listed.statuses)
+  const entries = Object.entries(statuses)
   const loaded = entries.filter(([, status]) => status === 'ready').length
   const notApproved = entries.filter(([, status]) => status === 'needs-approval').length
   const disabled = entries.filter(([, status]) => status === 'disabled').length
   const unknown = entries.filter(([, status]) => status === 'unknown').length
-  const missing = expectedServerNames.filter((name) => !Object.prototype.hasOwnProperty.call(listed.statuses, name))
+  const missing = expectedServerNames.filter((name) => !Object.prototype.hasOwnProperty.call(statuses, name))
 
   const parts = [`${loaded} ready`]
   if (notApproved > 0) parts.push(`${notApproved} need approval`)

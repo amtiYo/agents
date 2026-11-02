@@ -1,4 +1,4 @@
-import { spawnSync } from 'node:child_process'
+import { execFile, spawnSync } from 'node:child_process'
 
 export interface ShellResult {
   ok: boolean
@@ -29,6 +29,37 @@ export function runCommand(cmd: string, args: string[], cwd: string, timeoutMs =
     stderr,
     timedOut
   }
+}
+
+/** Like `runCommand`, without blocking, so independent CLI probes can run side by side. */
+export function runCommandAsync(
+  cmd: string,
+  args: string[],
+  cwd: string,
+  timeoutMs = DEFAULT_RUN_COMMAND_TIMEOUT_MS,
+): Promise<ShellResult> {
+  const effectiveTimeout = timeoutMs > 0 ? timeoutMs : undefined
+  return new Promise((resolve) => {
+    execFile(cmd, args, {
+      cwd,
+      encoding: 'utf8',
+      ...(effectiveTimeout !== undefined ? { timeout: effectiveTimeout } : {})
+    }, (error, stdout, stderr) => {
+      const timedOut = Boolean(error?.killed) && effectiveTimeout !== undefined
+      // A numeric code is the exit status; a string code such as ENOENT means it never ran.
+      const exitCode = typeof error?.code === 'number' ? error.code : null
+      let fallback = ''
+      if (timedOut) fallback = 'command timed out'
+      else if (error && exitCode === null) fallback = error.message
+      resolve({
+        ok: !error,
+        code: error ? (exitCode ?? 1) : 0,
+        stdout: stdout ?? '',
+        stderr: stderr || fallback,
+        timedOut
+      })
+    })
+  })
 }
 
 export function commandExists(command: string): boolean {

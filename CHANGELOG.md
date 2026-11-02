@@ -9,6 +9,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - No changes yet.
 
+## [0.9.3] - 2026-11-02
+
+### Added
+
+- Claude Code MCP user scope (`claudeScope: "user"`, with `"global"` as an alias), defaulting new home-directory installs to user scope while normal repositories keep project scope. User entries carry a per-project prefix; scope changes, disabling Claude and reset clean up recorded CLI registrations without removing another project's servers.
+
+- `agents doctor` warns when `.agents` lives in the home directory but Claude Code is on `project` or `local` scope, where its servers are visible only to a Claude session started in `~`. Existing installs keep their explicit scope, so this is how they learn about `user`.
+
+### Fixed
+
+- Claude local and user sync read current registrations from Claude's `.claude.json` instead of `claude mcp list`, which health-checks every configured server. With a dozen servers that took about 4 seconds, and one unreachable server pushed it past the 5-second limit, so every sync failed with "Failed checking Claude MCP status". `sync --check` in that setup now takes under 200 ms. Writes still go through `claude mcp add/remove`, and the CLI is used for reading when the file is missing, unreadable or shaped differently, and on Windows.
+- `agents reset` finishes when the Claude CLI is missing or a removal fails, instead of exiting before any cleanup. It exits with status 1, names the Claude registrations still left with the command to remove them, and safe reset keeps their ownership so a later reset can retry.
+- Claude user-scope status prefers the project's scoped registration when legacy server names are also visible.
+
+### Changed
+
+- `agents status` runs the Codex, Claude, Gemini and Cursor CLI probes concurrently, so it waits for the slowest one instead of their sum.
+- The `agents` launcher loads the CLI in its own process instead of starting a second Node process, saving about 50 ms per command.
+- Tests use a temporary Claude config directory. Suites that reached the real Claude CLI used to register servers for temporary projects in the developer's `~/.claude.json`.
+- Vitest updated to 4.1.12, closing GHSA-qxg6-89mg-rqv8 and GHSA-xp26-3454-mjgp in `@vitest/mocker` reported by Dependabot.
+
 ## [0.9.2] - 2026-10-12
 
 ### Fixed

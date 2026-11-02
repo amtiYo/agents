@@ -12,7 +12,7 @@ import { syncProjectDocsSections } from '../core/projectDocs.js'
 import type { AgentsConfig, IntegrationName, SyncMode } from '../types.js'
 import { INTEGRATIONS } from '../integrations/registry.js'
 import { SKILL_BRIDGES } from '../core/skills.js'
-import { getProjectPaths, toHomeRelativePath } from '../core/paths.js'
+import { getProjectPaths, isHomeDirectory, toHomeRelativePath } from '../core/paths.js'
 import { runReset } from './reset.js'
 import { ensureCodexProjectTrusted, ensureGrokProjectTrusted, getCodexTrustState, getGrokTrustState }
   from '../core/trust.js'
@@ -44,6 +44,10 @@ export async function runStart(options: StartOptions): Promise<void> {
     throw new Error(`Project path does not exist: ${projectRoot}`)
   }
 
+  const defaultIntegrationOptions: AgentsConfig['integrations']['options'] = {
+    ...DEFAULT_INTEGRATION_OPTIONS,
+    claudeScope: isHomeDirectory(projectRoot) ? 'user' : 'project'
+  }
   const interactive = !options.nonInteractive && !options.yes
   const paths = getProjectPaths(projectRoot)
   const reinit = options.reinit === true
@@ -95,32 +99,28 @@ export async function runStart(options: StartOptions): Promise<void> {
   }
 
   const defaults = getDefaults()
-  const selectedIntegrations = preserveExistingConfig
-    ? [...(existingConfig?.integrations.enabled ?? [])]
-    : interactive
-      ? await selectIntegrations(defaults.integrationDefaults)
-      : defaults.integrationDefaults
+  let selectedIntegrations = defaults.integrationDefaults
+  let syncMode = defaults.syncMode
+  let hideGeneratedInVscode = defaults.hideGeneratedInVscode
+  let integrationOptions = defaultIntegrationOptions
 
-  const syncMode = preserveExistingConfig
-    ? (existingConfig?.syncMode ?? defaults.syncMode)
-    : interactive
-      ? await selectSyncMode(defaults.syncMode)
-      : defaults.syncMode
-
-  const hideGeneratedInVscode = preserveExistingConfig
-    ? (existingConfig?.workspace.vscode.hideGenerated ?? defaults.hideGeneratedInVscode)
-    : interactive
-      ? await selectVscodeHideDefaults(defaults.hideGeneratedInVscode)
-      : defaults.hideGeneratedInVscode
+  if (preserveExistingConfig) {
+    selectedIntegrations = [...(existingConfig?.integrations.enabled ?? [])]
+    syncMode = existingConfig?.syncMode ?? defaults.syncMode
+    hideGeneratedInVscode = existingConfig?.workspace.vscode.hideGenerated ?? defaults.hideGeneratedInVscode
+    integrationOptions = existingConfig?.integrations.options ?? defaultIntegrationOptions
+  } else if (interactive) {
+    selectedIntegrations = await selectIntegrations(defaults.integrationDefaults)
+    syncMode = await selectSyncMode(defaults.syncMode)
+    hideGeneratedInVscode = await selectVscodeHideDefaults(defaults.hideGeneratedInVscode)
+  }
 
   const access = await resolveIntegrationAccess({
     projectRoot,
     selectedIntegrations,
     interactive,
     autoApprove: options.yes || options.nonInteractive,
-    integrationOptions: preserveExistingConfig
-      ? (existingConfig?.integrations.options ?? DEFAULT_INTEGRATION_OPTIONS)
-      : DEFAULT_INTEGRATION_OPTIONS,
+    integrationOptions,
     allowOptionPrompts: !preserveExistingConfig
   })
 
@@ -176,7 +176,9 @@ export async function runStart(options: StartOptions): Promise<void> {
     : { changed: [], skipped: [] }
 
   spin?.stop('Setup complete.')
-  const configMode = preserveExistingConfig ? 'preserved existing config' : forceInitialize ? 'reinitialized' : 'initialized'
+  let configMode = 'initialized'
+  if (preserveExistingConfig) configMode = 'preserved existing config'
+  else if (forceInitialize) configMode = 'reinitialized'
 
   const summaryLines = [
     `Project: ${projectRoot}`,

@@ -3,6 +3,7 @@ import { listMcpEntries, loadMcpState, type McpServerEntry } from '../core/mcpCr
 import { resolveFromConfigAndLocal, resolveServer } from '../core/mcp.js'
 import { commandExists, runCommand } from '../core/shell.js'
 import { listCursorMcpStatuses, sanitizeTerminalOutput, type CursorServerState } from '../core/cursorCli.js'
+import { toProjectScopedName } from '../core/globalScope.js'
 import { toManagedClaudeName } from '../integrations/claude.js'
 import * as ui from '../core/ui.js'
 import type { IntegrationName, McpServerDefinition } from '../types.js'
@@ -266,7 +267,7 @@ function runRuntimeChecks(entries: McpServerEntry[], projectRoot: string, timeou
       }
 
       if (integration === 'claude') {
-        runtimeByIntegration.claude = checkClaudeServer(entry.name, claudeProbe)
+        runtimeByIntegration.claude = checkClaudeServer(entry.name, claudeProbe, projectRoot)
         if (claudeProbe.available && runtimeByIntegration.claude.status === 'error') errors += 1
         continue
       }
@@ -293,16 +294,15 @@ function runRuntimeChecks(entries: McpServerEntry[], projectRoot: string, timeou
   }
 }
 
-/** Map one server to what `claude mcp list` says about it, in either scope. */
-function checkClaudeServer(name: string, probe: RuntimeProbe<Record<string, ClaudeRuntimeStatus>>): RuntimeIntegrationResult {
+/** Map one server to what `claude mcp list` says about it across MCP scopes. */
+function checkClaudeServer(name: string, probe: RuntimeProbe<Record<string, ClaudeRuntimeStatus>>, projectRoot: string): RuntimeIntegrationResult {
   if (!probe.available || !probe.data) {
     return {
       status: 'unavailable',
       message: probe.detail
     }
   }
-  // Project scope registers the plain name; local scope keeps the agents__ prefix.
-  const status = probe.data[name] ?? probe.data[toManagedClaudeName(name)]
+  const status = probe.data[name] ?? probe.data[toManagedClaudeName(name)] ?? probe.data[toProjectScopedName(projectRoot, name)]
   if (status === 'ok') {
     return {
       status: 'ok',
@@ -335,7 +335,7 @@ function checkClaudeServer(name: string, probe: RuntimeProbe<Record<string, Clau
   }
   return {
     status: 'error',
-    message: `Missing from claude mcp list as ${name} or ${toManagedClaudeName(name)}`
+    message: `Missing from claude mcp list as ${name}, ${toManagedClaudeName(name)} or ${toProjectScopedName(projectRoot, name)}`
   }
 }
 

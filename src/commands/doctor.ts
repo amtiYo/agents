@@ -432,6 +432,15 @@ export async function runDoctor(options: DoctorOptions): Promise<void> {
     })
   }
 
+  const claudeScope = config.integrations.options.claudeScope
+  if (paths.isHome && enabled.has('claude') && claudeScope !== 'user') {
+    issues.push({
+      level: 'warning',
+      message: `Claude Code uses ${claudeScope} scope in the home directory, so its MCP servers are visible only when Claude starts in ~. `
+        + 'Set integrations.options.claudeScope to "user" and run agents sync to make them available in every project.'
+    })
+  }
+
   if (enabled.has('antigravity') && (await pathExists(paths.antigravityProjectMcp))) {
     issues.push({
       level: 'warning',

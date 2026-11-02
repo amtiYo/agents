@@ -1,5 +1,4 @@
 import path from 'node:path'
-import { createHash } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import { ensureDir, pathExists, readJson, readTextOrEmpty, writeJsonAtomic } from './fs.js'
 import { loadAgentsConfigDetailed, persistMigratedConfig, saveAgentsConfig } from './config.js'
@@ -7,7 +6,6 @@ import { loadResolvedRegistry } from './mcp.js'
 import { writeManagedFile } from './managedFiles.js'
 import { getProjectPaths } from './paths.js'
 import { commandExists, runCommand } from './shell.js'
-import { toManagedClaudeName } from '../integrations/claude.js'
 import { INTEGRATION_SYNC_HOOKS } from '../integrations/syncHooks.js'
 import { ensureProjectGitignore } from './gitignore.js'
 import { syncSkills } from './skills.js'
@@ -25,7 +23,7 @@ import {
 import { computeSharedSourceFingerprint } from './sourceFingerprint.js'
 import { syncVscodeSettings } from './vscodeSettings.js'
 import { listCursorMcpStatuses } from './cursorCli.js'
-import { listClaudeManagedServerNames } from './claudeCli.js'
+import { syncClaude } from './claudeSync.js'
 import { renderClaudeDesktopMcp } from './renderers.js'
 import {
   validateConfigValue,
@@ -39,11 +37,6 @@ import { planProjectMcp, syncProjectMcpFile } from './projectMcp.js'
 import { collectUnsupportedFieldWarnings } from './fieldSupport.js'
 import * as ui from './ui.js'
 import type { AgentsConfig, IntegrationName, ResolvedMcpServer, SyncOptions, SyncResult } from '../types.js'
-
-interface ClaudeState {
-  managedNames: string[]
-  definitionHashes?: Record<string, string>
-}
 
 interface CursorState {
   managedNames: string[]
@@ -227,10 +220,9 @@ export async function performSync(options: SyncOptions): Promise<SyncResult> {
     }))
 
     await attempt('Claude', () => syncClaude({
-      // Project scope is a file, so the CLI path only runs when the user opted into local scope.
-      // When switching from local to project, this still runs once with `enabled: false` to
-      // remove the servers previously registered in ~/.claude.json.
-      enabled: enabled.has('claude') && claudeScope === 'local',
+      // Project scope uses a file; the CLI also cleans up previous local/user registrations.
+      enabled: enabled.has('claude') && claudeScope !== 'project',
+      scope: claudeScope === 'user' ? 'user' : 'local',
       check,
       projectRoot,
       servers: resolved.serversByTarget.claude,
@@ -471,102 +463,6 @@ async function writeClaudeDesktopState(statePath: string, managedNames: string[]
   })
 }
 
-async function syncClaude(args: {
-  enabled: boolean
-  check: boolean
-  projectRoot: string
-  servers: ResolvedMcpServer[]
-  statePath: string
-  changed: string[]
-  warnings: string[]
-}): Promise<void> {
-  const { enabled, check, projectRoot, servers, statePath, changed, warnings } = args
-  const command = 'claude'
-
-  const state: ClaudeState = (await pathExists(statePath))
-    ? await readJson<ClaudeState>(statePath)
-    : { managedNames: [] }
-
-  // Validate all server names before using them in commands
-  for (const server of servers) {
-    validateServerName(server.name)
-  }
-
-  const desiredNames = enabled ? servers.map((server) => toManagedClaudeName(server.name)) : []
-  const definitionHashes = Object.fromEntries(servers.map(server => [
-    toManagedClaudeName(server.name), createHash('sha256').update(JSON.stringify(server)).digest('hex')
-  ]))
-  let currentNames = state.managedNames ?? []
-  const hasClaudeCli = commandExists(command)
-
-  if (!hasClaudeCli) {
-    if (enabled) {
-      warnings.push('Claude CLI not found; skipped Claude MCP sync.')
-    }
-    return
-  }
-
-  if (enabled) {
-    const listed = listClaudeManagedServerNames(projectRoot, 'agents__', 5000)
-    if (listed.ok) {
-      currentNames = listed.names
-    } else {
-      throw new Error(`Failed checking Claude MCP status: ${compactError(listed.stderr)}`)
-    }
-  }
-
-  const namesToUpdate = desiredNames.filter(name => currentNames.includes(name)
-    && state.definitionHashes?.[name] !== definitionHashes[name])
-  if (equalSets(new Set(currentNames), new Set(desiredNames)) && namesToUpdate.length === 0) {
-    return
-  }
-  changed.push('claude-local-scope')
-
-  if (check) return
-
-  // Remove servers that exist in current but not in desired (proper set difference)
-  const namesToRemove = currentNames.filter((name) => !desiredNames.includes(name) || namesToUpdate.includes(name))
-  const errors: string[] = []
-  const failedRemovals = new Set<string>()
-  for (const name of namesToRemove) {
-    const removed = runCommand(command, ['mcp', 'remove', '-s', 'local', name], projectRoot)
-    if (
-      !removed.ok &&
-      !removed.stderr.includes('not found') &&
-      !removed.stderr.includes('No project-local MCP server found')
-    ) {
-      errors.push(`Failed removing Claude MCP server ${name}: ${compactError(removed.stderr)}`)
-      failedRemovals.add(name)
-    }
-  }
-
-  const appliedNames: string[] = []
-  for (const server of enabled ? servers : []) {
-    const name = toManagedClaudeName(server.name)
-    if (failedRemovals.has(name)) continue
-    if (currentNames.includes(name) && !namesToUpdate.includes(name)) {
-      appliedNames.push(name)
-      continue
-    }
-    const result = addClaudeServer(command, projectRoot, name, server)
-    if (!result.ok) {
-      errors.push(`Failed adding Claude MCP server ${name}: ${compactError(result.stderr)}`)
-      continue
-    }
-    appliedNames.push(name)
-  }
-
-  await ensureDir(path.dirname(statePath))
-  await writeJsonAtomic(statePath, {
-    managedNames: [...new Set([...appliedNames, ...failedRemovals])],
-    definitionHashes: {
-      ...Object.fromEntries([...failedRemovals].map(name => [name, state.definitionHashes?.[name]])),
-      ...Object.fromEntries(appliedNames.map(name => [name, definitionHashes[name]]))
-    }
-  })
-  if (errors.length > 0) throw new Error(errors.join('\n'))
-}
-
 async function syncCursor(args: {
   enabled: boolean
   autoApprove: boolean
@@ -682,48 +578,6 @@ async function syncCursor(args: {
   await writeJsonAtomic(statePath, { managedNames: approved })
 }
 
-function addClaudeServer(
-  command: string,
-  projectRoot: string,
-  name: string,
-  server: ResolvedMcpServer,
-): { ok: boolean; stderr: string } {
-  if (server.transport === 'stdio') {
-    if (!server.command) {
-      return { ok: false, stderr: 'missing command' }
-    }
-
-    const args: string[] = ['mcp', 'add', '-s', 'local', name]
-    // Validate environment variables before using them
-    for (const [key, value] of Object.entries(server.env ?? {})) {
-      validateEnvValueForShell(key, value, 'environment variable')
-      args.push('-e', `${key}=${value}`)
-    }
-    args.push('--', server.command, ...(server.args ?? []))
-    const result = runCommand(command, args, projectRoot)
-    if (!result.ok && isClaudeAlreadyExistsError(result.stderr)) {
-      return { ok: true, stderr: result.stderr }
-    }
-    return { ok: result.ok, stderr: result.stderr }
-  }
-
-  if (!server.url) {
-    return { ok: false, stderr: 'missing url' }
-  }
-
-  const args: string[] = ['mcp', 'add', '-s', 'local', '-t', server.transport, name, server.url]
-  // Validate headers before using them
-  for (const [key, value] of Object.entries(server.headers ?? {})) {
-    validateEnvValueForShell(key, value, 'header')
-    args.push('-H', `${key}: ${value}`)
-  }
-  const result = runCommand(command, args, projectRoot)
-  if (!result.ok && isClaudeAlreadyExistsError(result.stderr)) {
-    return { ok: true, stderr: result.stderr }
-  }
-  return { ok: result.ok, stderr: result.stderr }
-}
-
 function equalSets(a: Set<string>, b: Set<string>): boolean {
   if (a.size !== b.size) return false
   for (const value of a) {
@@ -734,10 +588,6 @@ function equalSets(a: Set<string>, b: Set<string>): boolean {
 
 function compactError(stderr: string): string {
   return stderr.trim().split('\n').at(-1) ?? 'unknown error'
-}
-
-function isClaudeAlreadyExistsError(stderr: string): boolean {
-  return stderr.toLowerCase().includes('already exists in local config')
 }
 
 function isCursorAlreadyEnabledError(stderr: string): boolean {

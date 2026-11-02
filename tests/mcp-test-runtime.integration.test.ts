@@ -4,6 +4,7 @@ import { chmod, mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
 import { afterEach, describe, expect, it } from 'vitest'
 import { runInit } from '../src/commands/init.js'
 import { runMcpAdd } from '../src/commands/mcp-add.js'
+import { toProjectScopedName } from '../src/core/globalScope.js'
 import { runMcpTest } from '../src/commands/mcp-test.js'
 import { loadAgentsConfig, saveAgentsConfig } from '../src/core/config.js'
 
@@ -32,12 +33,15 @@ afterEach(async () => {
 })
 
 describe.sequential('mcp test runtime mode', () => {
-  it('reports runtime health and stays successful when all probes are healthy', async () => {
+  it.each(['project', 'local', 'user'] as const)('reports runtime health for Claude %s scope when all probes are healthy', async scope => {
     const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'agents-mcp-runtime-'))
     const binDir = await mkdtemp(path.join(os.tmpdir(), 'agents-mcp-runtime-bin-'))
     tempDirs.push(projectRoot, binDir)
 
     await setupRuntimeProject(projectRoot)
+    const config = await loadAgentsConfig(projectRoot)
+    config.integrations.options.claudeScope = scope
+    await saveAgentsConfig(projectRoot, config)
     await runMcpAdd({
       projectRoot,
       name: 'docs',
@@ -56,9 +60,13 @@ describe.sequential('mcp test runtime mode', () => {
       nonInteractive: true
     })
 
+    let claudeServerName = 'docs'
+    if (scope === 'local') claudeServerName = 'agents__docs'
+    else if (scope === 'user') claudeServerName = toProjectScopedName(projectRoot, 'docs')
+
     await writeExecutable(path.join(binDir, 'claude'), [
       '#!/bin/sh',
-      'echo "agents__docs: https://example.com/mcp (HTTP) - ✓ Connected"',
+      `echo "${claudeServerName}: https://example.com/mcp (HTTP) - ✓ Connected"`,
       'exit 0'
     ])
     await writeExecutable(path.join(binDir, 'gemini'), [
