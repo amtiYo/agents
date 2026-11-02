@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- No changes yet.
+
+## [0.9.3] - 2026-11-02
+
 ### Added
 
 - Claude Code MCP user scope (`claudeScope: "user"`, with `"global"` as an alias), defaulting new home-directory installs to user scope while normal repositories keep project scope. User entries carry a per-project prefix; scope changes, disabling Claude and reset clean up recorded CLI registrations without removing another project's servers.
