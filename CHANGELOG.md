@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- No changes yet.
+
+## [0.9.4] - 2026-11-10
+
 ### Added
 
 - OpenCode 2 support ([#39](https://github.com/amtiYo/agents/issues/39)). Sync writes
