@@ -5,8 +5,26 @@ import { toChangedEntry, writeManagedFile } from '../core/managedFiles.js'
 import { mergeCodexConfig, removeCodexManagedBlock } from '../core/codexConfig.js'
 import { getLegacyAntigravityGlobalMcpPath, normalizeAntigravityMcpPayload, readAntigravityMcp } from '../core/antigravity.js'
 import { getWindsurfGlobalMcpPath, normalizeWindsurfMcpPayload, readWindsurfMcp } from '../core/windsurf.js'
-import { normalizeOpencodeConfig } from '../core/opencode.js'
-import { renderVscodeMcp } from '../core/renderers.js'
+import {
+  adoptOpencodeEntries,
+  hasOpencodeServersMap,
+  isReservedOpencodeName,
+  locateOpencodeEntries,
+  normalizeOpencodeConfig,
+  ownedOpencodeEntries,
+  readOpencodeOwnership,
+  removeOpencodeEntries,
+  writeOpencodeOwnership,
+  type OpencodeEntryNames,
+  type OpencodeLayout,
+  type OpencodeOwnership
+} from '../core/opencode.js'
+import {
+  needsOpencodeServersLayout,
+  renderVscodeMcp,
+  toLegacyOpencodeServer,
+  type OpencodeServerEntry
+} from '../core/renderers.js'
 import { findLegacyManagedNames, formatForeignLegacyWarnings, scopeManagedEntries } from '../core/globalScope.js'
 import { acquireSyncLock } from '../core/syncLock.js'
 import { buildAntigravityPayload } from './antigravity.js'
@@ -271,16 +289,11 @@ export const INTEGRATION_SYNC_HOOKS: IntegrationSyncHook[] = [
         const legacyPath = path.join(context.projectRoot, 'opencode.json')
         if (await pathExists(legacyPath)) sourcePath = legacyPath
       }
-      await mergeJsonKey({
+      await syncOpencodeConfig({
         context,
         targetPath,
         sourcePath,
-        rawGenerated: context.generatedByIntegration.opencode ?? '',
-        previousGenerated: context.previousGeneratedByIntegration?.opencode,
-        key: 'mcp',
-        label: 'OpenCode',
-        statePath: context.paths.generatedOpencodeState,
-        transform: normalizeOpencodeConfig
+        statePath: context.paths.generatedOpencodeState
       })
       if (sourcePath !== targetPath) {
         context.warnings.push('Migrated existing OpenCode settings from legacy ~/opencode.json to ~/.config/opencode/opencode.json.')
@@ -925,6 +938,125 @@ async function mergeManagedKey(args: {
   if (!context.check) {
     await writeManagedGlobalNames(statePath, Object.keys(managed))
   }
+}
+
+/**
+ * Merge managed servers into opencode.json in the shape that file already uses.
+ *
+ * OpenCode 1.x reads only `mcp.<name>`; OpenCode 2.x reads `mcp.servers` and still
+ * accepts the legacy shape. The V2 shape is written when the file already has
+ * `mcp.servers` or a server sets an option only V2 can express. Previously managed
+ * entries move with the shape, and entries the user wrote stay where they are.
+ */
+async function syncOpencodeConfig(args: {
+  context: HookContext
+  targetPath: string
+  sourcePath: string
+  statePath: string
+}): Promise<void> {
+  const { context, targetPath, sourcePath, statePath } = args
+  const previousPreview = context.previousGeneratedByIntegration?.opencode
+
+  let ownership: OpencodeOwnership | null
+  try {
+    ownership = await readOpencodeOwnership(statePath)
+  } catch {
+    // Same as the other tools: an unreadable record proves no ownership.
+    ownership = { layout: 'legacy', managedNames: [] }
+  }
+  const hasRecordedNames = (ownership?.managedNames.length ?? 0) > 0
+  if (!context.enabled && !hasRecordedNames && (ownership || !previousPreview?.trim())) return
+
+  const existingText = await readTextOrEmpty(sourcePath)
+  let existing: Record<string, unknown> = {}
+  if (existingText.trim()) {
+    try {
+      const parsed = JSON.parse(existingText) as unknown
+      if (!isRecord(parsed)) throw new Error('not a JSON object')
+      existing = parsed
+    } catch (error) {
+      if (!context.enabled && !hasRecordedNames) return
+      const message = error instanceof Error ? error.message : String(error)
+      throw new Error(`Failed to read existing OpenCode config at ${sourcePath}; skipped OpenCode sync. ${message}`)
+    }
+  }
+  const mcp = recordFrom(existing.mcp)
+
+  let owned: OpencodeEntryNames = { legacy: [], servers: [] }
+  if (ownership) {
+    owned = ownedOpencodeEntries(ownership)
+  } else if (previousPreview?.trim()) {
+    try {
+      owned = adoptOpencodeEntries(mcp, parseJsonObject(previousPreview, 'previous OpenCode preview'))
+    } catch {
+      // An unreadable preview is not evidence of ownership.
+    }
+  }
+  if (!context.enabled && owned.legacy.length === 0 && owned.servers.length === 0) return
+
+  const generated: Record<string, OpencodeServerEntry> = {}
+  const rawGenerated = context.generatedByIntegration.opencode ?? ''
+  if (context.enabled && rawGenerated.trim()) {
+    const preview = parseJsonObject(rawGenerated, 'generated OpenCode config')
+    for (const [name, entry] of Object.entries(recordFrom(recordFrom(preview.mcp).servers))) {
+      generated[name] = recordFrom(entry)
+    }
+  }
+
+  const layout: OpencodeLayout = hasOpencodeServersMap(mcp) || Object.values(generated).some(needsOpencodeServersLayout)
+    ? 'servers'
+    : 'legacy'
+  const entries = layout === 'servers' ? generated : toLegacyOpencodeEntries(generated, context.warnings)
+
+  // A user entry with the same name in the other map is taken over as well:
+  // left in place, it would give OpenCode 2 two definitions of one server.
+  const withoutOwned = removeOpencodeEntries(mcp, owned)
+  const otherLayout: OpencodeLayout = layout === 'servers' ? 'legacy' : 'servers'
+  const inOtherMap = locateOpencodeEntries(withoutOwned, Object.keys(entries))[otherLayout]
+  const cleaned = removeOpencodeEntries(withoutOwned, { legacy: [], servers: [], [otherLayout]: inOtherMap })
+  const takenOver = [...inOtherMap]
+
+  let merged: Record<string, unknown>
+  if (layout === 'servers') {
+    const hadMap = hasOpencodeServersMap(cleaned)
+    const servers = mergeManagedServers(hadMap ? recordFrom(cleaned.servers) : {}, [], entries, takenOver)
+    merged = hadMap || Object.keys(servers).length > 0 ? { ...cleaned, servers } : cleaned
+  } else {
+    merged = mergeManagedServers(cleaned, [], entries, takenOver)
+  }
+  context.warnings.push(...formatTakenOverWarnings('OpenCode', [...new Set(takenOver)]))
+
+  const content = `${JSON.stringify(normalizeOpencodeConfig({ ...existing, mcp: merged }), null, 2)}\n`
+  await writeManagedFile({
+    absolutePath: targetPath,
+    content,
+    projectRoot: context.projectRoot,
+    check: context.check,
+    changed: context.changed
+  })
+  if (!context.check) {
+    await writeOpencodeOwnership(statePath, { layout, managedNames: Object.keys(entries) })
+  }
+}
+
+/** Convert preview entries to the legacy shape, warning about settings it cannot hold. */
+function toLegacyOpencodeEntries(
+  entries: Record<string, OpencodeServerEntry>,
+  warnings: string[],
+): Record<string, OpencodeServerEntry> {
+  const out: Record<string, OpencodeServerEntry> = {}
+  for (const [name, entry] of Object.entries(entries)) {
+    if (isReservedOpencodeName(name)) {
+      warnings.push(`OpenCode server "${name}" was skipped: OpenCode 2 reads mcp.${name} as a setting. Rename the server.`)
+      continue
+    }
+    const legacy = toLegacyOpencodeServer(entry)
+    if (legacy.dropped.length > 0) {
+      warnings.push(`OpenCode server "${name}": the legacy mcp.<name> shape has no ${legacy.dropped.join(', ')}; omitted. Add "servers": {} under "mcp" in opencode.json to use the OpenCode 2 shape.`)
+    }
+    out[name] = legacy.entry
+  }
+  return out
 }
 
 /** Merge managed entries into one key of a plain JSON settings file. */

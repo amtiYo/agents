@@ -72,7 +72,7 @@ Eighteen tools. "Verified" means the tool's own CLI was run against the file thi
 | Copilot CLI | `copilot_cli` | `.mcp.json`, or `.github/mcp.json` | native | ✅ |
 | Antigravity | `antigravity` | `.agents/mcp_config.json` | flat copy | ✅ |
 | Devin Desktop (Windsurf) | `windsurf`, `devin_desktop` | global `~/.codeium/windsurf/mcp_config.json` | bridge | ✅ |
-| OpenCode | `opencode` | `opencode.json` (`mcp`) | native | ✅ |
+| OpenCode | `opencode` | `opencode.json` (`mcp`, or `mcp.servers` for OpenCode 2) | native | ✅ |
 | Junie | `junie` | `.junie/mcp/mcp.json` | bridge | ✅ |
 | Grok Build | `grok` | `.grok/config.toml` (managed block, folder trust handled) | native | ✅ |
 | Amp | `amp` | `.amp/settings.json` (`amp.mcpServers`) | native | ✅ |
@@ -338,7 +338,7 @@ Yes. Secret splitting, drift checks, plugin export and the context budget are us
 <details>
 <summary><b>What happens during <code>agents sync</code>?</b></summary>
 <br/>
-It reads <code>.agents/</code>, merges <code>local.json</code>, resolves placeholders, applies the active profile, renders each tool's format and writes files atomically. Files shared with a tool's own settings (Amp, Zed, Kilo, Gemini, OpenCode, Goose) are merged, so settings the CLI does not own survive. Runs are idempotent.
+It reads <code>.agents/</code>, merges <code>local.json</code>, resolves placeholders, applies the active profile, renders each tool's format and writes files atomically. Files shared with a tool's own settings (Amp, Zed, Kilo, Gemini, OpenCode, Goose) are merged, so settings the CLI does not own survive. Runs are idempotent. OpenCode gets the <code>mcp.&lt;name&gt;</code> shape that every OpenCode version reads, or the OpenCode 2 <code>mcp.servers</code> shape once the file already has <code>mcp.servers</code> or a server uses an option only OpenCode 2 has; see <a href="docs/EXAMPLES.md#opencode-mcp-options">OpenCode options</a>.
 </details>
 
 <details>

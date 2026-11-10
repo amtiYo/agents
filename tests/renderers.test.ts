@@ -8,7 +8,9 @@ import {
   renderCursorMcp,
   renderGeminiServers,
   renderJunieMcp,
-  renderOpencodeMcp,
+  needsOpencodeServersLayout,
+  renderOpencodeServers,
+  toLegacyOpencodeServer,
   renderVscodeMcp,
   renderWindsurfMcp
 } from '../src/core/renderers.js'
@@ -294,24 +296,108 @@ describe('renderers', () => {
     })
   })
 
-  it('renders opencode mcp payload', () => {
-    const rendered = renderOpencodeMcp(servers)
-    expect(rendered.mcp).toMatchObject({
+  it('renders opencode servers in the V2 shape', () => {
+    const rendered = renderOpencodeServers(servers)
+    expect(rendered.servers).toMatchObject({
       filesystem: {
         type: 'local',
-        enabled: true,
         command: ['npx', '-y', '@modelcontextprotocol/server-filesystem', '/tmp/project']
       },
-      'http-tools': {
-        type: 'remote',
-        enabled: true,
-        url: 'https://example.com/mcp'
-      },
-      'sse-tools': {
-        type: 'remote',
-        enabled: true,
-        url: 'https://example.com/sse'
+      'http-tools': { type: 'remote', url: 'https://example.com/mcp' },
+      'sse-tools': { type: 'remote', url: 'https://example.com/sse' }
+    })
+    expect(rendered.servers.filesystem).not.toHaveProperty('enabled')
+  })
+
+  it('maps shared timeout the way OpenCode reads a legacy timeout, and OAuth to OpenCode fields', () => {
+    const rendered = renderOpencodeServers([
+      { name: 'local', transport: 'stdio', command: 'node', args: ['server.js'], cwd: '/tmp', env: { KEY: 'value' }, timeout: 4000 },
+      {
+        name: 'remote',
+        transport: 'http',
+        url: 'https://example.com/mcp',
+        oauth: { clientId: 'client', clientSecret: 'secret', scopes: 'tools', authServerMetadataUrl: 'https://auth.example.com' }
       }
+    ])
+    expect(rendered.servers).toEqual({
+      local: { type: 'local', command: ['node', 'server.js'], cwd: '/tmp', environment: { KEY: 'value' }, timeout: { startup: 4000, catalog: 4000, execution: 4000 } },
+      remote: {
+        type: 'remote',
+        url: 'https://example.com/mcp',
+        oauth: { client_id: 'client', client_secret: 'secret', scope: 'tools', auth_server_metadata_url: 'https://auth.example.com' }
+      }
+    })
+    expect(rendered.warnings).toEqual([])
+  })
+
+  it('renders opencode options and lets opencode.timeout override the shared timeout', () => {
+    const rendered = renderOpencodeServers([{
+      name: 'browser',
+      transport: 'http',
+      url: 'https://example.com/mcp',
+      timeout: 5000,
+      oauth: { clientId: 'client' },
+      opencode: { disabled: true, protocol: 'auto', pool: true, codemode: false, oauth: false, timeout: { startup: 3000, execution: 9000 } }
+    }])
+    expect(rendered.servers.browser).toEqual({
+      type: 'remote',
+      url: 'https://example.com/mcp',
+      timeout: { startup: 3000, catalog: 5000, execution: 9000 },
+      oauth: false,
+      disabled: true,
+      codemode: false,
+      pool: true,
+      protocol: 'auto'
+    })
+    expect(rendered.warnings).toEqual(['Server "browser": OpenCode OAuth is disabled; OAuth settings omitted.'])
+  })
+
+  it('warns about an OpenCode timeout that is not a positive integer', () => {
+    const rendered = renderOpencodeServers([{ name: 'slow', transport: 'stdio', command: 'node', timeout: 1.5 }])
+    expect(rendered.servers.slow).not.toHaveProperty('timeout')
+    expect(rendered.warnings).toEqual(['Server "slow": OpenCode requires a positive integer timeout; omitted.'])
+  })
+
+  describe('legacy OpenCode shape', () => {
+    it('matches what 0.9.3 wrote for a plain server', () => {
+      const [filesystem] = Object.values(renderOpencodeServers(servers.slice(0, 1)).servers)
+      expect(toLegacyOpencodeServer(filesystem)).toEqual({
+        entry: {
+          type: 'local',
+          enabled: true,
+          command: ['npx', '-y', '@modelcontextprotocol/server-filesystem', '/tmp/project']
+        },
+        dropped: []
+      })
+    })
+
+    it('maps disabled, an even timeout and OAuth, and reports what it cannot hold', () => {
+      const legacy = toLegacyOpencodeServer({
+        type: 'remote',
+        url: 'https://example.com/mcp',
+        disabled: true,
+        timeout: { startup: 4000, catalog: 4000, execution: 4000 },
+        oauth: { client_id: 'client', scope: 'tools', auth_server_metadata_url: 'https://auth.example.com' }
+      })
+      expect(legacy).toEqual({
+        entry: {
+          type: 'remote',
+          enabled: false,
+          url: 'https://example.com/mcp',
+          timeout: 4000,
+          oauth: { clientId: 'client', scope: 'tools' }
+        },
+        dropped: ['oauth.auth_server_metadata_url']
+      })
+    })
+
+    it('needs the V2 shape only for options the legacy shape lacks', () => {
+      expect(needsOpencodeServersLayout({ type: 'local', disabled: true, timeout: { startup: 1, catalog: 1, execution: 1 } })).toBe(false)
+      expect(needsOpencodeServersLayout({ type: 'local', timeout: { execution: 1 } })).toBe(true)
+      expect(needsOpencodeServersLayout({ type: 'local', timeout: { startup: 1, catalog: 1, execution: 2 } })).toBe(true)
+      expect(needsOpencodeServersLayout({ type: 'local', protocol: 'auto' })).toBe(true)
+      expect(needsOpencodeServersLayout({ type: 'local', pool: false })).toBe(true)
+      expect(needsOpencodeServersLayout({ type: 'local', codemode: true })).toBe(true)
     })
   })
 
@@ -394,8 +480,8 @@ describe('renderers', () => {
     })
 
     it('opencode includes cwd for stdio server', () => {
-      const rendered = renderOpencodeMcp(serversWithCwd)
-      expect(rendered.mcp['project-server']).toMatchObject({
+      const rendered = renderOpencodeServers(serversWithCwd)
+      expect(rendered.servers['project-server']).toMatchObject({
         type: 'local',
         command: ['pnpx', 'xcodebuildmcp@latest', 'mcp'],
         cwd: '/abs/path/to/project'
@@ -429,8 +515,8 @@ describe('renderers', () => {
       const windsurf = renderWindsurfMcp(servers)
       expect(windsurf.mcpServers['filesystem']).not.toHaveProperty('cwd')
 
-      const opencode = renderOpencodeMcp(servers)
-      expect(opencode.mcp['filesystem']).not.toHaveProperty('cwd')
+      const opencode = renderOpencodeServers(servers)
+      expect(opencode.servers['filesystem']).not.toHaveProperty('cwd')
 
       const junie = renderJunieMcp(servers)
       expect(junie.mcpServers['filesystem']).not.toHaveProperty('cwd')

@@ -344,3 +344,55 @@ describe('parseImportedServers', () => {
     ).rejects.toThrow(/Option --file expects a local file path/)
   })
 })
+
+describe('parseImportedServers with OpenCode configs', () => {
+  it('imports V2 servers with their OpenCode options and OAuth', () => {
+    const [entry] = parseImportedServers(JSON.stringify({ mcp: { servers: {
+      browser: {
+        type: 'remote',
+        url: 'https://example.com/mcp',
+        disabled: true,
+        protocol: 'auto',
+        timeout: { startup: 1000, execution: 2000 },
+        oauth: { client_id: 'client', client_secret: 'secret', scope: 'tools', auth_server_metadata_url: 'https://auth.example.com' }
+      }
+    } } }))
+    expect(entry.server).toEqual({
+      transport: 'http',
+      url: 'https://example.com/mcp',
+      opencode: { disabled: true, protocol: 'auto', timeout: { startup: 1000, execution: 2000 } },
+      oauth: { clientId: 'client', clientSecret: 'secret', scopes: 'tools', authServerMetadataUrl: 'https://auth.example.com' }
+    })
+  })
+
+  it('reads a legacy entry: enabled false stays an OpenCode setting, timeout is shared', () => {
+    const [entry] = parseImportedServers(JSON.stringify({ docs: {
+      type: 'local', command: ['node', 'docs.js'], environment: { KEY: 'v' }, enabled: false, timeout: 4000
+    } }))
+    expect(entry.server).toEqual({
+      transport: 'stdio',
+      command: 'node',
+      args: ['docs.js'],
+      env: { KEY: 'v' },
+      timeout: 4000,
+      opencode: { disabled: true }
+    })
+  })
+
+  it('rejects OAuth settings the shared model cannot keep', () => {
+    expect(() => parseImportedServers(JSON.stringify({ docs: {
+      type: 'remote', url: 'https://example.com/mcp', oauth: { callback_port: 9000 }
+    } }))).toThrow(/Unsupported OpenCode OAuth field "docs.oauth.callback_port"/)
+  })
+
+  it('rejects OpenCode options set both directly and under "opencode"', () => {
+    expect(() => parseImportedServers(JSON.stringify({ docs: {
+      type: 'local', command: ['node'], pool: true, opencode: { pool: false }
+    } }))).toThrow(/both directly and under "opencode"/)
+  })
+
+  it('still rejects an object timeout outside OpenCode entries', () => {
+    expect(() => parseImportedServers(JSON.stringify({ docs: { command: 'node', timeout: { execution: 1 } } })))
+      .toThrow(/nonnegative finite number/)
+  })
+})

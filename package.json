@@ -1,6 +1,6 @@
 {
   "name": "@agents-dev/cli",
-  "version": "0.9.3",
+  "version": "0.9.4",
   "description": "One config to rule them all \u2014 sync MCP servers, skills and AGENTS.md across 18 AI coding tools, and package them as Agent Plugins.",
   "main": "dist/cli.js",
   "scripts": {
@@ -63,7 +63,7 @@
   "author": "amtiYo",
   "repository": {
     "type": "git",
-    "url": "https://github.com/amtiYo/agents.git"
+    "url": "git+https://github.com/amtiYo/agents.git"
   },
   "bugs": {
     "url": "https://github.com/amtiYo/agents/issues"
@@ -89,7 +89,7 @@
     "eslint": "^9.39.2",
     "tsx": "^4.23.13",
     "typescript": "^5.9.3",
-    "vite": "^6.4.3",
+    "vite": "^6.4.6",
     "vitest": "^4.1.12"
   }
 }

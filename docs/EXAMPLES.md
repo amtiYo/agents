@@ -278,3 +278,57 @@ agents plugin import ../backend-stack
 
 Secrets never travel: the package carries the `${VAR}` placeholders from the committed
 config, and the export prints which variables it needs.
+
+### OpenCode MCP options
+
+OpenCode 1.x reads servers from `mcp.<name>`. OpenCode 2 reads `mcp.servers.<name>` and
+still accepts the old shape. `agents sync` writes the old shape, so the file works with
+both, and switches to `mcp.servers` when:
+
+- `opencode.json` already has `mcp.servers`. To opt in, add `"servers": {}` under `"mcp"`.
+- a server sets `opencode.codemode`, `opencode.pool`, `opencode.protocol`, or an
+  `opencode.timeout` that differs between `startup`, `catalog` and `execution`. The old
+  shape has no field for them.
+
+Entries written by an earlier sync move to `mcp.servers` with the switch; entries you
+wrote stay where they are. OpenCode 1.x cannot read `mcp.servers`, so switch only when
+everyone on the project runs OpenCode 2.
+
+The `opencode` block holds settings that apply to OpenCode only:
+
+```json
+{
+  "mcpServers": {
+    "browser": {
+      "transport": "stdio",
+      "command": "npx",
+      "args": ["-y", "@playwright/mcp"],
+      "timeout": 60000,
+      "opencode": { "disabled": true }
+    }
+  }
+}
+```
+
+| Option | OpenCode field | Old shape |
+| --- | --- | --- |
+| `disabled: true` | `disabled` | `enabled: false` |
+| `timeout.startup`, `timeout.catalog`, `timeout.execution` (ms) | `timeout` object | `timeout`, when all three are equal |
+| `codemode`, `pool`, `protocol` | same names | none, switches to `mcp.servers` |
+| `oauth: false` | `oauth: false` | `oauth: false` |
+
+`opencode.disabled` keeps the server in OpenCode but off. The shared `enabled: false`
+removes the server from every tool instead.
+
+Shared fields map as follows: `timeout` sets all three OpenCode timeouts, which is how
+OpenCode 2 itself reads a legacy `timeout`, so the shape sync writes does not change how
+long OpenCode waits. `opencode.timeout` overrides single values, for example
+`{ "startup": 45000 }`, and moves the file to `mcp.servers`. `oauth.clientId`,
+`clientSecret` and `scopes` become `client_id`, `client_secret` and `scope`.
+`oauth.authServerMetadataUrl` becomes
+`auth_server_metadata_url` in `mcp.servers`; the old shape has no such field, and sync
+warns that it was left out.
+
+`agents mcp import` reads both OpenCode shapes. OpenCode `enabled: false` is imported as
+`opencode.disabled`. OAuth `callback_port` and `redirect_uri` have no place in the shared
+model, so import stops with an error instead of dropping them.

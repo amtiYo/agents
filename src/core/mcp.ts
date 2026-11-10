@@ -10,6 +10,7 @@ import { loadAgentsConfig } from './config.js'
 import { pathExists, readJson } from './fs.js'
 import { deepMerge } from './objectUtils.js'
 import { getProjectPaths } from './paths.js'
+import { parseOpencodeMcpOptions } from './mcpValidation.js'
 import { INTEGRATION_IDS } from '../integrations/registry.js'
 
 const ALL_INTEGRATIONS: IntegrationName[] = INTEGRATION_IDS
@@ -292,6 +293,7 @@ export function resolveServer(
   return {
     name,
     transport: server.transport,
+    ...(server.opencode !== undefined ? { opencode: parseOpencodeMcpOptions(server.opencode, name) } : {}),
     command: resolveValue(server.command),
     args: server.args?.map((item) => resolveValue(item) ?? item),
     url: resolveValue(server.url),

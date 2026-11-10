@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises'
 import { parse, type ParseError } from 'jsonc-parser'
-import type { McpServerDefinition, McpTransportType } from '../types.js'
-import { parseTargetOptions, validateEnvKey, validateHeaderKey, validateTransport } from './mcpValidation.js'
+import type { McpOAuthConfig, McpServerDefinition, McpTransportType } from '../types.js'
+import { parseOpencodeMcpOptions, parseTargetOptions, validateEnvKey, validateHeaderKey, validateTransport } from './mcpValidation.js'
 import { isObject } from './objectUtils.js'
 
 interface ImportedServer {
@@ -30,7 +30,7 @@ const SERVER_FIELD_HINTS = new Set([
   'description',
   'label',
   'timeout', 'connectTimeout', 'tools', 'disabledTools', 'oauth',
-  'headersHelper', 'bearerTokenEnvVar', 'envFile'
+  'headersHelper', 'bearerTokenEnvVar', 'envFile', 'opencode'
 ])
 
 export async function readImportInput(args: {
@@ -132,7 +132,9 @@ function normalizeServerDefinition(value: unknown, serverName: string): McpServe
   const transportRaw = readOptionalString(value.transport, `${serverName}.transport`)
     ?? readOptionalString(value.type, `${serverName}.type`)
     ?? inferTransport(command, url)
-  const transport = validateTransport(transportRaw)
+  // OpenCode marks its entries with type "local" or "remote" and keeps its own option names.
+  const isOpencodeEntry = transportRaw === 'local' || transportRaw === 'remote'
+  const transport = validateTransport(OPENCODE_TRANSPORTS[transportRaw] ?? transportRaw)
 
   const out: McpServerDefinition = {
     transport
@@ -140,7 +142,9 @@ function normalizeServerDefinition(value: unknown, serverName: string): McpServe
 
   if (typeof value.label === 'string') out.label = value.label
   if (typeof value.description === 'string') out.description = value.description
-  if (typeof value.enabled === 'boolean') out.enabled = value.enabled
+  // OpenCode's `enabled: false` keeps a server configured but off, which is
+  // `opencode.disabled` here. The shared `enabled` would drop it from every tool.
+  if (typeof value.enabled === 'boolean' && !isOpencodeEntry) out.enabled = value.enabled
   if (typeof value.cwd === 'string') out.cwd = value.cwd
 
   const targetsRaw = value.targets
@@ -171,7 +175,7 @@ function normalizeServerDefinition(value: unknown, serverName: string): McpServe
   }
 
   const env = readStringMap(
-    value.env,
+    value.env ?? value.environment,
     `${serverName}.env`,
     (key) => validateEnvKey(key, 'environment variable'),
   )
@@ -186,6 +190,8 @@ function normalizeServerDefinition(value: unknown, serverName: string): McpServe
 
   for (const key of ['timeout', 'connectTimeout'] as const) {
     if (value[key] === undefined || value[key] === null) continue
+    // OpenCode 2 splits the timeout into an object, read below with the other OpenCode options.
+    if (key === 'timeout' && isOpencodeEntry && isObject(value[key])) continue
     if (typeof value[key] !== 'number' || !Number.isFinite(value[key]) || value[key] < 0) {
       throw new Error(`Field "${serverName}.${key}" must be a nonnegative finite number.`)
     }
@@ -202,16 +208,65 @@ function normalizeServerDefinition(value: unknown, serverName: string): McpServe
       out[key] = text
     }
   }
-  if (value.oauth !== undefined && value.oauth !== null) {
-    if (!isObject(value.oauth)) throw new Error(`Field "${serverName}.oauth" must be an object.`)
-    out.oauth = {}
-    for (const key of ['scopes', 'clientId', 'clientSecret', 'authServerMetadataUrl'] as const) {
-      const text = readOptionalString(value.oauth[key], `${serverName}.oauth.${key}`)
-      if (text !== undefined) out.oauth[key] = text
+  const nativeOptions = isOpencodeEntry ? readNativeOpencodeOptions(value) : {}
+  if (Object.keys(nativeOptions).length > 0) {
+    if (value.opencode !== undefined) {
+      throw new Error(`Server "${serverName}" sets OpenCode options both directly and under "opencode".`)
     }
+    out.opencode = parseOpencodeMcpOptions(nativeOptions, serverName)
+  } else if (value.opencode !== undefined) {
+    out.opencode = parseOpencodeMcpOptions(value.opencode, serverName)
+  }
+
+  if (isObject(value.oauth)) {
+    out.oauth = readOAuth(value.oauth, serverName, isOpencodeEntry)
+  } else if (value.oauth !== undefined && value.oauth !== null && !(isOpencodeEntry && value.oauth === false)) {
+    throw new Error(`Field "${serverName}.oauth" must be an object.`)
   }
 
   return out
+}
+
+const OPENCODE_TRANSPORTS: Record<string, McpTransportType> = { local: 'stdio', remote: 'http' }
+
+/** OpenCode-only settings written directly on an OpenCode server entry. */
+function readNativeOpencodeOptions(value: Record<string, unknown>): Record<string, unknown> {
+  const options: Record<string, unknown> = {}
+  for (const key of ['disabled', 'codemode', 'pool', 'protocol'] as const) {
+    if (value[key] !== undefined) options[key] = value[key]
+  }
+  if (value.enabled === false) options.disabled = true
+  if (isObject(value.timeout)) options.timeout = value.timeout
+  if (value.oauth === false) options.oauth = false
+  return options
+}
+
+/** Field names used for each OAuth setting: ours, OpenCode 1.x and OpenCode 2.x. */
+const OAUTH_FIELDS: Record<string, keyof McpOAuthConfig> = {
+  clientId: 'clientId',
+  client_id: 'clientId',
+  clientSecret: 'clientSecret',
+  client_secret: 'clientSecret',
+  scopes: 'scopes',
+  scope: 'scopes',
+  authServerMetadataUrl: 'authServerMetadataUrl',
+  auth_server_metadata_url: 'authServerMetadataUrl'
+}
+
+function readOAuth(value: Record<string, unknown>, serverName: string, isOpencodeEntry: boolean): McpOAuthConfig {
+  const oauth: McpOAuthConfig = {}
+  for (const [key, raw] of Object.entries(value)) {
+    const field = OAUTH_FIELDS[key]
+    if (!field) {
+      // Settings like the OpenCode callback port have no place in the shared model,
+      // and dropping them quietly would break the sign-in after import.
+      if (isOpencodeEntry) throw new Error(`Unsupported OpenCode OAuth field "${serverName}.oauth.${key}".`)
+      continue
+    }
+    const text = readOptionalString(raw, `${serverName}.oauth.${key}`)
+    if (text !== undefined) oauth[field] = text
+  }
+  return oauth
 }
 
 function inferTransport(command: string | undefined, url: string | undefined): McpTransportType {

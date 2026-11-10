@@ -11,7 +11,7 @@ const FIELD_SUPPORT: Record<string, IntegrationName[]> = {
   connectTimeout: ['droid', 'codex', 'grok'],
   tools: ['copilot_cli'],
   disabledTools: ['droid'],
-  oauth: ['claude', 'droid', 'kilo'],
+  oauth: ['claude', 'droid', 'kilo', 'opencode'],
   headersHelper: ['claude'],
   bearerTokenEnvVar: ['codex', 'grok'],
   envFile: ['cursor'],

@@ -17,6 +17,11 @@ const cases = [
   ['junie', 'junieMcp', 'mcpServers']
 ] as const
 
+/** The preview each hook reads. OpenCode's is always the V2 `mcp.servers` shape. */
+function previewOf(id: IntegrationName, key: string, entries: Record<string, unknown>): string {
+  return JSON.stringify(id === 'opencode' ? { mcp: { servers: entries } } : { [key]: entries })
+}
+
 afterEach(async () => {
   vi.unstubAllEnvs()
   await Promise.all(tempDirs.splice(0).map(dir => rm(dir, { recursive: true, force: true })))
@@ -76,7 +81,7 @@ describe('sync config ownership', () => {
     await mkdir(path.dirname(target), { recursive: true })
     await writeFile(target, JSON.stringify({ [key]: { manual }, custom: true }))
     const generatedByIntegration: Partial<Record<IntegrationName, string>> = {
-      [id]: JSON.stringify({ [key]: { managed: { command: 'managed-command' } } })
+      [id]: previewOf(id, key, { managed: { command: 'managed-command' } })
     }
     const context = {
       projectRoot, paths, config: createDefaultAgentsConfig(), enabled: true,
@@ -88,7 +93,7 @@ describe('sync config ownership', () => {
     expect(config.custom).toBe(true)
     expect(config[key].managed).toBeDefined()
 
-    generatedByIntegration[id] = JSON.stringify({ [key]: {} })
+    generatedByIntegration[id] = previewOf(id, key, {})
     context.check = true
     await hook.materialize!(context)
     expect(JSON.parse(await readFile(target, 'utf8'))[key].managed).toBeDefined()
