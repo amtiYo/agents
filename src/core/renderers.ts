@@ -398,7 +398,7 @@ export function renderOpencodeServers(servers: ResolvedMcpServer[]): {
     if (!connection) continue
     const options = server.opencode ?? {}
     const timeout = {
-      ...renderOpencodeExecutionTimeout(server, warnings),
+      ...renderOpencodeSharedTimeout(server, warnings),
       ...options.timeout
     }
     out[server.name] = {
@@ -440,14 +440,21 @@ function renderOpencodeConnection(server: ResolvedMcpServer, warnings: string[])
   }
 }
 
-/** The shared `timeout` is a tool call timeout, which OpenCode calls `execution`. */
-function renderOpencodeExecutionTimeout(server: ResolvedMcpServer, warnings: string[]): { execution?: number } {
+/**
+ * OpenCode reads a legacy `timeout` as the startup, catalog and execution timeout
+ * at once, so the V2 entry sets all three. The same project then behaves the same
+ * whichever shape sync writes.
+ */
+function renderOpencodeSharedTimeout(
+  server: ResolvedMcpServer,
+  warnings: string[],
+): { startup?: number; catalog?: number; execution?: number } {
   if (server.timeout === undefined) return {}
   if (!Number.isSafeInteger(server.timeout) || server.timeout <= 0) {
     warnings.push(`Server "${server.name}": OpenCode requires a positive integer timeout; omitted.`)
     return {}
   }
-  return { execution: server.timeout }
+  return { startup: server.timeout, catalog: server.timeout, execution: server.timeout }
 }
 
 function renderOpencodeOAuth(server: ResolvedMcpServer, warnings: string[]): { oauth?: false | Record<string, string> } {
@@ -481,8 +488,13 @@ function renderOpencodeOAuth(server: ResolvedMcpServer, warnings: string[]): { o
  */
 export function needsOpencodeServersLayout(entry: OpencodeServerEntry): boolean {
   if (entry.codemode !== undefined || entry.pool !== undefined || entry.protocol !== undefined) return true
-  const timeout = entry.timeout as { startup?: number; catalog?: number } | undefined
-  return timeout?.startup !== undefined || timeout?.catalog !== undefined
+  return entry.timeout !== undefined && legacyTimeout(entry.timeout) === undefined
+}
+
+/** The legacy `timeout` that OpenCode expands to this V2 timeout, if there is one. */
+function legacyTimeout(timeout: unknown): number | undefined {
+  const { startup, catalog, execution } = (timeout ?? {}) as { startup?: number; catalog?: number; execution?: number }
+  return startup !== undefined && startup === catalog && startup === execution ? startup : undefined
 }
 
 /**
@@ -500,10 +512,11 @@ export function toLegacyOpencodeServer(entry: OpencodeServerEntry): {
 
   const legacy: OpencodeServerEntry = { type, enabled: disabled !== true, ...connection }
 
-  const { startup, catalog, execution } = (timeout ?? {}) as { startup?: number; catalog?: number; execution?: number }
-  if (startup !== undefined) dropped.push('timeout.startup')
-  if (catalog !== undefined) dropped.push('timeout.catalog')
-  if (execution !== undefined) legacy.timeout = execution
+  if (timeout !== undefined) {
+    const single = legacyTimeout(timeout)
+    if (single !== undefined) legacy.timeout = single
+    else dropped.push('timeout')
+  }
 
   if (oauth === false) {
     legacy.oauth = false

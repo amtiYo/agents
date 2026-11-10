@@ -58,6 +58,19 @@ describe('OpenCode config shape', () => {
     expect(await p.state()).toEqual({ layout: 'servers', managedNames: ['docs'] })
   })
 
+  it('keeps the legacy shape for a shared timeout and switches for a split one', async () => {
+    const p = await project({ docs: { ...docs, timeout: 30000 } })
+    await p.sync()
+    expect((await p.read()).mcp).toEqual({ docs: { ...legacyDocs, timeout: 30000 } })
+    await saveAgentsConfig(p.projectRoot, createDefaultAgentsConfig({ enabledIntegrations: ['opencode'], mcpServers: {
+      docs: { ...docs, timeout: 30000, opencode: { timeout: { startup: 60000 } } }
+    } }))
+    await p.sync()
+    expect((await p.read()).mcp).toEqual({ servers: {
+      docs: { ...v2Docs, timeout: { startup: 60000, catalog: 30000, execution: 30000 } }
+    } })
+  })
+
   it('switches to the V2 shape when a server sets an option only V2 has', async () => {
     const p = await project({ docs: { ...docs, opencode: { protocol: 'auto' } } })
     await p.sync()

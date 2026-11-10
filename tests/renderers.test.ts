@@ -309,7 +309,7 @@ describe('renderers', () => {
     expect(rendered.servers.filesystem).not.toHaveProperty('enabled')
   })
 
-  it('maps shared timeout and OAuth to OpenCode fields', () => {
+  it('maps shared timeout the way OpenCode reads a legacy timeout, and OAuth to OpenCode fields', () => {
     const rendered = renderOpencodeServers([
       { name: 'local', transport: 'stdio', command: 'node', args: ['server.js'], cwd: '/tmp', env: { KEY: 'value' }, timeout: 4000 },
       {
@@ -320,7 +320,7 @@ describe('renderers', () => {
       }
     ])
     expect(rendered.servers).toEqual({
-      local: { type: 'local', command: ['node', 'server.js'], cwd: '/tmp', environment: { KEY: 'value' }, timeout: { execution: 4000 } },
+      local: { type: 'local', command: ['node', 'server.js'], cwd: '/tmp', environment: { KEY: 'value' }, timeout: { startup: 4000, catalog: 4000, execution: 4000 } },
       remote: {
         type: 'remote',
         url: 'https://example.com/mcp',
@@ -342,7 +342,7 @@ describe('renderers', () => {
     expect(rendered.servers.browser).toEqual({
       type: 'remote',
       url: 'https://example.com/mcp',
-      timeout: { startup: 3000, execution: 9000 },
+      timeout: { startup: 3000, catalog: 5000, execution: 9000 },
       oauth: false,
       disabled: true,
       codemode: false,
@@ -371,12 +371,12 @@ describe('renderers', () => {
       })
     })
 
-    it('maps disabled, timeout and OAuth, and reports what it cannot hold', () => {
+    it('maps disabled, an even timeout and OAuth, and reports what it cannot hold', () => {
       const legacy = toLegacyOpencodeServer({
         type: 'remote',
         url: 'https://example.com/mcp',
         disabled: true,
-        timeout: { execution: 4000 },
+        timeout: { startup: 4000, catalog: 4000, execution: 4000 },
         oauth: { client_id: 'client', scope: 'tools', auth_server_metadata_url: 'https://auth.example.com' }
       })
       expect(legacy).toEqual({
@@ -392,9 +392,9 @@ describe('renderers', () => {
     })
 
     it('needs the V2 shape only for options the legacy shape lacks', () => {
-      expect(needsOpencodeServersLayout({ type: 'local', disabled: true, timeout: { execution: 1 } })).toBe(false)
-      expect(needsOpencodeServersLayout({ type: 'local', timeout: { startup: 1 } })).toBe(true)
-      expect(needsOpencodeServersLayout({ type: 'local', timeout: { catalog: 1 } })).toBe(true)
+      expect(needsOpencodeServersLayout({ type: 'local', disabled: true, timeout: { startup: 1, catalog: 1, execution: 1 } })).toBe(false)
+      expect(needsOpencodeServersLayout({ type: 'local', timeout: { execution: 1 } })).toBe(true)
+      expect(needsOpencodeServersLayout({ type: 'local', timeout: { startup: 1, catalog: 1, execution: 2 } })).toBe(true)
       expect(needsOpencodeServersLayout({ type: 'local', protocol: 'auto' })).toBe(true)
       expect(needsOpencodeServersLayout({ type: 'local', pool: false })).toBe(true)
       expect(needsOpencodeServersLayout({ type: 'local', codemode: true })).toBe(true)
