@@ -30,6 +30,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   written. OAuth client ID, secret, scope and metadata URL are passed to OpenCode too.
 - `agents status` counts OpenCode servers in `mcp.servers`.
 
+### Changed
+
+- Vite updated to 6.4.6, closing GHSA-587h-7wmj-h5pm, GHSA-r825-w8mm-5pxw,
+  GHSA-698v-4r3x-3vcv, GHSA-rq7h-c2jc-7f22 and GHSA-9jrq-w75r-8gcw reported by
+  Dependabot. Vite is a development dependency and is not shipped in the package.
+
 ## [0.9.3] - 2026-11-02
 
 ### Added
