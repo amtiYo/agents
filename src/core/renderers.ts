@@ -377,42 +377,148 @@ export function renderWindsurfMcp(servers: ResolvedMcpServer[]): {
   return { mcpServers: out, warnings }
 }
 
-export function renderOpencodeMcp(servers: ResolvedMcpServer[]): {
-  mcp: Record<string, unknown>
+/** A server entry in the OpenCode config, in either the V2 or the legacy shape. */
+export type OpencodeServerEntry = Record<string, unknown>
+
+/**
+ * Render MCP servers in the OpenCode V2 `mcp.servers` shape.
+ *
+ * This is the canonical form kept in the preview. Sync converts each entry with
+ * `toLegacyOpencodeServer` when the target config still uses the legacy shape.
+ */
+export function renderOpencodeServers(servers: ResolvedMcpServer[]): {
+  servers: Record<string, OpencodeServerEntry>
   warnings: string[]
 } {
   const warnings: string[] = []
-  const out: Record<string, unknown> = {}
+  const out: Record<string, OpencodeServerEntry> = {}
 
   for (const server of servers) {
-    if (server.transport === 'stdio') {
-      if (!server.command) {
-        warnings.push(`Server "${server.name}" has no command; skipped in OpenCode output.`)
-        continue
-      }
-      out[server.name] = {
-        type: 'local',
-        enabled: true,
-        command: [server.command, ...(server.args ?? [])],
-        ...(server.cwd ? { cwd: server.cwd } : {}),
-        ...(server.env ? { environment: server.env } : {})
-      }
-      continue
-    }
-
-    if (!server.url) {
-      warnings.push(`Server "${server.name}" has no url; skipped in OpenCode output.`)
-      continue
+    const connection = renderOpencodeConnection(server, warnings)
+    if (!connection) continue
+    const options = server.opencode ?? {}
+    const timeout = {
+      ...renderOpencodeExecutionTimeout(server, warnings),
+      ...options.timeout
     }
     out[server.name] = {
-      type: 'remote',
-      enabled: true,
-      url: server.url,
-      ...(server.headers ? { headers: server.headers } : {})
+      ...connection,
+      ...(Object.keys(timeout).length > 0 ? { timeout } : {}),
+      ...renderOpencodeOAuth(server, warnings),
+      ...(options.disabled !== undefined ? { disabled: options.disabled } : {}),
+      ...(options.codemode !== undefined ? { codemode: options.codemode } : {}),
+      ...(options.pool !== undefined ? { pool: options.pool } : {}),
+      ...(options.protocol !== undefined ? { protocol: options.protocol } : {})
     }
   }
 
-  return { mcp: out, warnings }
+  return { servers: out, warnings }
+}
+
+function renderOpencodeConnection(server: ResolvedMcpServer, warnings: string[]): OpencodeServerEntry | null {
+  if (server.transport === 'stdio') {
+    if (!server.command) {
+      warnings.push(`Server "${server.name}" has no command; skipped in OpenCode output.`)
+      return null
+    }
+    return {
+      type: 'local',
+      command: [server.command, ...(server.args ?? [])],
+      ...(server.cwd ? { cwd: server.cwd } : {}),
+      ...(server.env ? { environment: server.env } : {})
+    }
+  }
+
+  if (!server.url) {
+    warnings.push(`Server "${server.name}" has no url; skipped in OpenCode output.`)
+    return null
+  }
+  return {
+    type: 'remote',
+    url: server.url,
+    ...(server.headers ? { headers: server.headers } : {})
+  }
+}
+
+/** The shared `timeout` is a tool call timeout, which OpenCode calls `execution`. */
+function renderOpencodeExecutionTimeout(server: ResolvedMcpServer, warnings: string[]): { execution?: number } {
+  if (server.timeout === undefined) return {}
+  if (!Number.isSafeInteger(server.timeout) || server.timeout <= 0) {
+    warnings.push(`Server "${server.name}": OpenCode requires a positive integer timeout; omitted.`)
+    return {}
+  }
+  return { execution: server.timeout }
+}
+
+function renderOpencodeOAuth(server: ResolvedMcpServer, warnings: string[]): { oauth?: false | Record<string, string> } {
+  const disabled = server.opencode?.oauth === false
+  if (server.transport === 'stdio') {
+    if (disabled) warnings.push(`Server "${server.name}": OpenCode OAuth applies only to remote servers; opencode.oauth omitted.`)
+    return {}
+  }
+
+  const oauth = server.oauth ?? {}
+  const config = {
+    ...(oauth.clientId ? { client_id: oauth.clientId } : {}),
+    ...(oauth.clientSecret ? { client_secret: oauth.clientSecret } : {}),
+    ...(oauth.scopes ? { scope: oauth.scopes } : {}),
+    ...(oauth.authServerMetadataUrl ? { auth_server_metadata_url: oauth.authServerMetadataUrl } : {})
+  }
+  if (disabled) {
+    if (Object.keys(config).length > 0) {
+      warnings.push(`Server "${server.name}": OpenCode OAuth is disabled; OAuth settings omitted.`)
+    }
+    return { oauth: false }
+  }
+  return Object.keys(config).length > 0 ? { oauth: config } : {}
+}
+
+/**
+ * Whether a V2 entry uses settings the legacy `mcp.<name>` shape cannot express.
+ *
+ * Only the `opencode` options can produce these, so a shared field never moves a
+ * project onto a config shape that OpenCode 1.x cannot read.
+ */
+export function needsOpencodeServersLayout(entry: OpencodeServerEntry): boolean {
+  if (entry.codemode !== undefined || entry.pool !== undefined || entry.protocol !== undefined) return true
+  const timeout = entry.timeout as { startup?: number; catalog?: number } | undefined
+  return timeout?.startup !== undefined || timeout?.catalog !== undefined
+}
+
+/**
+ * Convert a V2 entry to the legacy `mcp.<name>` shape that OpenCode 1.x reads and
+ * OpenCode 2.x still accepts. Settings with no legacy field are reported in `dropped`.
+ */
+export function toLegacyOpencodeServer(entry: OpencodeServerEntry): {
+  entry: OpencodeServerEntry
+  dropped: string[]
+} {
+  const { type, disabled, timeout, oauth, codemode, pool, protocol, ...connection } = entry
+  const dropped = Object.entries({ codemode, pool, protocol })
+    .filter(([, value]) => value !== undefined)
+    .map(([key]) => key)
+
+  const legacy: OpencodeServerEntry = { type, enabled: disabled !== true, ...connection }
+
+  const { startup, catalog, execution } = (timeout ?? {}) as { startup?: number; catalog?: number; execution?: number }
+  if (startup !== undefined) dropped.push('timeout.startup')
+  if (catalog !== undefined) dropped.push('timeout.catalog')
+  if (execution !== undefined) legacy.timeout = execution
+
+  if (oauth === false) {
+    legacy.oauth = false
+  } else if (oauth && typeof oauth === 'object') {
+    const v2 = oauth as Record<string, string>
+    const config = {
+      ...(v2.client_id ? { clientId: v2.client_id } : {}),
+      ...(v2.client_secret ? { clientSecret: v2.client_secret } : {}),
+      ...(v2.scope ? { scope: v2.scope } : {})
+    }
+    if (v2.auth_server_metadata_url) dropped.push('oauth.auth_server_metadata_url')
+    if (Object.keys(config).length > 0) legacy.oauth = config
+  }
+
+  return { entry: legacy, dropped }
 }
 
 /** Render MCP servers for Junie, which reads a plain `mcpServers` map. */

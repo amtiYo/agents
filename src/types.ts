@@ -65,7 +65,7 @@ export interface McpProfile {
   servers: string[]
 }
 
-/** OAuth hints passed through to clients that support them (Claude Code, Droid, Kilo). */
+/** OAuth hints passed through to clients that support them (Claude Code, Droid, Kilo, OpenCode). */
 export interface McpOAuthConfig {
   scopes?: string
   clientId?: string
@@ -73,10 +73,21 @@ export interface McpOAuthConfig {
   authServerMetadataUrl?: string
 }
 
+/** OpenCode V2-specific MCP options. Timeouts are positive milliseconds. */
+export interface OpencodeMcpOptions {
+  disabled?: boolean
+  codemode?: boolean
+  pool?: boolean
+  protocol?: 'legacy' | 'auto' | '2026-07-28'
+  timeout?: { startup?: number; catalog?: number; execution?: number }
+  oauth?: false
+}
+
 export interface McpServerDefinition {
   label?: string
   description?: string
   transport: McpTransportType
+  opencode?: OpencodeMcpOptions
   command?: string
   args?: string[]
   url?: string
@@ -94,7 +105,7 @@ export interface McpServerDefinition {
   tools?: string[]
   /** Tools excluded from the server (Droid). */
   disabledTools?: string[]
-  /** OAuth overrides for remote servers (Claude Code, Droid, Kilo). */
+  /** OAuth overrides for remote servers (Claude Code, Droid, Kilo, OpenCode). */
   oauth?: McpOAuthConfig
   /** Executable that prints auth headers at connect time (Claude Code). */
   headersHelper?: string
@@ -125,6 +136,7 @@ export interface VscodeSettingsState {
 export interface ResolvedMcpServer {
   name: string
   transport: McpTransportType
+  opencode?: OpencodeMcpOptions
   command?: string
   args?: string[]
   url?: string

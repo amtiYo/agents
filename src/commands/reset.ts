@@ -4,6 +4,13 @@ import { lstat, readlink, readdir, rmdir } from 'node:fs/promises'
 import { applyEdits as applyJsoncEdits, createScanner, modify as modifyJsonc, parse as parseJsonc, SyntaxKind } from 'jsonc-parser'
 import { cleanupManagedGitignore } from '../core/gitignore.js'
 import { readGooseDocument, readGooseExtensions, setGooseExtensions, writeGooseConfig } from '../core/goose.js'
+import {
+  adoptOpencodeEntries,
+  ownedOpencodeEntries,
+  readOpencodeOwnership,
+  removeOpencodeEntries,
+  type OpencodeEntryNames
+} from '../core/opencode.js'
 import { getProjectPaths } from '../core/paths.js'
 import type { ProjectPaths } from '../core/paths.js'
 import { loadAgentsConfig } from '../core/config.js'
@@ -284,8 +291,20 @@ async function cleanupOpencodeConfig(args: JsonConfigCleanupArgs): Promise<void>
   const generated = await readGeneratedObjectForCleanup(args, 'OpenCode')
   if (generated === null) return
 
+  if (!isRecord(existing.mcp)) return
+  let owned: OpencodeEntryNames
+  try {
+    const ownership = args.statePath ? await readOpencodeOwnership(args.statePath) : null
+    owned = ownership ? ownedOpencodeEntries(ownership) : adoptOpencodeEntries(existing.mcp, generated)
+  } catch {
+    args.warnings.push(`Could not read ownership at ${args.statePath}; preserved MCP entries.`)
+    return
+  }
+
   const cleaned = { ...existing }
-  await removeManagedMapEntries(args, cleaned, generated, 'mcp')
+  const mcp = removeOpencodeEntries(existing.mcp, owned)
+  if (Object.keys(mcp).length > 0) cleaned.mcp = mcp
+  else delete cleaned.mcp
   await persistCleanedJsonConfig(args, existing, cleaned)
 }
 

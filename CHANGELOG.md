@@ -7,7 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-- No changes yet.
+### Added
+
+- OpenCode 2 support ([#39](https://github.com/amtiYo/agents/issues/39)). Sync writes
+  `mcp.servers` when `opencode.json` already uses it or a server needs an option only
+  OpenCode 2 has, and keeps the `mcp.<name>` shape otherwise, so OpenCode 1.x projects
+  keep working. Entries written by an earlier sync move to `mcp.servers`; manual entries
+  stay where they are.
+- An `opencode` block on a server for OpenCode-only settings: `disabled`, `codemode`,
+  `pool`, `protocol`, `oauth: false`, and separate `startup`, `catalog` and `execution`
+  timeouts.
+- `agents mcp import` reads OpenCode 2 servers and their options, and keeps OpenCode
+  `enabled: false` as `opencode.disabled` instead of dropping the server.
+
+### Fixed
+
+- The shared `timeout` field reaches OpenCode. It was listed as supported but never
+  written. OAuth client ID, secret, scope and metadata URL are passed to OpenCode too.
+- `agents status` counts OpenCode servers in `mcp.servers`.
 
 ## [0.9.3] - 2026-11-02
 

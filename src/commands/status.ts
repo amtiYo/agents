@@ -19,6 +19,7 @@ import {
   toManagedClaudeDesktopName
 } from '../core/claudeDesktop.js'
 import { getWindsurfGlobalMcpPath } from '../core/windsurf.js'
+import { listOpencodeServerNames } from '../core/opencode.js'
 import { commandExists, runCommandAsync } from '../core/shell.js'
 import { getCodexTrustState, getGrokTrustState } from '../core/trust.js'
 import { listMcpEntries, loadMcpState } from '../core/mcpCrud.js'
@@ -562,8 +563,11 @@ async function probeClaudeDesktop(
 async function probeOpencode(configPath: string, expectedServerNames: string[], label = 'opencode.json'): Promise<string> {
   if (!(await pathExists(configPath))) return `missing ${label}`
   try {
-    const parsed = await readJson<{ mcp?: Record<string, unknown> }>(configPath)
-    const names = Object.keys(parsed.mcp ?? {})
+    const parsed = await readJson<{ mcp?: unknown }>(configPath)
+    const mcp = typeof parsed.mcp === 'object' && parsed.mcp !== null && !Array.isArray(parsed.mcp)
+      ? parsed.mcp as Record<string, unknown>
+      : {}
+    const names = listOpencodeServerNames(mcp)
     const missing = expectedServerNames.filter((name) => !names.includes(name))
     if (missing.length > 0) {
       return `${names.length} server(s) configured (${names.join(', ') || 'none'}); missing expected: ${missing.join(', ')}`

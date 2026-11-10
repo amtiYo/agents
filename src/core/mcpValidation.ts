@@ -1,4 +1,4 @@
-import type { AgentsConfig, IntegrationName, McpTransportType } from '../types.js'
+import type { AgentsConfig, IntegrationName, McpTransportType, OpencodeMcpOptions } from '../types.js'
 import { INTEGRATION_IDS, parseIntegrationList } from '../integrations/registry.js'
 
 const SERVER_NAME_PATTERN = /^[a-zA-Z0-9_\-:.]+$/
@@ -113,4 +113,72 @@ export function validateConfigValue(value: string | undefined, label: string, se
   if (/[\x00-\x1F\x7F]/.test(value)) {
     throw new Error(`Invalid ${label} in server "${serverName}": contains control characters`)
   }
+}
+
+const OPENCODE_OPTION_KEYS = new Set(['disabled', 'codemode', 'pool', 'protocol', 'timeout', 'oauth'])
+const OPENCODE_PROTOCOLS = new Set(['legacy', 'auto', '2026-07-28'])
+const OPENCODE_TIMEOUT_KEYS = ['startup', 'catalog', 'execution'] as const
+
+/**
+ * Validate the `opencode` block of a server and return a clean copy.
+ *
+ * @throws on an unknown key or a value OpenCode would reject
+ */
+export function parseOpencodeMcpOptions(value: unknown, serverName: string): OpencodeMcpOptions {
+  const where = `server "${serverName}"`
+  if (!isPlainObject(value)) throw new Error(`Invalid opencode options in ${where}: expected an object.`)
+
+  for (const key of Object.keys(value)) {
+    if (!OPENCODE_OPTION_KEYS.has(key)) throw new Error(`Unknown opencode option "${key}" in ${where}.`)
+  }
+
+  const options: OpencodeMcpOptions = {}
+  for (const key of ['disabled', 'codemode', 'pool'] as const) {
+    if (value[key] === undefined) continue
+    if (typeof value[key] !== 'boolean') throw new Error(`opencode.${key} in ${where} must be true or false.`)
+    options[key] = value[key]
+  }
+
+  if (value.protocol !== undefined) {
+    if (typeof value.protocol !== 'string' || !OPENCODE_PROTOCOLS.has(value.protocol)) {
+      throw new Error(`opencode.protocol in ${where} must be one of: ${[...OPENCODE_PROTOCOLS].join(', ')}.`)
+    }
+    options.protocol = value.protocol as OpencodeMcpOptions['protocol']
+  }
+
+  // OpenCode accepts an OAuth object too, but credentials live in the shared `oauth`
+  // field. Here only `false` is meaningful: it turns off OAuth auto-detection.
+  if (value.oauth !== undefined) {
+    if (value.oauth !== false) throw new Error(`opencode.oauth in ${where} can only be false; put credentials in "oauth".`)
+    options.oauth = false
+  }
+
+  if (value.timeout !== undefined) {
+    options.timeout = parseOpencodeTimeout(value.timeout, where)
+  }
+
+  return options
+}
+
+function parseOpencodeTimeout(value: unknown, where: string): NonNullable<OpencodeMcpOptions['timeout']> {
+  if (!isPlainObject(value)) throw new Error(`opencode.timeout in ${where} must be an object.`)
+  for (const key of Object.keys(value)) {
+    if (!(OPENCODE_TIMEOUT_KEYS as readonly string[]).includes(key)) {
+      throw new Error(`Unknown opencode.timeout field "${key}" in ${where}.`)
+    }
+  }
+  const timeout: NonNullable<OpencodeMcpOptions['timeout']> = {}
+  for (const key of OPENCODE_TIMEOUT_KEYS) {
+    const item = value[key]
+    if (item === undefined) continue
+    if (typeof item !== 'number' || !Number.isSafeInteger(item) || item <= 0) {
+      throw new Error(`opencode.timeout.${key} in ${where} must be a positive integer (milliseconds).`)
+    }
+    timeout[key] = item
+  }
+  return timeout
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
